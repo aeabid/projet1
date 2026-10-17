@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>متابعة التلاميذ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📘</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar" id="topbar" hidden>
+    <a class="brand" href="#/">📘 متابعة التلاميذ</a>
+    <nav id="nav"></nav>
+    <div class="who">
+      <span id="who-name"></span>
+      <button class="btn ghost small" id="logout">خروج</button>
+    </div>
+  </header>
+
+  <main id="view" class="container"></main>
+
+  <dialog id="modal">
+    <form method="dialog" id="modal-form" novalidate>
+      <h3 id="modal-title"></h3>
+      <div id="modal-body"></div>
+      <p class="error" id="modal-error" hidden></p>
+      <div class="actions">
+        <button type="submit" class="btn" value="ok">حفظ</button>
+        <button type="button" class="btn ghost" id="modal-cancel">إلغاء</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
