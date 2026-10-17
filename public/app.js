@@ -60,7 +60,7 @@ function formData(form) {
     if (el.type === 'checkbox' && el.name.endsWith('[]')) {
       const key = el.name.slice(0, -2);
       data[key] = data[key] || [];
-      if (el.checked) data[key].push(Number(el.value));
+      if (el.checked) data[key].push(key === 'levels' ? el.value : Number(el.value));
     } else if (el.type === 'checkbox') {
       data[el.name] = el.checked;
     } else {
@@ -518,10 +518,12 @@ async function viewStudent(el, id) {
   const reload = () => viewStudent(el, id);
 
   // المواد المتاحة: المعلم يرى مواده فقط
-  const mySubjects = role === 'teacher' ? state.user.subjects || [] : state.meta.subjects;
+  const mySubjects = (role === 'teacher' ? state.user.subjects || [] : state.meta.subjects).filter(
+    (s) => !s.levels || s.levels.includes(student.level)
+  );
 
   $('#add-note')?.addEventListener('click', () => {
-    if (role === 'teacher' && !mySubjects.length) return toast('لم تُسند لك أي مادة بعد، اتصل بالإدارة', true);
+    if (role === 'teacher' && !mySubjects.length) return toast('ليس لك أي مادة في مستوى هذا التلميذ، اتصل بالإدارة', true);
     openModal(
       role === 'admin' ? 'ملاحظة من الإدارة' : 'ملاحظة جديدة',
       `${role === 'teacher' ? `<label>المادة<select name="subject_id">${subjectOptions(mySubjects)}</select></label>` : ''}
@@ -547,7 +549,7 @@ async function viewStudent(el, id) {
   });
 
   $('#add-absence')?.addEventListener('click', () => {
-    if (role === 'teacher' && !mySubjects.length) return toast('لم تُسند لك أي مادة بعد، اتصل بالإدارة', true);
+    if (role === 'teacher' && !mySubjects.length) return toast('ليس لك أي مادة في مستوى هذا التلميذ، اتصل بالإدارة', true);
     openModal(
       'تسجيل غياب',
       `<label>التاريخ<input type="date" name="date" value="${today()}"></label>
@@ -640,7 +642,7 @@ async function viewUsers(el, role) {
          role === 'teacher'
            ? `<fieldset><legend>المواد التي يدرّسها</legend><div class="checks">${state.meta.subjects
                .map(
-                 (s) => `<label class="check"><input type="checkbox" name="subject_ids[]" value="${s.id}" ${ids.has(s.id) ? 'checked' : ''}> ${esc(s.name)}</label>`
+                 (s) => `<label class="check"><input type="checkbox" name="subject_ids[]" value="${s.id}" ${ids.has(s.id) ? 'checked' : ''}> ${esc(s.name)}${s.levels ? ` <span class="muted small">(${esc(levelsText(s.levels))})</span>` : ''}</label>`
                )
                .join('')}</div></fieldset>`
            : ''
@@ -668,35 +670,56 @@ async function viewUsers(el, role) {
 }
 
 // ---------- المواد ----------
+function levelsText(levels) {
+  return levels ? levels.map(levelLabel).join('، ') : 'كل المستويات';
+}
+
+function subjectForm(subject, onDone) {
+  const sel = new Set(subject?.levels || []);
+  openModal(
+    subject ? 'تعديل المادة' : 'مادة جديدة',
+    `<label>اسم المادة<input name="name" value="${esc(subject?.name)}" required></label>
+     <fieldset><legend>المستويات (لا تختر شيئًا = كل المستويات)</legend><div class="checks">${state.meta.levels
+       .map(
+         (l) => `<label class="check"><input type="checkbox" name="levels[]" value="${esc(l.code)}" ${sel.has(l.code) ? 'checked' : ''}> ${esc(l.label)}</label>`
+       )
+       .join('')}</div></fieldset>`,
+    async (data) => {
+      if (subject) await api('PUT', `/api/subjects/${subject.id}`, data);
+      else await api('POST', '/api/subjects', data);
+      toast('تم الحفظ');
+      onDone();
+    }
+  );
+}
+
 async function viewSubjects(el) {
   state.meta = await api('GET', '/api/meta');
+  const reload = () => viewSubjects(el);
   el.innerHTML = `
-    <h2>المواد</h2>
-    <div class="card">
-      <form id="subject-form" class="inline">
-        <input name="name" placeholder="اسم المادة" required>
-        <button class="btn">إضافة</button>
-      </form>
-      <ul class="subjects">
-        ${state.meta.subjects
-          .map((s) => `<li>${esc(s.name)} <button class="link danger" data-del="${s.id}">حذف</button></li>`)
-          .join('')}
-      </ul>
-    </div>`;
-  $('#subject-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    try {
-      await api('POST', '/api/subjects', formData(e.target));
-      viewSubjects(el);
-    } catch (err) {
-      toast(err.message, true);
-    }
-  });
+    <div class="page-head">
+      <h2>المواد</h2>
+      <button class="btn" id="add-subject">+ مادة جديدة</button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>المادة</th><th>المستويات</th><th></th></tr></thead>
+      <tbody>${state.meta.subjects
+        .map(
+          (s) => `<tr><td><b>${esc(s.name)}</b></td><td>${esc(levelsText(s.levels))}</td>
+            <td class="row-actions"><button class="btn ghost small" data-edit="${s.id}">تعديل</button>
+            <button class="btn danger small" data-del="${s.id}">حذف</button></td></tr>`
+        )
+        .join('')}</tbody>
+    </table></div>`;
+  $('#add-subject').addEventListener('click', () => subjectForm(null, reload));
+  el.querySelectorAll('[data-edit]').forEach((b) =>
+    b.addEventListener('click', () => subjectForm(state.meta.subjects.find((s) => s.id === Number(b.dataset.edit)), reload))
+  );
   el.querySelectorAll('[data-del]').forEach((b) =>
     b.addEventListener('click', async () => {
       if (!confirmAction('حذف المادة؟ الملاحظات المرتبطة بها تبقى دون مادة.')) return;
-      await api('DELETE', `/api/subjects/${b.dataset.del}`);
-      viewSubjects(el);
+      await api('DELETE', `/api/subjects/${b.dataset.del}`).catch((e) => toast(e.message, true));
+      reload();
     })
   );
 }

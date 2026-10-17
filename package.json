@@ -2,17 +2,20 @@
   "name": "suivi-eleves",
   "version": "1.0.0",
   "description": "تطبيق متابعة تلاميذ الدروس الخصوصية (الغيابات، ملاحظات المعلمين والإدارة) للأولياء",
-  "main": "server.js",
   "private": true,
+  "type": "module",
   "engines": {
-    "node": ">=22.5"
+    "node": ">=20.12"
   },
   "scripts": {
-    "start": "node --disable-warning=ExperimentalWarning server.js",
-    "seed:demo": "node --disable-warning=ExperimentalWarning seed-demo.js",
-    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "express": "^4.21.2"
+    "@netlify/database": "^2.0.1"
+  },
+  "devDependencies": {
+    "@netlify/database-dev": "^1.0.1",
+    "pg": "^8.23.1"
   }
 }
