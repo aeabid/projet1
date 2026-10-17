@@ -35,9 +35,10 @@ const server = http.createServer(async (req, res) => {
     );
     res.writeHead(response.status, {
       'Content-Type': response.headers.get('content-type'),
+      'Cache-Control': response.headers.get('cache-control') || 'no-store',
       'Set-Cookie': response.headers.getSetCookie(),
     });
-    res.end(await response.text());
+    res.end(Buffer.from(await response.arrayBuffer()));
     return;
   }
   const file = path.join(PUBLIC, path.normalize(url.pathname === '/' ? '/index.html' : url.pathname));

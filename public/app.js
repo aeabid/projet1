@@ -28,6 +28,46 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+const MONTHS_AR = ['جانفي', 'فيفري', 'مارس', 'أفريل', 'ماي', 'جوان', 'جويلية', 'أوت', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+const PAYMENT_LABELS = { cash: 'نقدًا', transfer: 'تحويل بنكي', cheque: 'صك', d17: 'D17', other: 'أخرى' };
+
+function monthLabel(m) {
+  if (!m) return '';
+  const [y, mo] = m.split('-');
+  return `${MONTHS_AR[Number(mo) - 1]} ${y}`;
+}
+
+function fmtMoney(n) {
+  if (n === null || n === undefined) return '—';
+  return `${Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 3 })} د.ت`;
+}
+
+function avatar(st, cls = '') {
+  const initial = esc((st.full_name || '?').trim().charAt(0).toUpperCase());
+  return st.has_photo
+    ? `<img class="avatar ${cls}" src="/api/students/${st.id}/photo?v=${st.photo_version}" alt="" loading="lazy">`
+    : `<span class="avatar ${cls}">${initial}</span>`;
+}
+
+// تصغير الصورة في المتصفح قبل رفعها (JPEG مربّعة 320px)
+function resizeImage(file, size = 320) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.width, img.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = size;
+      canvas
+        .getContext('2d')
+        .drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+      URL.revokeObjectURL(img.src);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => reject(new Error('تعذّرت قراءة الصورة'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 async function api(method, url, body) {
   const res = await fetch(url, {
     method,
@@ -248,6 +288,22 @@ async function viewDashboard(el) {
       <div class="stat"><b>${s.parents}</b><span>ولي</span></div>
       <div class="stat warn"><b>${s.absences_month}</b><span>غياب (30 يومًا)</span></div>
     </div>
+    <h3>💰 الخلاص — ${esc(monthLabel(s.finance.month))}</h3>
+    <div class="stats">
+      <div class="stat"><b>${fmtMoney(s.finance.expected)}</b><span>المنتظر هذا الشهر</span></div>
+      <div class="stat good"><b>${fmtMoney(s.finance.collected)}</b><span>المقبوض هذا الشهر</span></div>
+      <div class="stat warn"><b>${fmtMoney(s.finance.outstanding)}</b><span>مجموع غير المدفوع (${s.finance.unpaid_count} تلميذ)</span></div>
+    </div>
+    ${
+      s.finance.unpaid.length
+        ? `<section class="card"><h3>تلاميذ عليهم مبالغ</h3><ul class="levels">${s.finance.unpaid
+            .map(
+              (u) => `<li><a href="#/students/${u.id}">${esc(u.full_name)} <span class="muted small">${esc(levelLabel(u.level))}</span></a>
+                <b class="owed">${fmtMoney(u.balance)}</b></li>`
+            )
+            .join('')}</ul></section>`
+        : ''
+    }
     <div class="grid2">
       <section class="card">
         <h3>التلاميذ حسب المستوى</h3>
@@ -317,17 +373,18 @@ async function viewStudents(el) {
     $('#students-list').innerHTML = students.length
       ? `<div class="table-wrap"><table>
           <thead><tr><th>الاسم</th><th>المستوى</th><th>الفوج</th><th>الولي</th><th>الغيابات</th><th>الملاحظات</th>${
-            role === 'admin' ? '<th></th>' : ''
+            role === 'admin' ? '<th>الباقي</th><th></th>' : ''
           }</tr></thead>
           <tbody>${students
             .map(
               (s) => `<tr>
-                <td><a href="#/students/${s.id}"><b>${esc(s.full_name)}</b></a></td>
+                <td><a class="who-cell" href="#/students/${s.id}">${avatar(s, 'sm')}<b>${esc(s.full_name)}</b></a></td>
                 <td><span class="pill">${esc(levelLabel(s.level))}</span></td>
                 <td>${esc(s.group_name || '—')}</td>
                 <td>${esc(s.parent_name || '—')}${s.parent_phone ? `<div class="muted small" dir="ltr">${esc(s.parent_phone)}</div>` : ''}</td>
                 <td>${s.absence_count}${s.unjustified_count ? ` <span class="badge weak">${s.unjustified_count} غير مبرر</span>` : ''}</td>
                 <td>${s.note_count}</td>
+                ${role === 'admin' ? `<td>${s.balance > 0 ? `<b class="owed">${fmtMoney(s.balance)}</b>` : s.monthly_fee ? '<span class="badge good">خالص</span>' : '—'}</td>` : ''}
                 ${
                   role === 'admin'
                     ? `<td class="row-actions"><button class="btn ghost small" data-edit="${s.id}">تعديل</button>
@@ -364,7 +421,8 @@ async function viewStudents(el) {
 
 async function studentForm(student, onDone) {
   const { users: parents } = await api('GET', '/api/users?role=parent');
-  const s = student || {};
+  const s = student ? (await api('GET', `/api/students/${student.id}`)).student : {};
+  const enrolled = new Set(s.pack ? [] : (s.subjects || []).map((x) => x.id));
   openModal(
     student ? 'تعديل تلميذ' : 'تلميذ جديد',
     `<label>الاسم واللقب<input name="full_name" value="${esc(s.full_name)}" required></label>
@@ -376,7 +434,22 @@ async function studentForm(student, onDone) {
        <label>تاريخ الولادة<input name="birth_date" type="date" value="${esc(s.birth_date)}"></label>
        <label>المدينة<input name="city" value="${esc(s.city)}"></label>
      </div>
-     <label>المؤسسة التربوية الحالية<input name="school" value="${esc(s.school)}"></label>
+     <label>العنوان<input name="address" value="${esc(s.address)}"></label>
+     <label>المؤسسة التربوية التي يدرس فيها<input name="school" value="${esc(s.school)}"></label>
+     <fieldset><legend>المواد المسجّل فيها</legend>
+       <label class="check pack"><input type="checkbox" name="pack" ${s.pack ? 'checked' : ''}> <b>Pack</b> — كل مواد المستوى</label>
+       <div class="checks" id="subject-checks">${state.meta.subjects
+         .map(
+           (x) => `<label class="check"><input type="checkbox" name="subject_ids[]" value="${x.id}" ${enrolled.has(x.id) ? 'checked' : ''}> ${esc(x.name)}${
+             x.levels ? ` <span class="muted small">(${esc(levelsText(x.levels))})</span>` : ''
+           }</label>`
+         )
+         .join('')}</div>
+     </fieldset>
+     <div class="row">
+       <label>المبلغ الشهري المتفق عليه (د.ت)<input name="monthly_fee" inputmode="decimal" value="${esc(s.monthly_fee ?? '')}" placeholder="مثال: 120"></label>
+       <label>بداية الخلاص (الشهر)<input name="billing_start" type="month" value="${esc(s.billing_start || '')}"></label>
+     </div>
      <label>ملاحظات التسجيل<input name="remarks" value="${esc(s.remarks)}" placeholder="مثال: ما عدا الفرنسية"></label>
      <label>الولي
        <select name="parent_id">
@@ -386,14 +459,19 @@ async function studentForm(student, onDone) {
            .join('')}
        </select>
      </label>
-     <p class="muted small">أضف حساب الولي من صفحة «الأولياء» إن لم يكن موجودًا.</p>`,
+     <p class="muted small">أضف حساب الولي من صفحة «الأولياء» إن لم يكن موجودًا. إذا لم تحدّد بداية الخلاص، يُحتسب من شهر التسجيل. شهرا جويلية وأوت لا يُحتسبان.</p>`,
     async (data) => {
+      if (data.pack) data.subject_ids = [];
       if (student) await api('PUT', `/api/students/${student.id}`, data);
       else await api('POST', '/api/students', data);
       toast('تم الحفظ');
       onDone();
     }
   );
+  const pack = $('#modal input[name=pack]');
+  const syncPack = () => $('#subject-checks').classList.toggle('disabled', pack.checked);
+  pack.addEventListener('change', syncPack);
+  syncPack();
 }
 
 // ---------- فضاء الولي ----------
@@ -410,11 +488,14 @@ async function viewMyChildren(el) {
         ? `<div class="cards">${students
             .map(
               (s) => `<a class="card child" href="#/students/${s.id}">
-                <h3>${esc(s.full_name)}</h3>
-                <span class="pill">${esc(levelLabel(s.level))}</span>
+                <div class="child-head">${avatar(s, 'md')}<div>
+                  <h3>${esc(s.full_name)}</h3>
+                  <span class="pill">${esc(levelLabel(s.level))}</span>
+                </div></div>
                 <div class="mini-stats">
                   <span>الغيابات: <b>${s.absence_count}</b></span>
                   <span>الملاحظات: <b>${s.note_count}</b></span>
+                  ${s.balance > 0 ? `<span>الباقي: <b class="owed">${fmtMoney(s.balance)}</b></span>` : ''}
                 </div>
               </a>`
             )
@@ -426,7 +507,7 @@ async function viewMyChildren(el) {
 // ---------- ملف التلميذ ----------
 async function viewStudent(el, id) {
   const role = state.user.role;
-  const { student, absences, notes } = await api('GET', `/api/students/${id}`);
+  const { student, absences, notes, finance } = await api('GET', `/api/students/${id}`);
   const adminNotes = notes.filter((n) => !n.subject_id && n.author_role === 'admin');
   const teacherNotes = notes.filter((n) => !adminNotes.includes(n));
   const unjustified = absences.filter((a) => !a.justified).length;
@@ -454,7 +535,17 @@ async function viewStudent(el, id) {
 
   el.innerHTML = `
     <div class="page-head">
-      <div>
+      <div class="student-head">
+        <div class="photo-wrap">
+          ${avatar(student, 'lg')}
+          ${
+            role === 'admin'
+              ? `<label class="photo-btn" title="تغيير الصورة">📷<input type="file" accept="image/*" id="photo-input" hidden></label>
+                 ${student.has_photo ? '<button class="link danger small" id="photo-del">حذف الصورة</button>' : ''}`
+              : ''
+          }
+        </div>
+        <div>
         ${role !== 'parent' ? `<a href="#/students" class="muted small">→ الرجوع إلى القائمة</a>` : ''}
         <h2>${esc(student.full_name)}</h2>
         <div class="meta">
@@ -462,10 +553,9 @@ async function viewStudent(el, id) {
           ${student.group_name ? `<span>الفوج: ${esc(student.group_name)}</span>` : ''}
           ${student.parent_name ? `<span>الولي: ${esc(student.parent_name)}</span>` : ''}
           ${student.parent_phone ? `<span dir="ltr">${esc(student.parent_phone)}</span>` : ''}
-          ${student.city ? `<span>📍 ${esc(student.city)}</span>` : ''}
-          ${student.school ? `<span>🏫 ${esc(student.school)}</span>` : ''}
         </div>
         ${student.remarks ? `<p class="remarks">📝 ${esc(student.remarks)}</p>` : ''}
+        </div>
       </div>
       ${
         role !== 'parent'
@@ -481,6 +571,19 @@ async function viewStudent(el, id) {
       <div class="stat"><b>${teacherNotes.length}</b><span>ملاحظات المعلمين</span></div>
       <div class="stat"><b>${adminNotes.length}</b><span>ملاحظات الإدارة</span></div>
     </div>
+
+    <section class="card">
+      <h3>🪪 معلومات التلميذ</h3>
+      <dl class="info">
+        <dt>المؤسسة التربوية</dt><dd>${esc(student.school || '—')}</dd>
+        <dt>العنوان</dt><dd>${esc([student.address, student.city].filter(Boolean).join('، ') || '—')}</dd>
+        <dt>المواد المسجّل فيها</dt><dd>${
+          student.pack ? '<span class="badge pack">Pack — كل المواد</span> ' : ''
+        }${student.subjects.map((x) => `<span class="pill">${esc(x.name)}</span>`).join(' ') || '—'}</dd>
+        ${finance ? `<dt>المبلغ الشهري</dt><dd><b>${fmtMoney(finance.monthly_fee)}</b></dd>` : ''}
+      </dl>
+    </section>
+${finance ? financeSection(finance, role) : ''}
 
     <section class="card">
       <h3>🏫 ملاحظات الإدارة</h3>
@@ -534,9 +637,57 @@ async function viewStudent(el, id) {
 
   const reload = () => viewStudent(el, id);
 
-  // المواد المتاحة: المعلم يرى مواده فقط
+  // المواد المتاحة: مواد المعلم، في مستوى التلميذ، والتي سجّل فيها التلميذ
+  const enrolledIds = new Set(student.subjects.map((s) => s.id));
   const mySubjects = (role === 'teacher' ? state.user.subjects || [] : state.meta.subjects).filter(
-    (s) => !s.levels || s.levels.includes(student.level)
+    (s) => (!s.levels || s.levels.includes(student.level)) && (!enrolledIds.size || enrolledIds.has(s.id))
+  );
+
+  $('#photo-input')?.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      await api('PUT', `/api/students/${id}/photo`, { photo: await resizeImage(file) });
+      toast('تم تحديث الصورة');
+      reload();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+  $('#photo-del')?.addEventListener('click', async () => {
+    if (!confirmAction('حذف صورة التلميذ؟')) return;
+    await api('PUT', `/api/students/${id}/photo`, { photo: null }).catch((err) => toast(err.message, true));
+    reload();
+  });
+
+  $('#add-payment')?.addEventListener('click', () => {
+    const current = finance.months.find((m) => m.remaining > 0) || { month: today().slice(0, 7), remaining: finance.monthly_fee || '' };
+    openModal(
+      'تسجيل دفعة',
+      `<div class="row">
+         <label>الشهر<input type="month" name="month" value="${esc(current.month)}" required></label>
+         <label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(current.remaining || '')}" required></label>
+       </div>
+       <div class="row">
+         <label>تاريخ الدفع<input type="date" name="paid_on" value="${today()}"></label>
+         <label>طريقة الدفع<select name="method">${Object.entries(PAYMENT_LABELS)
+           .map(([k, v]) => `<option value="${k}">${v}</option>`)
+           .join('')}</select></label>
+       </div>
+       <label>ملاحظة<input name="note" placeholder="مثال: رقم الوصل"></label>`,
+      async (data) => {
+        await api('POST', `/api/students/${id}/payments`, data);
+        toast('تم تسجيل الدفعة');
+        reload();
+      }
+    );
+  });
+  el.querySelectorAll('[data-del-pay]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirmAction('حذف هذه الدفعة؟')) return;
+      await api('DELETE', `/api/payments/${b.dataset.delPay}`).catch((e) => toast(e.message, true));
+      reload();
+    })
   );
 
   $('#add-note')?.addEventListener('click', () => {
@@ -603,6 +754,59 @@ async function viewStudent(el, id) {
       reload();
     })
   );
+}
+
+// الوضعية المالية: الولي والإدارة
+function financeSection(f, role) {
+  const status = (m) =>
+    m.due === 0
+      ? '<span class="badge general">دفع مسبق</span>'
+      : m.remaining === 0
+        ? '<span class="badge good">خالص</span>'
+        : m.paid > 0
+          ? '<span class="badge average">جزئي</span>'
+          : '<span class="badge weak">غير خالص</span>';
+  return `
+    <section class="card">
+      <div class="section-head">
+        <h3>💰 الوضعية المالية</h3>
+        ${role === 'admin' ? '<button class="btn small" id="add-payment">+ دفعة</button>' : ''}
+      </div>
+      <div class="stats compact">
+        <div class="stat"><b>${fmtMoney(f.monthly_fee)}</b><span>المبلغ الشهري</span></div>
+        <div class="stat"><b>${fmtMoney(f.total_due)}</b><span>مجموع المستحق</span></div>
+        <div class="stat good"><b>${fmtMoney(f.total_paid)}</b><span>مجموع المدفوع</span></div>
+        <div class="stat ${f.balance > 0 ? 'warn' : 'good'}"><b>${fmtMoney(Math.max(f.balance, 0))}</b><span>${
+          f.balance < 0 ? `الباقي (رصيد مسبق ${fmtMoney(-f.balance)})` : 'الباقي'
+        }</span></div>
+      </div>
+      ${
+        f.months.length
+          ? `<div class="table-wrap"><table>
+              <thead><tr><th>الشهر</th><th>المستحق</th><th>المدفوع</th><th>الباقي</th><th>الحالة</th><th>تفاصيل الدفع</th></tr></thead>
+              <tbody>${f.months
+                .map(
+                  (m) => `<tr>
+                    <td><b>${esc(monthLabel(m.month))}</b></td>
+                    <td>${fmtMoney(m.due)}</td>
+                    <td>${fmtMoney(m.paid)}</td>
+                    <td>${m.remaining ? `<b class="owed">${fmtMoney(m.remaining)}</b>` : '—'}</td>
+                    <td>${status(m)}</td>
+                    <td class="small">${
+                      m.payments
+                        .map(
+                          (p) => `<div>${fmtMoney(p.amount)} · ${fmtDate(p.paid_on)}${p.method ? ' · ' + esc(PAYMENT_LABELS[p.method] || p.method) : ''}${
+                            p.note ? ` · <span class="muted">${esc(p.note)}</span>` : ''
+                          }${role === 'admin' ? ` <button class="link danger" data-del-pay="${p.id}">حذف</button>` : ''}</div>`
+                        )
+                        .join('') || '<span class="muted">—</span>'
+                    }</td>
+                  </tr>`
+                )
+                .join('')}</tbody></table></div>`
+          : `<p class="muted">${f.monthly_fee ? 'لا توجد أشهر مستحقة بعد.' : 'لم يُحدَّد المبلغ الشهري بعد.'}</p>`
+      }
+    </section>`;
 }
 
 // ---------- المستخدمون ----------

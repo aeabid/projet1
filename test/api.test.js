@@ -122,3 +122,61 @@ test('imports a student list and groups siblings under one parent account', asyn
   assert.strictEqual((await admin('POST', '/api/import/students', { rows: [{ full_name: 'X', level: '4' }] })).status, 400);
   assert.strictEqual((await parent('POST', '/api/import/students', { rows })).status, 403);
 });
+
+test('enrollment, photo and monthly payments', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const id = (name) => meta.subjects.find((s) => s.name === name).id;
+  const [math, fr, ar] = [id('الرياضيات'), id('الفرنسية'), id('العربية')];
+
+  const parent = (await admin('POST', '/api/users', { role: 'parent', username: 'pf', full_name: 'PF', password: 'secret1' })).body.user;
+  await admin('POST', '/api/users', { role: 'teacher', username: 'tf', full_name: 'TF', password: 'secret1', subject_ids: [math, fr] });
+  const month = new Date().toISOString().slice(0, 7);
+  const st = (
+    await admin('POST', '/api/students', {
+      full_name: 'Fin S', level: '8', parent_id: parent.id, school: 'Collège X', address: '12 rue Y',
+      subject_ids: [math, ar], monthly_fee: '120,5', billing_start: month,
+    })
+  ).body.student;
+  assert.strictEqual(st.monthly_fee, 120.5);
+
+  // التسجيل في المواد: المعلم لا يكتب في مادة غير مسجّل فيها التلميذ
+  const teacher = await login('tf', 'secret1');
+  assert.strictEqual((await teacher('POST', `/api/students/${st.id}/notes`, { subject_id: fr, category: 'level', content: 'x' })).status, 400);
+  assert.strictEqual((await teacher('POST', `/api/students/${st.id}/notes`, { subject_id: math, category: 'level', content: 'ok' })).status, 201);
+
+  // pack = كل مواد المستوى
+  await admin('PUT', `/api/students/${st.id}`, { ...st, pack: true, subject_ids: [] });
+  let detail = (await admin('GET', `/api/students/${st.id}`)).body;
+  assert.ok(detail.student.subjects.some((s) => s.id === fr));
+  assert.ok(!detail.student.subjects.some((s) => s.name === 'علوم الحياة والأرض')); // التاسعة فقط
+
+  // الخلاص
+  assert.strictEqual(detail.finance.balance, 120.5);
+  assert.strictEqual((await admin('POST', `/api/students/${st.id}/payments`, { month, amount: 100, method: 'cash' })).status, 201);
+  assert.strictEqual((await admin('POST', `/api/students/${st.id}/payments`, { month, amount: 0 })).status, 400);
+  const p = await login('pf', 'secret1');
+  detail = (await p('GET', `/api/students/${st.id}`)).body;
+  assert.strictEqual(detail.finance.total_paid, 100);
+  assert.strictEqual(detail.finance.balance, 20.5);
+  assert.strictEqual(detail.finance.months[0].payments[0].method, 'cash');
+  assert.strictEqual((await p('POST', `/api/students/${st.id}/payments`, { month, amount: 5 })).status, 403);
+  assert.strictEqual((await p('GET', '/api/students')).body.students[0].balance, 20.5);
+
+  // المعلم لا يرى المعطيات المالية
+  const tdetail = (await teacher('GET', `/api/students/${st.id}`)).body;
+  assert.strictEqual(tdetail.finance, null);
+  assert.strictEqual(tdetail.student.monthly_fee, undefined);
+  assert.strictEqual((await teacher('GET', '/api/students')).body.students.find((s) => s.id === st.id).balance, undefined);
+
+  // الصورة
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  assert.strictEqual((await admin('PUT', `/api/students/${st.id}/photo`, { photo: 'javascript:alert(1)' })).status, 400);
+  assert.strictEqual((await admin('PUT', `/api/students/${st.id}/photo`, { photo: png })).status, 200);
+  const cookie = (await call('POST', '/api/login', { username: 'pf', password: 'secret1' })).headers.get('set-cookie').split(';')[0];
+  const img = await handle(new Request(`http://localhost/api/students/${st.id}/photo`, { headers: { cookie } }));
+  assert.strictEqual(img.status, 200);
+  assert.strictEqual(img.headers.get('content-type'), 'image/png');
+  const stats = (await admin('GET', '/api/stats')).body;
+  assert.ok(stats.finance.unpaid.some((u) => u.id === st.id && u.balance === 20.5));
+});
