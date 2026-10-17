@@ -314,3 +314,16 @@ label.free-check { align-self: end; margin-bottom: 1.1rem; }
 .slot-time { font-weight: 700; color: var(--feed-indigo); font-size: .9rem; }
 .slot-child { color: var(--feed-pink); font-size: .85rem; font-weight: 500; }
 .slot-actions { margin-top: .3rem; }
+
+/* واتساب */
+.btn.wa, .wa-btn { background: #25d366; color: #fff; display: inline-flex; align-items: center; gap: .35rem; }
+.btn.wa:hover { background: #1ebe5b; text-decoration: none; }
+.btn.wa.sent { background: #e6f7ee; color: var(--good); }
+.wa-btn { padding: .15rem .35rem; border-radius: 6px; line-height: 0; }
+.wa-btn:hover { background: #1ebe5b; }
+.phone-line { display: inline-flex; align-items: center; gap: .4rem; }
+.wa-groups .btn { margin: .2rem 0; }
+.recipients { list-style: none; margin: 0; padding: 0; }
+.recipients li { display: flex; justify-content: space-between; align-items: center; gap: .6rem; padding: .5rem 0; border-bottom: 1px solid var(--border); }
+.recipients .owed { margin-inline-start: .4rem; }
+.b-progress { font-weight: 700; color: var(--feed-purple); }

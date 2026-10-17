@@ -305,3 +305,18 @@ test('timetables: admin builds per level, teacher and parents see theirs', async
   assert.deepStrictEqual((await parent('GET', `/api/students/${kid.id}`)).body.timetable.map((s) => s.subject_name), ['الرياضيات']);
   assert.strictEqual((await parent('GET', '/api/timetable')).status, 403);
 });
+
+test('whatsapp groups: admin manages links, parent sees their child group', async () => {
+  const admin = await login('admin', 'admin123');
+  const link = 'https://chat.whatsapp.com/AbCdEf1234567890';
+  assert.strictEqual((await admin('POST', '/api/whatsapp-groups', { name: 'x', level: '9', invite_link: 'https://evil.example/x' })).status, 400);
+  assert.strictEqual((await admin('POST', '/api/whatsapp-groups', { name: 'التاسعة أ', level: '9', group_name: 'A', invite_link: link })).status, 201);
+  await admin('POST', '/api/whatsapp-groups', { name: 'التاسعة ب', level: '9', group_name: 'B', invite_link: link + 'B' });
+  await admin('POST', '/api/whatsapp-groups', { name: 'كل الأولياء', invite_link: link + 'ALL' }); // دون مستوى
+  const pa = (await admin('POST', '/api/users', { role: 'parent', username: 'pwa', full_name: 'PWA', password: 'secret1', phone: '22 123 456' })).body.user;
+  const kid = (await admin('POST', '/api/students', { full_name: 'WA Kid', level: '9', group_name: 'a', parent_id: pa.id })).body.student;
+  const parent = await login('pwa', 'secret1');
+  assert.deepStrictEqual((await parent('GET', `/api/students/${kid.id}`)).body.whatsapp_groups.map((g) => g.name), ['التاسعة أ']);
+  assert.strictEqual((await parent('GET', '/api/whatsapp-groups')).status, 403);
+  assert.strictEqual((await admin('GET', '/api/whatsapp-groups')).body.groups.length, 3);
+});

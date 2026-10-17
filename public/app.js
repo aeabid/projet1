@@ -51,6 +51,80 @@ function avatar(st, cls = '') {
     : `<span class="avatar ${cls}">${initial}</span>`;
 }
 
+// ---------- واتساب ----------
+// رقم دولي لواتساب: الرقم الأول فقط، والأرقام التونسية (8 أرقام) يُضاف لها 216
+function waNumber(phone) {
+  const first = String(phone || '').split(/[\/,;]|\s-\s|-(?=\d{6})/)[0];
+  let digits = first.replace(/\D/g, '').replace(/^00/, '');
+  if (digits.length === 8) digits = '216' + digits;
+  return digits.length >= 10 ? digits : null;
+}
+
+const waUrl = (phone, message = '') =>
+  `https://wa.me/${waNumber(phone)}${message ? `?text=${encodeURIComponent(message)}` : ''}`;
+
+const WA_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.7.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3Z"/></svg>';
+
+// زر واتساب صغير بجانب رقم الهاتف
+function waButton(phone, message = '', label = '') {
+  if (!waNumber(phone)) return '';
+  return `<a class="wa-btn" href="${esc(waUrl(phone, message))}" target="_blank" rel="noopener" title="واتساب">${WA_ICON}${label ? ` ${esc(label)}` : ''}</a>`;
+}
+
+// نماذج الرسائل: {الولي} {التلميذ} {المبلغ} {التاريخ}
+const WA_TEMPLATES = {
+  general: { label: 'رسالة عامة', text: 'السلام عليكم {الولي}،\n' },
+  absence: {
+    label: 'إعلام بغياب',
+    text: 'السلام عليكم {الولي}،\nنعلمكم أن {التلميذ} تغيّب اليوم {التاريخ} عن حصة الدروس الخصوصية. نرجو إعلامنا بالسبب.\nإدارة فيد',
+  },
+  payment: {
+    label: 'تذكير بالخلاص',
+    text: 'السلام عليكم {الولي}،\nنذكّركم بأن المبلغ المتبقي لخلاص الدروس الخصوصية لـ {التلميذ} هو {المبلغ}. تجدون التفاصيل في حسابكم على المنصة.\nشكرًا، إدارة فيد',
+  },
+  account: {
+    label: 'رابط المنصة',
+    text: 'السلام عليكم {الولي}،\nيمكنكم متابعة {التلميذ} (الغيابات، الملاحظات، جدول الأوقات والخلاص) على منصة فيد:\n{الرابط}',
+  },
+};
+
+function fillTemplate(text, vars) {
+  return text
+    .replaceAll('{الولي}', vars.parent || '')
+    .replaceAll('{التلميذ}', vars.student || '')
+    .replaceAll('{المبلغ}', vars.amount || '')
+    .replaceAll('{التاريخ}', fmtDate(today()))
+    .replaceAll('{الرابط}', location.origin);
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// نافذة كتابة رسالة واتساب لولي
+function waComposer(phone, vars, initial = 'general') {
+  openModal(
+    'رسالة واتساب للولي',
+    `<p class="muted small" dir="ltr">+${esc(waNumber(phone))}</p>
+     <label>النموذج<select id="wa-template">${Object.entries(WA_TEMPLATES)
+       .map(([k, t]) => `<option value="${k}" ${k === initial ? 'selected' : ''}>${t.label}</option>`)
+       .join('')}</select></label>
+     <label>الرسالة<textarea id="wa-text" rows="6"></textarea></label>`,
+    async () => {
+      window.open(waUrl(phone, $('#wa-text').value), '_blank', 'noopener');
+    }
+  );
+  $('#modal-form button[type=submit]').textContent = 'فتح واتساب';
+  const sync = () => ($('#wa-text').value = fillTemplate(WA_TEMPLATES[$('#wa-template').value].text, vars));
+  $('#wa-template').addEventListener('change', sync);
+  sync();
+}
+
 // تصغير الصورة في المتصفح قبل رفعها (JPEG مربّعة 320px)
 function resizeImage(file, size = 320) {
   return new Promise((resolve, reject) => {
@@ -118,6 +192,7 @@ function openModal(title, bodyHtml, onSubmit) {
   const form = $('#modal-form');
   const error = $('#modal-error');
   $('#modal-title').textContent = title;
+  $('#modal-form button[type=submit]').textContent = 'حفظ';
   $('#modal-body').innerHTML = bodyHtml;
   error.hidden = true;
   form.onsubmit = async (e) => {
@@ -171,6 +246,8 @@ const routes = [
   [/^#\/attendance$/, viewAttendance],
   [/^#\/tasks$/, viewTasks],
   [/^#\/timetable$/, viewTimetable],
+  [/^#\/whatsapp$/, viewWhatsappGroups],
+  [/^#\/broadcast$/, viewBroadcast],
   [/^#\/registrations$/, (el) => {
     sessionStorage.setItem('statusFilter', 'waiting');
     sessionStorage.setItem('levelFilter', '');
@@ -237,6 +314,13 @@ const NAV = {
         ['#/attendance', 'الحضور'],
         ['#/tasks', 'المهام'],
         ['#/subjects', 'المواد'],
+      ],
+    },
+    {
+      label: 'التواصل',
+      items: [
+        ['#/broadcast', 'رسالة جماعية'],
+        ['#/whatsapp', 'مجموعات واتساب'],
       ],
     },
     {
@@ -508,7 +592,11 @@ async function viewStudents(el) {
                   ${s.status !== 'studying' ? statusBadge(s.status) : ''}${s.free ? ' <span class="badge free">مجاني</span>' : ''}</td>
                 <td><span class="pill">${esc(levelLabel(s.level))}</span></td>
                 <td>${esc(s.group_name || '—')}</td>
-                <td>${esc(s.parent_name || '—')}${s.parent_phone ? `<div class="muted small" dir="ltr">${esc(s.parent_phone)}</div>` : ''}</td>
+                <td>${esc(s.parent_name || '—')}${
+                  s.parent_phone
+                    ? `<div class="muted small phone-line"><span dir="ltr">${esc(s.parent_phone)}</span>${role === 'admin' ? waButton(s.parent_phone) : ''}</div>`
+                    : ''
+                }</td>
                 <td>${s.absence_count}${s.unjustified_count ? ` <span class="badge weak">${s.unjustified_count} غير مبرر</span>` : ''}</td>
                 <td>${s.note_count}</td>
                 ${role === 'admin' ? `<td>${s.balance > 0 ? `<b class="owed">${fmtMoney(s.balance)}</b>` : s.monthly_fee ? '<span class="badge good">خالص</span>' : '—'}</td>` : ''}
@@ -648,7 +736,7 @@ async function viewMyChildren(el) {
 // ---------- ملف التلميذ ----------
 async function viewStudent(el, id) {
   const role = state.user.role;
-  const { student, absences, notes, finance, tasks, timetable } = await api('GET', `/api/students/${id}`);
+  const { student, absences, notes, finance, tasks, timetable, whatsapp_groups } = await api('GET', `/api/students/${id}`);
   const adminNotes = notes.filter((n) => !n.subject_id && n.author_role === 'admin');
   const teacherNotes = notes.filter((n) => !adminNotes.includes(n));
   const unjustified = absences.filter((a) => !a.justified).length;
@@ -702,7 +790,8 @@ async function viewStudent(el, id) {
       ${
         role !== 'parent'
           ? `<div class="actions"><button class="btn" id="add-note">+ ملاحظة</button>
-             <button class="btn warn" id="add-absence">+ غياب</button></div>`
+             <button class="btn warn" id="add-absence">+ غياب</button>
+             ${role === 'admin' && waNumber(student.parent_phone) ? `<button class="btn wa" id="wa-parent">${WA_ICON} واتساب الولي</button>` : ''}</div>`
           : ''
       }
     </div>
@@ -729,6 +818,17 @@ async function viewStudent(el, id) {
       </dl>
     </section>
 ${finance ? financeSection(finance, role) : ''}
+    ${
+      whatsapp_groups.length
+        ? `<section class="card wa-groups"><h3>💬 مجموعة واتساب</h3>${whatsapp_groups
+            .map(
+              (g) => `<a class="btn wa" href="${esc(g.invite_link)}" target="_blank" rel="noopener">${WA_ICON} ${esc(g.name)}${
+                role === 'parent' ? ' — انضم' : ''
+              }</a>`
+            )
+            .join(' ')}</section>`
+        : ''
+    }
     <section class="card">
       <h3>🗓 جدول الأوقات</h3>
       ${weekView(timetable, { showTeacher: true })}
@@ -794,6 +894,18 @@ ${finance ? financeSection(finance, role) : ''}
   const enrolledIds = new Set(student.subjects.map((s) => s.id));
   const mySubjects = (role === 'teacher' ? state.user.subjects || [] : state.meta.subjects).filter(
     (s) => (!s.levels || s.levels.includes(student.level)) && (!enrolledIds.size || enrolledIds.has(s.id))
+  );
+
+  $('#wa-parent')?.addEventListener('click', () =>
+    waComposer(
+      student.parent_phone,
+      {
+        parent: student.parent_name,
+        student: student.full_name,
+        amount: finance && finance.balance > 0 ? fmtMoney(finance.balance) : '',
+      },
+      finance && finance.balance > 0 ? 'payment' : 'general'
+    )
   );
 
   $('#photo-input')?.addEventListener('change', async (e) => {
@@ -983,7 +1095,7 @@ async function viewUsers(el, role) {
                 (u) => `<tr>
                   <td><b>${esc(u.full_name)}</b></td>
                   <td dir="ltr">${esc(u.username)}</td>
-                  <td dir="ltr">${esc(u.phone || '—')}</td>${role === 'parent' ? `<td dir="ltr">${esc(u.cin || '—')}</td>` : ''}
+                  <td><span class="phone-line"><span dir="ltr">${esc(u.phone || '—')}</span>${waButton(u.phone)}</span></td>${role === 'parent' ? `<td dir="ltr">${esc(u.cin || '—')}</td>` : ''}
                   ${role === 'teacher' ? `<td>${u.subjects.map((s) => `<span class="pill">${esc(s.name)}</span>`).join(' ') || '—'}</td>` : ''}
                   ${
                     role === 'parent'
@@ -1532,6 +1644,165 @@ async function viewTimetable(el) {
 function toMinutes(t) {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
+}
+
+// ---------- مجموعات واتساب ----------
+const groupScope = (g) =>
+  g.level ? `${levelLabel(g.level)}${g.group_name ? ` — فوج ${g.group_name}` : ' — كل الأفواج'}` : 'كل المستويات';
+
+async function viewWhatsappGroups(el) {
+  const { groups } = await api('GET', '/api/whatsapp-groups');
+  el.innerHTML = `
+    <div class="page-head">
+      <h2>مجموعات واتساب</h2>
+      <button class="btn" id="add-group">+ مجموعة</button>
+    </div>
+    <p class="muted">أضف رابط الدعوة لكل مجموعة (في واتساب: معلومات المجموعة ← الدعوة عبر رابط). الولي يجد رابط مجموعة ابنه في صفحته.</p>
+    ${
+      groups.length
+        ? `<div class="table-wrap"><table>
+            <thead><tr><th>المجموعة</th><th>التلاميذ المعنيون</th><th></th></tr></thead>
+            <tbody>${groups
+              .map(
+                (g) => `<tr><td><b>${esc(g.name)}</b></td><td>${esc(groupScope(g))}</td>
+                  <td class="row-actions"><a class="btn wa small" href="${esc(g.invite_link)}" target="_blank" rel="noopener">${WA_ICON} فتح</a>
+                    <button class="btn ghost small" data-edit="${g.id}">تعديل</button>
+                    <button class="btn danger small" data-del="${g.id}">حذف</button></td></tr>`
+              )
+              .join('')}</tbody></table></div>`
+        : '<div class="card muted">لا توجد مجموعات بعد.</div>'
+    }`;
+  const reload = () => viewWhatsappGroups(el);
+  const form = (g) =>
+    openModal(
+      g ? 'تعديل المجموعة' : 'مجموعة واتساب جديدة',
+      `<label>الاسم<input name="name" value="${esc(g?.name || '')}" required placeholder="مثال: أولياء التاسعة — فوج أ"></label>
+       <div class="row">
+         <label>المستوى<select name="level"><option value="">كل المستويات</option>${state.meta.levels
+           .map((l) => `<option value="${esc(l.code)}" ${g?.level === l.code ? 'selected' : ''}>${esc(l.label)}</option>`)
+           .join('')}</select></label>
+         <label>الفوج (اختياري)<input name="group_name" value="${esc(g?.group_name || '')}" placeholder="كل الأفواج"></label>
+       </div>
+       <label>رابط الدعوة<input name="invite_link" dir="ltr" value="${esc(g?.invite_link || '')}" required placeholder="https://chat.whatsapp.com/..."></label>`,
+      async (data) => {
+        if (g) await api('PUT', `/api/whatsapp-groups/${g.id}`, data);
+        else await api('POST', '/api/whatsapp-groups', data);
+        toast('تم الحفظ');
+        reload();
+      }
+    );
+  $('#add-group').addEventListener('click', () => form(null));
+  el.querySelectorAll('[data-edit]').forEach((b) =>
+    b.addEventListener('click', () => form(groups.find((g) => g.id === Number(b.dataset.edit))))
+  );
+  el.querySelectorAll('[data-del]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirmAction('حذف هذه المجموعة من المنصة؟ (لا تُحذف من واتساب)')) return;
+      await api('DELETE', `/api/whatsapp-groups/${b.dataset.del}`).catch((err) => toast(err.message, true));
+      reload();
+    })
+  );
+}
+
+// ---------- رسالة جماعية ----------
+async function viewBroadcast(el) {
+  const { groups } = await api('GET', '/api/whatsapp-groups');
+  el.innerHTML = `
+    <h2>رسالة جماعية عبر واتساب</h2>
+    <div class="card">
+      <div class="row">
+        <label>المستوى<select id="b-level"><option value="">كل المستويات</option>${state.meta.levels
+          .map((l) => `<option value="${esc(l.code)}">${esc(l.label)}</option>`)
+          .join('')}</select></label>
+        <label>الفوج (اختياري)<input id="b-group" placeholder="كل الأفواج"></label>
+      </div>
+      <label>النموذج<select id="b-template">${Object.entries(WA_TEMPLATES)
+        .map(([k, t]) => `<option value="${k}">${t.label}</option>`)
+        .join('')}</select></label>
+      <label>الرسالة<textarea id="b-text" rows="6"></textarea></label>
+      <p class="muted small">المتغيرات: <code>{الولي}</code> <code>{التلميذ}</code> <code>{المبلغ}</code> <code>{التاريخ}</code> <code>{الرابط}</code> — تُعوَّض لكل ولي عند الإرسال الفردي.</p>
+      <label class="check"><input type="checkbox" id="b-owing"> فقط الأولياء الذين عليهم مبالغ</label>
+      <button class="btn" id="b-prepare">تحضير الإرسال</button>
+    </div>
+    <div id="b-result"></div>`;
+  const sync = () => ($('#b-text').value = WA_TEMPLATES[$('#b-template').value].text);
+  $('#b-template').addEventListener('change', () => {
+    sync();
+    if ($('#b-template').value === 'payment') $('#b-owing').checked = true;
+  });
+  sync();
+
+  $('#b-prepare').addEventListener('click', async () => {
+    const level = $('#b-level').value;
+    const group = $('#b-group').value.trim().toLowerCase();
+    const message = $('#b-text').value;
+    const params = new URLSearchParams({ status: 'studying' });
+    if (level) params.set('level', level);
+    let { students } = await api('GET', '/api/students?' + params);
+    if (group) students = students.filter((st) => (st.group_name || '').toLowerCase() === group);
+    if ($('#b-owing').checked) students = students.filter((st) => st.balance > 0);
+
+    // ولي واحد لعدة أبناء: رسالة واحدة
+    const families = new Map();
+    for (const st of students) {
+      const key = waNumber(st.parent_phone) || `none-${st.id}`;
+      if (!families.has(key)) families.set(key, { phone: st.parent_phone, parent: st.parent_name, kids: [], balance: 0 });
+      const f = families.get(key);
+      f.kids.push(st.full_name);
+      f.balance += Math.max(st.balance || 0, 0);
+    }
+    const list = [...families.values()];
+    const reachable = list.filter((f) => waNumber(f.phone));
+    const matchingGroups = groups.filter(
+      (g) => (!level ? !g.level : g.level === level) && (!g.group_name || !group || g.group_name.toLowerCase() === group)
+    );
+
+    $('#b-result').innerHTML = `
+      ${
+        matchingGroups.length
+          ? `<div class="card"><h3>💬 الإرسال في مجموعة واتساب</h3>
+              <p class="muted small">واتساب لا يسمح بالنشر الآلي في المجموعات: اضغط الزر، تُنسخ الرسالة وتُفتح المجموعة، ثم الصق الرسالة وأرسلها.</p>
+              ${matchingGroups
+                .map((g) => `<button class="btn wa" data-group-link="${esc(g.invite_link)}">${WA_ICON} نسخ وفتح «${esc(g.name)}»</button>`)
+                .join(' ')}</div>`
+          : ''
+      }
+      <div class="card">
+        <h3>👤 الإرسال لكل ولي (${reachable.length} ولي)</h3>
+        ${list.length > reachable.length ? `<p class="error small">${list.length - reachable.length} ولي دون رقم هاتف صالح.</p>` : ''}
+        <p class="muted small">كل زر يفتح محادثة الولي والرسالة جاهزة باسمه واسم ابنه. اضغط «إرسال» في واتساب ثم ارجع للقائمة.</p>
+        <p class="b-progress"></p>
+        <ul class="recipients">${reachable
+          .map(
+            (f, i) => `<li><div><b>${esc(f.parent || 'ولي')}</b> <span class="muted small">${esc(f.kids.join('، '))}</span>
+                ${f.balance > 0 ? `<span class="owed small">${fmtMoney(f.balance)}</span>` : ''}</div>
+              <a class="btn wa small" target="_blank" rel="noopener" data-i="${i}"
+                href="${esc(waUrl(f.phone, fillTemplate(message, { parent: f.parent, student: f.kids.join(' و'), amount: fmtMoney(f.balance) })))}">${WA_ICON} إرسال</a></li>`
+          )
+          .join('')}</ul>
+      </div>`;
+    const progress = () => {
+      const sent = $('#b-result').querySelectorAll('.recipients a.sent').length;
+      $('#b-result .b-progress').textContent = `تم فتح ${sent} من ${reachable.length}`;
+    };
+    $('#b-result').querySelectorAll('.recipients a').forEach((a) =>
+      a.addEventListener('click', () => {
+        a.classList.add('sent');
+        a.innerHTML = `${WA_ICON} تم ✓`;
+        progress();
+      })
+    );
+    progress();
+    $('#b-result').querySelectorAll('[data-group-link]').forEach((b) =>
+      b.addEventListener('click', () => {
+        // النسخ يبدأ قبل فتح النافذة حتى لا يحجبها المتصفح
+        copyText(fillTemplate(message, { parent: 'أولياءنا الكرام', student: 'أبنائكم' })).then((ok) =>
+          toast(ok ? 'تم نسخ الرسالة، الصقها في المجموعة' : 'انسخ الرسالة يدويًا', !ok)
+        );
+        window.open(b.dataset.groupLink, '_blank', 'noopener');
+      })
+    );
+  });
 }
 
 // ---------- تسجيل الأولياء (رابط عمومي) ----------
