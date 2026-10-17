@@ -180,3 +180,97 @@ test('enrollment, photo and monthly payments', async () => {
   const stats = (await admin('GET', '/api/stats')).body;
   assert.ok(stats.finance.unpaid.some((u) => u.id === st.id && u.balance === 20.5));
 });
+
+test('prorata, free students and status', async () => {
+  const admin = await login('admin', 'admin123');
+  const now = new Date();
+  const ym = now.toISOString().slice(0, 7);
+  const dim = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+  const create = async (extra) =>
+    (await admin('POST', '/api/students', { full_name: 'Pr ' + Math.random(), level: '7', monthly_fee: 100, ...extra })).body.student;
+  const fin = async (st) => (await admin('GET', `/api/students/${st.id}`)).body.finance;
+
+  // دخل يوم 11 من الشهر: الشهر الأول بالـ prorata
+  const p = await create({ start_date: `${ym}-11` });
+  const f = await fin(p);
+  assert.strictEqual(f.months[0].due, Math.round((100 * (dim - 10)) / dim));
+  assert.strictEqual(f.months[0].prorata, `${dim - 10}/${dim}`);
+
+  // مجاني: لا مستحقات
+  assert.strictEqual((await fin(await create({ start_date: `${ym}-01`, free: true }))).balance, 0);
+  // في الانتظار: لا مستحقات
+  assert.strictEqual((await fin(await create({ start_date: `${ym}-01`, status: 'waiting' }))).balance, 0);
+  // توقف يوم 10: prorata لآخر شهر
+  const st = await create({ start_date: `${ym}-01`, status: 'stopped', end_date: `${ym}-10` });
+  assert.strictEqual((await fin(st)).months[0].due, Math.round((100 * 10) / dim));
+  assert.strictEqual((await admin('POST', '/api/students', { full_name: 'x', level: '7', status: 'bad' })).status, 400);
+  const waiting = (await admin('GET', '/api/students?status=waiting')).body.students;
+  assert.ok(waiting.every((s) => s.status === 'waiting') && waiting.length >= 1);
+});
+
+test('parent self-registration with ID card, then login by CIN', async () => {
+  const meta = await call('GET', '/api/public/meta');
+  assert.strictEqual(meta.status, 200);
+  const math = meta.body.subjects.find((s) => s.name === 'الرياضيات').id;
+  const reg = {
+    parent: { full_name: 'Reg Parent', cin: '09876543', phone: '+216 22 333 444', password: 'secret1', address: 'Ariana' },
+    children: [
+      { full_name: 'Reg Kid 1', level: '9', pack: true, school: 'Collège Z' },
+      { full_name: 'Reg Kid 2', level: '5', subject_ids: [math] },
+    ],
+  };
+  const res = await call('POST', '/api/register', reg);
+  assert.strictEqual(res.status, 201);
+  assert.ok(res.headers.get('set-cookie').startsWith('sid='));
+  assert.strictEqual(res.body.user.username, '22333444');
+  assert.strictEqual(res.body.user.children.length, 2);
+  // مرة ثانية بنفس الهاتف أو بطاقة التعريف: مرفوض
+  assert.strictEqual((await call('POST', '/api/register', reg)).status, 409);
+  assert.strictEqual((await call('POST', '/api/register', { ...reg, website: 'spam' })).status, 400);
+
+  const parent = await login('09876543', 'secret1'); // الدخول برقم بطاقة التعريف
+  const kids = (await parent('GET', '/api/students')).body.students;
+  assert.deepStrictEqual(kids.map((k) => k.status), ['waiting', 'waiting']);
+  const kid2 = kids.find((k) => k.full_name === 'Reg Kid 2');
+  assert.deepStrictEqual((await parent('GET', `/api/students/${kid2.id}`)).body.student.subjects.map((s) => s.id), [math]);
+});
+
+test('teacher class list, bulk attendance and class tasks', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const math = meta.subjects.find((s) => s.name === 'الرياضيات').id;
+  const fr = meta.subjects.find((s) => s.name === 'الفرنسية').id;
+  await admin('POST', '/api/users', { role: 'teacher', username: 'tatt', full_name: 'Tatt', password: 'secret1', subject_ids: [math] });
+  const pa = (await admin('POST', '/api/users', { role: 'parent', username: 'patt', full_name: 'Patt', password: 'secret1' })).body.user;
+  const mk = async (name, extra) =>
+    (await admin('POST', '/api/students', { full_name: name, level: '8', parent_id: pa.id, ...extra })).body.student;
+  const a = await mk('Att A', { subject_ids: [math] });
+  const b = await mk('Att B', { pack: true });
+  const c = await mk('Att C', { subject_ids: [fr] }); // ليس في الرياضيات
+  const d = await mk('Att D', { subject_ids: [math], status: 'left' }); // خرج
+
+  const teacher = await login('tatt', 'secret1');
+  const list = (await teacher('GET', '/api/students?level=8')).body.students.map((s) => s.full_name);
+  assert.ok(list.includes('Att A') && list.includes('Att B'));
+  assert.ok(!list.includes('Att C') && !list.includes('Att D'));
+
+  const day = '2026-10-15';
+  const att = (await teacher('GET', `/api/attendance?level=8&subject_id=${math}&date=${day}`)).body;
+  assert.deepStrictEqual(att.students.map((s) => s.full_name).filter((n) => n.startsWith('Att')), ['Att A', 'Att B']);
+  assert.strictEqual((await teacher('POST', '/api/attendance', { level: '8', subject_id: math, date: day, absent_ids: [a.id] })).status, 200);
+  assert.strictEqual((await teacher('GET', `/api/attendance?level=8&subject_id=${math}&date=${day}`)).body.students.find((s) => s.id === a.id).absent, true);
+  // تعديل: A حاضر، B غائب
+  await teacher('POST', '/api/attendance', { level: '8', subject_id: math, date: day, absent_ids: [b.id] });
+  const after = (await teacher('GET', `/api/attendance?level=8&subject_id=${math}&date=${day}`)).body.students;
+  assert.deepStrictEqual(after.filter((s) => s.absent).map((s) => s.id), [b.id]);
+  assert.strictEqual((await teacher('GET', `/api/attendance?level=8&subject_id=${fr}&date=${day}`)).status, 403);
+
+  // مهمة لكل القسم
+  assert.strictEqual((await teacher('POST', '/api/tasks', { level: '8', subject_id: math, title: 'Série 3', due_date: '2026-10-20' })).status, 201);
+  assert.strictEqual((await teacher('POST', '/api/tasks', { level: '8', subject_id: fr, title: 'x' })).status, 403);
+  const parent = await login('patt', 'secret1');
+  assert.deepStrictEqual((await parent('GET', `/api/students/${a.id}`)).body.tasks.map((t) => t.title), ['Série 3']);
+  assert.deepStrictEqual((await parent('GET', `/api/students/${c.id}`)).body.tasks, []); // C غير مسجّل في الرياضيات
+  assert.strictEqual((await parent('GET', '/api/tasks')).status, 403);
+  void d;
+});

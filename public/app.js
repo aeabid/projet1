@@ -5,6 +5,8 @@ const state = { user: null, meta: null };
 const ROLE_LABELS = { admin: 'الإدارة', teacher: 'معلم', parent: 'ولي' };
 const CATEGORY_LABELS = { behavior: 'السلوك', level: 'المستوى', general: 'عامة' };
 const RATING_LABELS = { excellent: 'ممتاز', good: 'حسن', average: 'متوسط', weak: 'ضعيف' };
+const STATUS_LABELS = { studying: 'يدرس', waiting: 'في الانتظار', left: 'خرج', stopped: 'متوقف' };
+const statusBadge = (st) => `<span class="badge status-${esc(st)}">${STATUS_LABELS[st] || esc(st)}</span>`;
 
 // ---------- أدوات ----------
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -165,6 +167,9 @@ const routes = [
   [/^#\/admins$/, (el) => viewUsers(el, 'admin')],
   [/^#\/subjects$/, viewSubjects],
   [/^#\/import$/, viewImport],
+  [/^#\/register$/, viewRegister],
+  [/^#\/attendance$/, viewAttendance],
+  [/^#\/tasks$/, viewTasks],
   [/^#\/account$/, viewAccount],
   [/^#\/dashboard$/, viewDashboard],
 ];
@@ -175,7 +180,8 @@ function homeFor(user) {
 
 async function router() {
   const hash = location.hash || '#/';
-  if (!state.user && hash !== '#/login') {
+  const isPublic = hash === '#/login' || hash === '#/register';
+  if (!state.user && !isPublic) {
     try {
       const { user } = await api('GET', '/api/me');
       state.user = user;
@@ -186,7 +192,7 @@ async function router() {
     }
   }
   renderTopbar();
-  if (state.user && (hash === '#/' || hash === '#/login')) {
+  if (state.user && (hash === '#/' || isPublic)) {
     location.hash = homeFor(state.user);
     return;
   }
@@ -219,10 +225,16 @@ function renderTopbar() {
       ['#/students', 'التلاميذ'],
       ['#/teachers', 'المعلمون'],
       ['#/parents', 'الأولياء'],
+      ['#/attendance', 'الحضور'],
+      ['#/tasks', 'المهام'],
       ['#/subjects', 'المواد'],
       ['#/admins', 'الإدارة'],
     ],
-    teacher: [['#/students', 'التلاميذ']],
+    teacher: [
+      ['#/students', 'تلاميذي'],
+      ['#/attendance', 'الحضور'],
+      ['#/tasks', 'المهام'],
+    ],
     parent: [['#/students', 'أبنائي']],
   }[state.user.role];
   links.push(['#/account', 'حسابي']);
@@ -253,10 +265,11 @@ function viewLogin(el) {
           <h1>متابعة التلاميذ في منصّة <em>فيد</em> التعليميّة</h1>
         </div>
         <form id="login-form">
-          <label>اسم المستخدم<input name="username" autocomplete="username" required></label>
+          <label>اسم المستخدم (أو رقم بطاقة التعريف)<input name="username" autocomplete="username" required></label>
           <label>كلمة السر<input name="password" type="password" autocomplete="current-password" required></label>
           <p class="error" id="login-error" hidden></p>
           <button class="btn block">دخول</button>
+          <p class="muted small center">ولي جديد؟ <a href="#/register"><b>سجّل أبناءك من هنا</b></a></p>
         </form>
       </div>
     </div>`;
@@ -287,6 +300,16 @@ async function viewDashboard(el) {
       <div class="stat"><b>${s.teachers}</b><span>معلم</span></div>
       <div class="stat"><b>${s.parents}</b><span>ولي</span></div>
       <div class="stat warn"><b>${s.absences_month}</b><span>غياب (30 يومًا)</span></div>
+    </div>
+    ${
+      s.waiting
+        ? `<a class="card alert-card" href="#/students" id="waiting-link">🕓 <b>${s.waiting}</b> تلميذ في الانتظار (تسجيلات جديدة) — اضغط للمراجعة والتأكيد</a>`
+        : ''
+    }
+    <div class="card share">
+      <span>🔗 رابط تسجيل الأولياء:</span>
+      <code dir="ltr" id="reg-link">${esc(location.origin)}/#/register</code>
+      <button class="btn small ghost" id="copy-reg">نسخ</button>
     </div>
     <h3>💰 الخلاص — ${esc(monthLabel(s.finance.month))}</h3>
     <div class="stats">
@@ -339,6 +362,18 @@ async function viewDashboard(el) {
       location.hash = '#/students';
     })
   );
+  $('#waiting-link')?.addEventListener('click', () => {
+    sessionStorage.setItem('statusFilter', 'waiting');
+    sessionStorage.setItem('levelFilter', '');
+  });
+  $('#copy-reg').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText($('#reg-link').textContent);
+      toast('تم نسخ الرابط');
+    } catch {
+      toast('انسخ الرابط يدويًا', true);
+    }
+  });
 }
 
 // ---------- قائمة التلاميذ ----------
@@ -359,6 +394,13 @@ async function viewStudents(el) {
     </div>
     <div class="filters">
       <select id="f-level">${levelOptions(level, true)}</select>
+      ${
+        role === 'admin'
+          ? `<select id="f-status"><option value="">كل الحالات</option>${Object.entries(STATUS_LABELS)
+              .map(([k, v]) => `<option value="${k}" ${sessionStorage.getItem('statusFilter') === k ? 'selected' : ''}>${v}</option>`)
+              .join('')}</select>`
+          : ''
+      }
       <input id="f-q" type="search" placeholder="بحث بالاسم…">
     </div>
     <div id="students-list"></div>`;
@@ -368,6 +410,9 @@ async function viewStudents(el) {
     const lvl = $('#f-level').value;
     sessionStorage.setItem('levelFilter', lvl);
     if (lvl) params.set('level', lvl);
+    const status = $('#f-status')?.value;
+    if (status !== undefined) sessionStorage.setItem('statusFilter', status);
+    if (status) params.set('status', status);
     if ($('#f-q').value.trim()) params.set('q', $('#f-q').value.trim());
     const { students } = await api('GET', '/api/students?' + params);
     $('#students-list').innerHTML = students.length
@@ -378,7 +423,8 @@ async function viewStudents(el) {
           <tbody>${students
             .map(
               (s) => `<tr>
-                <td><a class="who-cell" href="#/students/${s.id}">${avatar(s, 'sm')}<b>${esc(s.full_name)}</b></a></td>
+                <td><a class="who-cell" href="#/students/${s.id}">${avatar(s, 'sm')}<b>${esc(s.full_name)}</b></a>
+                  ${s.status !== 'studying' ? statusBadge(s.status) : ''}${s.free ? ' <span class="badge free">مجاني</span>' : ''}</td>
                 <td><span class="pill">${esc(levelLabel(s.level))}</span></td>
                 <td>${esc(s.group_name || '—')}</td>
                 <td>${esc(s.parent_name || '—')}${s.parent_phone ? `<div class="muted small" dir="ltr">${esc(s.parent_phone)}</div>` : ''}</td>
@@ -410,6 +456,7 @@ async function viewStudents(el) {
   };
 
   $('#f-level').addEventListener('change', load);
+  $('#f-status')?.addEventListener('change', load);
   let timer;
   $('#f-q').addEventListener('input', () => {
     clearTimeout(timer);
@@ -447,8 +494,15 @@ async function studentForm(student, onDone) {
          .join('')}</div>
      </fieldset>
      <div class="row">
+       <label>الحالة<select name="status">${Object.entries(STATUS_LABELS)
+         .map(([k, v]) => `<option value="${k}" ${(s.status || 'studying') === k ? 'selected' : ''}>${v}</option>`)
+         .join('')}</select></label>
+       <label>تاريخ بداية الدراسة<input name="start_date" type="date" value="${esc(s.start_date || '')}"></label>
+     </div>
+     <label id="end-date-field">تاريخ الخروج / التوقف<input name="end_date" type="date" value="${esc(s.end_date || '')}"></label>
+     <div class="row">
        <label>المبلغ الشهري المتفق عليه (د.ت)<input name="monthly_fee" inputmode="decimal" value="${esc(s.monthly_fee ?? '')}" placeholder="مثال: 120"></label>
-       <label>بداية الخلاص (الشهر)<input name="billing_start" type="month" value="${esc(s.billing_start || '')}"></label>
+       <label class="check free-check"><input type="checkbox" name="free" ${s.free ? 'checked' : ''}> يدرس مجانًا</label>
      </div>
      <label>ملاحظات التسجيل<input name="remarks" value="${esc(s.remarks)}" placeholder="مثال: ما عدا الفرنسية"></label>
      <label>الولي
@@ -459,7 +513,7 @@ async function studentForm(student, onDone) {
            .join('')}
        </select>
      </label>
-     <p class="muted small">أضف حساب الولي من صفحة «الأولياء» إن لم يكن موجودًا. إذا لم تحدّد بداية الخلاص، يُحتسب من شهر التسجيل. شهرا جويلية وأوت لا يُحتسبان.</p>`,
+     <p class="muted small">أضف حساب الولي من صفحة «الأولياء» إن لم يكن موجودًا. الشهر الأول يُحتسب بالـ prorata حسب تاريخ بداية الدراسة (وكذلك شهر الخروج). إذا لم يُحدَّد التاريخ يُحتسب من شهر التسجيل. لا مستحقات في الانتظار، ولا في جويلية وأوت.</p>`,
     async (data) => {
       if (data.pack) data.subject_ids = [];
       if (student) await api('PUT', `/api/students/${student.id}`, data);
@@ -472,6 +526,10 @@ async function studentForm(student, onDone) {
   const syncPack = () => $('#subject-checks').classList.toggle('disabled', pack.checked);
   pack.addEventListener('change', syncPack);
   syncPack();
+  const statusSel = $('#modal select[name=status]');
+  const syncStatus = () => ($('#end-date-field').hidden = !['left', 'stopped'].includes(statusSel.value));
+  statusSel.addEventListener('change', syncStatus);
+  syncStatus();
 }
 
 // ---------- فضاء الولي ----------
@@ -491,7 +549,9 @@ async function viewMyChildren(el) {
                 <div class="child-head">${avatar(s, 'md')}<div>
                   <h3>${esc(s.full_name)}</h3>
                   <span class="pill">${esc(levelLabel(s.level))}</span>
+                  ${s.status !== 'studying' ? statusBadge(s.status) : ''}
                 </div></div>
+                ${s.status === 'waiting' ? '<p class="muted small">التسجيل في انتظار تأكيد الإدارة.</p>' : ''}
                 <div class="mini-stats">
                   <span>الغيابات: <b>${s.absence_count}</b></span>
                   <span>الملاحظات: <b>${s.note_count}</b></span>
@@ -507,7 +567,7 @@ async function viewMyChildren(el) {
 // ---------- ملف التلميذ ----------
 async function viewStudent(el, id) {
   const role = state.user.role;
-  const { student, absences, notes, finance } = await api('GET', `/api/students/${id}`);
+  const { student, absences, notes, finance, tasks } = await api('GET', `/api/students/${id}`);
   const adminNotes = notes.filter((n) => !n.subject_id && n.author_role === 'admin');
   const teacherNotes = notes.filter((n) => !adminNotes.includes(n));
   const unjustified = absences.filter((a) => !a.justified).length;
@@ -550,6 +610,7 @@ async function viewStudent(el, id) {
         <h2>${esc(student.full_name)}</h2>
         <div class="meta">
           <span class="pill">${esc(levelLabel(student.level))}</span>
+          ${statusBadge(student.status)}${student.free ? ' <span class="badge free">مجاني</span>' : ''}
           ${student.group_name ? `<span>الفوج: ${esc(student.group_name)}</span>` : ''}
           ${student.parent_name ? `<span>الولي: ${esc(student.parent_name)}</span>` : ''}
           ${student.parent_phone ? `<span dir="ltr">${esc(student.parent_phone)}</span>` : ''}
@@ -576,6 +637,9 @@ async function viewStudent(el, id) {
       <h3>🪪 معلومات التلميذ</h3>
       <dl class="info">
         <dt>المؤسسة التربوية</dt><dd>${esc(student.school || '—')}</dd>
+        <dt>بداية الدراسة</dt><dd>${student.start_date ? fmtDate(student.start_date) : '—'}${
+          student.end_date ? ` — ${STATUS_LABELS[student.status]} في ${fmtDate(student.end_date)}` : ''
+        }</dd>
         <dt>العنوان</dt><dd>${esc([student.address, student.city].filter(Boolean).join('، ') || '—')}</dd>
         <dt>المواد المسجّل فيها</dt><dd>${
           student.pack ? '<span class="badge pack">Pack — كل المواد</span> ' : ''
@@ -584,6 +648,10 @@ async function viewStudent(el, id) {
       </dl>
     </section>
 ${finance ? financeSection(finance, role) : ''}
+    <section class="card">
+      <h3>📌 مهام القسم</h3>
+      ${tasks.length ? `<ul class="tasks">${tasks.map((t) => taskItem(t, false)).join('')}</ul>` : '<p class="muted">لا توجد مهام.</p>'}
+    </section>
 
     <section class="card">
       <h3>🏫 ملاحظات الإدارة</h3>
@@ -772,8 +840,9 @@ function financeSection(f, role) {
         <h3>💰 الوضعية المالية</h3>
         ${role === 'admin' ? '<button class="btn small" id="add-payment">+ دفعة</button>' : ''}
       </div>
+      ${f.free ? '<p class="free-note">🎓 هذا التلميذ يدرس مجانًا.</p>' : ''}
       <div class="stats compact">
-        <div class="stat"><b>${fmtMoney(f.monthly_fee)}</b><span>المبلغ الشهري</span></div>
+        <div class="stat"><b>${f.free ? 'مجاني' : fmtMoney(f.monthly_fee)}</b><span>المبلغ الشهري</span></div>
         <div class="stat"><b>${fmtMoney(f.total_due)}</b><span>مجموع المستحق</span></div>
         <div class="stat good"><b>${fmtMoney(f.total_paid)}</b><span>مجموع المدفوع</span></div>
         <div class="stat ${f.balance > 0 ? 'warn' : 'good'}"><b>${fmtMoney(Math.max(f.balance, 0))}</b><span>${
@@ -788,7 +857,7 @@ function financeSection(f, role) {
                 .map(
                   (m) => `<tr>
                     <td><b>${esc(monthLabel(m.month))}</b></td>
-                    <td>${fmtMoney(m.due)}</td>
+                    <td>${fmtMoney(m.due)}${m.prorata ? `<div class="muted small">prorata ${esc(m.prorata)} يوم</div>` : ''}</td>
                     <td>${fmtMoney(m.paid)}</td>
                     <td>${m.remaining ? `<b class="owed">${fmtMoney(m.remaining)}</b>` : '—'}</td>
                     <td>${status(m)}</td>
@@ -822,14 +891,14 @@ async function viewUsers(el, role) {
     ${
       users.length
         ? `<div class="table-wrap"><table>
-            <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الهاتف</th>
+            <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الهاتف</th>${role === 'parent' ? '<th>ب.ت.و</th>' : ''}
               ${role === 'teacher' ? '<th>المواد</th>' : ''}${role === 'parent' ? '<th>الأبناء</th>' : ''}<th></th></tr></thead>
             <tbody>${users
               .map(
                 (u) => `<tr>
                   <td><b>${esc(u.full_name)}</b></td>
                   <td dir="ltr">${esc(u.username)}</td>
-                  <td dir="ltr">${esc(u.phone || '—')}</td>
+                  <td dir="ltr">${esc(u.phone || '—')}</td>${role === 'parent' ? `<td dir="ltr">${esc(u.cin || '—')}</td>` : ''}
                   ${role === 'teacher' ? `<td>${u.subjects.map((s) => `<span class="pill">${esc(s.name)}</span>`).join(' ') || '—'}</td>` : ''}
                   ${
                     role === 'parent'
@@ -856,6 +925,13 @@ async function viewUsers(el, role) {
        <div class="row">
          <label>اسم المستخدم<input name="username" value="${esc(u.username)}" dir="ltr" required></label>
          <label>الهاتف<input name="phone" value="${esc(u.phone)}" dir="ltr"></label>
+       </div>
+       <div class="row">
+         <label>رقم بطاقة التعريف<input name="cin" value="${esc(u.cin)}" dir="ltr" inputmode="numeric"></label>
+         <label>البريد الإلكتروني<input name="email" type="email" value="${esc(u.email)}" dir="ltr"></label>
+       </div>
+       <div>
+         <label>العنوان<input name="address" value="${esc(u.address)}"></label>
        </div>
        <label>${user ? 'كلمة سر جديدة (اتركها فارغة للإبقاء على القديمة)' : 'كلمة السر'}
          <input name="password" type="text" dir="ltr" ${user ? '' : 'required'} minlength="6"></label>
@@ -1090,6 +1166,279 @@ function showImportResult(el, res) {
     downloadCsv('comptes-parents-feed.csv', ['الولي', 'اسم المستخدم', 'كلمة السر', 'الهاتف', 'الأبناء'], csvRows)
   );
   $('#print')?.addEventListener('click', () => window.print());
+}
+
+// ---------- المهام العامة للقسم ----------
+function taskItem(t, canDelete) {
+  const late = t.due_date && t.due_date < today();
+  return `<li class="task">
+    <div class="note-head">
+      <span class="pill">${esc(t.subject_name || '')}</span>
+      <span class="pill">${esc(levelLabel(t.level))}</span>
+      ${t.due_date ? `<span class="badge ${late ? 'general' : 'average'}">آخر أجل: ${fmtDate(t.due_date)}</span>` : ''}
+      <span class="muted small">${esc(t.author_name || '')}</span>
+      ${canDelete ? `<button class="link danger" data-del-task="${t.id}">حذف</button>` : ''}
+    </div>
+    <b>${esc(t.title)}</b>
+    ${t.description ? `<p>${esc(t.description)}</p>` : ''}
+  </li>`;
+}
+
+// المواد التي يستطيع المستخدم العمل عليها (المعلم: مواده فقط)
+const workSubjects = () => (state.user.role === 'teacher' ? state.user.subjects || [] : state.meta.subjects);
+const subjectLevels = (subject) => state.meta.levels.filter((l) => !subject?.levels || subject.levels.includes(l.code));
+
+function bindSubjectLevel(subjectSel, levelSel, selectedLevel) {
+  const sync = () => {
+    const subject = workSubjects().find((x) => x.id === Number(subjectSel.value));
+    const keep = levelSel.value || selectedLevel;
+    levelSel.innerHTML = subjectLevels(subject)
+      .map((l) => `<option value="${esc(l.code)}" ${l.code === keep ? 'selected' : ''}>${esc(l.label)}</option>`)
+      .join('');
+  };
+  subjectSel.addEventListener('change', sync);
+  sync();
+}
+
+async function viewTasks(el) {
+  const { tasks } = await api('GET', '/api/tasks');
+  const subjects = workSubjects();
+  el.innerHTML = `
+    <h2>مهام القسم</h2>
+    ${
+      subjects.length
+        ? `<div class="card">
+            <h3>مهمة جديدة لكل القسم</h3>
+            <form id="task-form">
+              <div class="row">
+                <label>المادة<select name="subject_id" id="t-subject">${subjectOptions(subjects)}</select></label>
+                <label>المستوى<select name="level" id="t-level"></select></label>
+              </div>
+              <label>العنوان<input name="title" required placeholder="مثال: تمارين الصفحة 45"></label>
+              <label>التفاصيل<textarea name="description" rows="3"></textarea></label>
+              <label>آخر أجل<input type="date" name="due_date"></label>
+              <button class="btn">نشر المهمة</button>
+              <p class="muted small">تظهر المهمة لكل أولياء تلاميذ هذا المستوى المسجّلين في المادة.</p>
+            </form>
+          </div>`
+        : '<div class="card muted">لم تُسند لك أي مادة بعد.</div>'
+    }
+    <section class="card">
+      <h3>${state.user.role === 'admin' ? 'كل المهام' : 'مهامي'}</h3>
+      ${tasks.length ? `<ul class="tasks">${tasks.map((t) => taskItem(t, true)).join('')}</ul>` : '<p class="muted">لا توجد مهام بعد.</p>'}
+    </section>`;
+  if ($('#task-form')) {
+    bindSubjectLevel($('#t-subject'), $('#t-level'), sessionStorage.getItem('levelFilter'));
+    $('#task-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await api('POST', '/api/tasks', formData(e.target));
+        toast('تم نشر المهمة');
+        viewTasks(el);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  }
+  el.querySelectorAll('[data-del-task]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirmAction('حذف هذه المهمة؟')) return;
+      await api('DELETE', `/api/tasks/${b.dataset.delTask}`).catch((err) => toast(err.message, true));
+      viewTasks(el);
+    })
+  );
+}
+
+// ---------- الحضور ----------
+async function viewAttendance(el) {
+  const subjects = workSubjects();
+  if (!subjects.length) {
+    el.innerHTML = '<h2>الحضور</h2><div class="card muted">لم تُسند لك أي مادة بعد.</div>';
+    return;
+  }
+  el.innerHTML = `
+    <h2>تسجيل الحضور</h2>
+    <div class="filters">
+      <select id="a-subject">${subjectOptions(subjects, Number(sessionStorage.getItem('attSubject')) || null)}</select>
+      <select id="a-level"></select>
+      <input type="date" id="a-date" value="${today()}">
+    </div>
+    <div id="att-list"></div>`;
+  bindSubjectLevel($('#a-subject'), $('#a-level'), sessionStorage.getItem('attLevel') || sessionStorage.getItem('levelFilter'));
+
+  const load = async () => {
+    const params = new URLSearchParams({ subject_id: $('#a-subject').value, level: $('#a-level').value, date: $('#a-date').value });
+    sessionStorage.setItem('attSubject', params.get('subject_id'));
+    sessionStorage.setItem('attLevel', params.get('level'));
+    const list = $('#att-list');
+    try {
+      const { students } = await api('GET', '/api/attendance?' + params);
+      list.innerHTML = students.length
+        ? `<div class="card">
+            <p class="muted">اضغط على التلميذ الغائب. الكل حاضر افتراضيًا.</p>
+            <ul class="att">${students
+              .map(
+                (st) => `<li><button type="button" class="att-row ${st.absent ? 'absent' : ''}" data-id="${st.id}">
+                  ${avatar(st, 'sm')}<span>${esc(st.full_name)}</span><b class="att-state"></b></button></li>`
+              )
+              .join('')}</ul>
+            <p class="att-summary"></p>
+            <button class="btn" id="att-save">حفظ الحضور</button>
+          </div>`
+        : '<div class="card muted">لا يوجد تلاميذ يدرسون هذه المادة في هذا المستوى.</div>';
+      const summary = () => {
+        const absent = list.querySelectorAll('.att-row.absent').length;
+        list.querySelector('.att-summary').textContent = `الحاضرون: ${students.length - absent} — الغائبون: ${absent}`;
+      };
+      list.querySelectorAll('.att-row').forEach((b) =>
+        b.addEventListener('click', () => {
+          b.classList.toggle('absent');
+          summary();
+        })
+      );
+      if (students.length) summary();
+      $('#att-save')?.addEventListener('click', async () => {
+        try {
+          await api('POST', '/api/attendance', {
+            ...Object.fromEntries(params),
+            absent_ids: [...list.querySelectorAll('.att-row.absent')].map((b) => Number(b.dataset.id)),
+          });
+          toast('تم حفظ الحضور');
+        } catch (err) {
+          toast(err.message, true);
+        }
+      });
+    } catch (err) {
+      list.innerHTML = `<div class="card error">${esc(err.message)}</div>`;
+    }
+  };
+  for (const id of ['#a-subject', '#a-level', '#a-date']) $(id).addEventListener('change', load);
+  await load();
+}
+
+// ---------- تسجيل الأولياء (رابط عمومي) ----------
+async function viewRegister(el) {
+  const meta = await api('GET', '/api/public/meta');
+  const levelOpts = meta.levels.map((l) => `<option value="${esc(l.code)}">${esc(l.label)}</option>`).join('');
+  let n = 0;
+  const childBlock = () => {
+    const k = n++;
+    return `<fieldset class="child-block" data-k="${k}">
+      <legend>الابن ${k + 1}</legend>
+      ${k ? '<button type="button" class="link danger remove-child">حذف</button>' : ''}
+      <label>الاسم واللقب<input name="c${k}_full_name" required></label>
+      <div class="row">
+        <label>المستوى<select name="c${k}_level" class="c-level">${levelOpts}</select></label>
+        <label>تاريخ الولادة<input type="date" name="c${k}_birth_date"></label>
+      </div>
+      <label>المؤسسة التربوية التي يدرس فيها<input name="c${k}_school"></label>
+      <label class="check pack"><input type="checkbox" name="c${k}_pack" class="c-pack"> <b>Pack</b> — كل المواد</label>
+      <div class="checks c-subjects"></div>
+      <label>ملاحظات<input name="c${k}_remarks"></label>
+    </fieldset>`;
+  };
+  const syncChild = (fs) => {
+    const level = fs.querySelector('.c-level').value;
+    const k = fs.dataset.k;
+    const box = fs.querySelector('.c-subjects');
+    const checked = new Set([...box.querySelectorAll('input:checked')].map((i) => i.value));
+    box.innerHTML = meta.subjects
+      .filter((x) => !x.levels || x.levels.includes(level))
+      .map(
+        (x) => `<label class="check"><input type="checkbox" name="c${k}_subject" value="${x.id}" ${checked.has(String(x.id)) ? 'checked' : ''}> ${esc(x.name)}</label>`
+      )
+      .join('');
+    box.classList.toggle('disabled', fs.querySelector('.c-pack').checked);
+  };
+
+  el.innerHTML = `
+    <div class="register">
+      <div class="login-hero">
+        <img src="feed-logo-white.png" alt="فيد">
+        <span class="tag">تسجيل جديد</span>
+        <h1>سجّل أبناءك في الدروس الخصوصية بـ <em>فيد</em></h1>
+      </div>
+      <form id="reg-form" class="card" novalidate>
+        <h3>معطيات الولي</h3>
+        <label>الاسم واللقب<input name="p_full_name" required></label>
+        <div class="row">
+          <label>رقم بطاقة التعريف الوطنية<input name="p_cin" required dir="ltr" inputmode="numeric" maxlength="12"></label>
+          <label>الهاتف<input name="p_phone" required dir="ltr" inputmode="tel" placeholder="22 123 456"></label>
+        </div>
+        <div class="row">
+          <label>البريد الإلكتروني (اختياري)<input name="p_email" type="email" dir="ltr"></label>
+          <label>العنوان<input name="p_address"></label>
+        </div>
+        <div class="row">
+          <label>كلمة السر (6 أحرف على الأقل)<input name="p_password" type="password" required minlength="6"></label>
+          <label>تأكيد كلمة السر<input name="p_password2" type="password" required></label>
+        </div>
+        <input name="website" class="hp" tabindex="-1" autocomplete="off">
+        <h3>الأبناء</h3>
+        <div id="children">${childBlock()}</div>
+        <button type="button" class="btn ghost" id="add-child">+ ابن آخر</button>
+        <p class="error" id="reg-error" hidden></p>
+        <button class="btn block" id="reg-submit">إرسال التسجيل والدخول</button>
+        <p class="muted small center">بعد التسجيل تدخل مباشرة بحسابك (اسم المستخدم: رقم الهاتف أو رقم بطاقة التعريف). الإدارة تؤكد التسجيل وتحدد المبلغ الشهري.</p>
+        <p class="center"><a href="#/login">عندي حساب، الدخول</a></p>
+      </form>
+    </div>`;
+
+  const children = $('#children');
+  const bind = (fs) => {
+    fs.querySelector('.c-level').addEventListener('change', () => syncChild(fs));
+    fs.querySelector('.c-pack').addEventListener('change', () => syncChild(fs));
+    fs.querySelector('.remove-child')?.addEventListener('click', () => fs.remove());
+    syncChild(fs);
+  };
+  bind(children.querySelector('.child-block'));
+  $('#add-child').addEventListener('click', () => {
+    children.insertAdjacentHTML('beforeend', childBlock());
+    bind(children.lastElementChild);
+  });
+
+  $('#reg-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const err = $('#reg-error');
+    const v = (name) => f.elements[name]?.value ?? '';
+    try {
+      if (v('p_password') !== v('p_password2')) throw new Error('كلمتا السر غير متطابقتين');
+      const body = {
+        website: v('website'),
+        parent: {
+          full_name: v('p_full_name'),
+          cin: v('p_cin'),
+          phone: v('p_phone'),
+          email: v('p_email'),
+          address: v('p_address'),
+          password: v('p_password'),
+        },
+        children: [...children.querySelectorAll('.child-block')].map((fs) => {
+          const k = fs.dataset.k;
+          return {
+            full_name: v(`c${k}_full_name`),
+            level: v(`c${k}_level`),
+            birth_date: v(`c${k}_birth_date`),
+            school: v(`c${k}_school`),
+            remarks: v(`c${k}_remarks`),
+            pack: fs.querySelector('.c-pack').checked,
+            subject_ids: [...fs.querySelectorAll(`input[name=c${k}_subject]:checked`)].map((i) => Number(i.value)),
+          };
+        }),
+      };
+      $('#reg-submit').disabled = true;
+      const { user } = await api('POST', '/api/register', body);
+      state.user = user;
+      state.meta = await api('GET', '/api/meta');
+      toast('تم التسجيل، مرحبًا بك!');
+      location.hash = '#/students';
+    } catch (ex) {
+      err.textContent = ex.message;
+      err.hidden = false;
+      $('#reg-submit').disabled = false;
+    }
+  });
 }
 
 // ---------- حسابي ----------

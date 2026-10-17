@@ -245,3 +245,46 @@ label.check.pack { margin-bottom: .5rem; }
   dl.info { grid-template-columns: 1fr; gap: .1rem; }
   dl.info dd { margin-bottom: .5rem; }
 }
+
+/* الحالة */
+.badge.status-studying { background: #e6f7ee; color: var(--good); }
+.badge.status-waiting { background: #fff3df; color: #a7610a; }
+.badge.status-left { background: #eef1f8; color: #4a5575; }
+.badge.status-stopped { background: #fde8e8; color: var(--danger); }
+.badge.free { background: #e6efff; color: var(--feed-indigo); }
+.free-note { background: #e6efff; color: var(--feed-indigo); padding: .5rem .8rem; border-radius: 8px; }
+label.free-check { align-self: end; margin-bottom: 1.1rem; }
+.center { text-align: center; }
+.hp { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); }
+
+/* لوحة القيادة */
+.alert-card { display: block; background: #fff8ec; border-color: #f6d9a8; color: #8a4f06; }
+.alert-card:hover { text-decoration: none; background: #fff1d9; }
+.card.share { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; padding: .7rem 1rem; }
+.card.share code { background: #f6f0fb; padding: .2rem .5rem; border-radius: 6px; font-size: .85rem; word-break: break-all; }
+
+/* المهام */
+.tasks { list-style: none; margin: 0; padding: 0; }
+.task { padding: .7rem 0; border-top: 1px dashed var(--border); }
+.tasks > .task:first-child { border-top: 0; }
+.task > b { display: block; margin-top: .3rem; }
+.task p { margin: .2rem 0 0; white-space: pre-wrap; }
+
+/* الحضور */
+.att { list-style: none; margin: 0 0 1rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .5rem; }
+.att-row {
+  width: 100%; display: flex; align-items: center; gap: .6rem; font: inherit; text-align: start; cursor: pointer;
+  background: #fff; border: 1.5px solid var(--border); border-radius: 10px; padding: .5rem .7rem; color: var(--text);
+}
+.att-row > span:not(.avatar) { flex: 1; }
+.att-row .att-state::after { content: 'حاضر'; color: var(--good); font-size: .85rem; }
+.att-row.absent { border-color: var(--feed-pink); background: #fdeef4; }
+.att-row.absent .att-state::after { content: 'غائب'; color: var(--feed-pink); }
+.att-summary { font-weight: 700; color: var(--feed-purple); }
+
+/* التسجيل */
+.register { max-width: 720px; margin: 0 auto; }
+.register .login-hero { border-radius: var(--radius) var(--radius) 0 0; border-end-start-radius: 48px; }
+.register form.card { border-radius: 0 0 var(--radius) var(--radius); }
+.child-block { position: relative; margin-bottom: 1rem; }
+.child-block .remove-child { position: absolute; top: .2rem; inset-inline-end: .5rem; }
