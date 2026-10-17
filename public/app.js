@@ -124,6 +124,7 @@ const routes = [
   [/^#\/parents$/, (el) => viewUsers(el, 'parent')],
   [/^#\/admins$/, (el) => viewUsers(el, 'admin')],
   [/^#\/subjects$/, viewSubjects],
+  [/^#\/import$/, viewImport],
   [/^#\/account$/, viewAccount],
   [/^#\/dashboard$/, viewDashboard],
 ];
@@ -293,7 +294,12 @@ async function viewStudents(el) {
   el.innerHTML = `
     <div class="page-head">
       <h2>التلاميذ</h2>
-      ${role === 'admin' ? '<button class="btn" id="add-student">+ تلميذ جديد</button>' : ''}
+      ${
+        role === 'admin'
+          ? `<div class="actions"><a class="btn ghost" href="#/import">⇪ استيراد قائمة</a>
+             <button class="btn" id="add-student">+ تلميذ جديد</button></div>`
+          : ''
+      }
     </div>
     <div class="filters">
       <select id="f-level">${levelOptions(level, true)}</select>
@@ -366,7 +372,12 @@ async function studentForm(student, onDone) {
        <label>المستوى<select name="level">${levelOptions(s.level || sessionStorage.getItem('levelFilter') || '5')}</select></label>
        <label>الفوج<input name="group_name" value="${esc(s.group_name)}" placeholder="مثال: أ"></label>
      </div>
-     <label>تاريخ الولادة<input name="birth_date" type="date" value="${esc(s.birth_date)}"></label>
+     <div class="row">
+       <label>تاريخ الولادة<input name="birth_date" type="date" value="${esc(s.birth_date)}"></label>
+       <label>المدينة<input name="city" value="${esc(s.city)}"></label>
+     </div>
+     <label>المؤسسة التربوية الحالية<input name="school" value="${esc(s.school)}"></label>
+     <label>ملاحظات التسجيل<input name="remarks" value="${esc(s.remarks)}" placeholder="مثال: ما عدا الفرنسية"></label>
      <label>الولي
        <select name="parent_id">
          <option value="">— بدون —</option>
@@ -451,7 +462,10 @@ async function viewStudent(el, id) {
           ${student.group_name ? `<span>الفوج: ${esc(student.group_name)}</span>` : ''}
           ${student.parent_name ? `<span>الولي: ${esc(student.parent_name)}</span>` : ''}
           ${student.parent_phone ? `<span dir="ltr">${esc(student.parent_phone)}</span>` : ''}
+          ${student.city ? `<span>📍 ${esc(student.city)}</span>` : ''}
+          ${student.school ? `<span>🏫 ${esc(student.school)}</span>` : ''}
         </div>
+        ${student.remarks ? `<p class="remarks">📝 ${esc(student.remarks)}</p>` : ''}
       </div>
       ${
         role !== 'parent'
@@ -725,6 +739,153 @@ async function viewSubjects(el) {
       reload();
     })
   );
+}
+
+// ---------- استيراد قائمة التلاميذ ----------
+// يقبل جدولًا منسوخًا من Excel / Google Sheets (أعمدة مفصولة بـ Tab)، أو جدول Markdown، أو CSV
+// ترتيب الأعمدة: (#) التلميذ، القسم، الولي، الهاتف، المدينة، المؤسسة
+function parseLevel(value) {
+  const v = String(value || '').toLowerCase();
+  if (/ligne|distance|online|بعد/.test(v)) return '6-distance';
+  const m = v.match(/[5-9]/);
+  return m ? m[0] : null;
+}
+
+function parseStudentList(raw) {
+  const lines = raw.split(/\r?\n/).filter((l) => l.trim());
+  const sep = lines.some((l) => l.includes('\t'))
+    ? '\t'
+    : lines.some((l) => l.includes('|'))
+      ? '|'
+      : lines.some((l) => l.includes(';'))
+        ? ';'
+        : ',';
+  const rows = [];
+  for (const line of lines) {
+    if (!line.includes(sep)) continue;
+    if (/^[\s|:-]+$/.test(line)) continue; // سطر الفصل في Markdown
+    let cells = line.split(sep).map((c) => c.trim());
+    if (sep === '|') cells = cells.slice(line.trim().startsWith('|') ? 1 : 0, line.trim().endsWith('|') ? -1 : undefined);
+    if (/^\d+$/.test(cells[0]) || cells[0] === '#') cells = cells.slice(1);
+    if (/élève|eleve|^nom|التلميذ|^اسم/i.test(cells[0] || '') || /^classe$/i.test(cells[1] || '')) continue;
+    const [name = '', classe = '', parent = '', phone = '', city = '', school = ''] = cells;
+    if (!name) continue;
+    const remarks = (name.match(/\(([^)]*)\)/g) || []).map((x) => x.slice(1, -1).trim()).join('، ');
+    rows.push({
+      full_name: name.replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim(),
+      level: parseLevel(classe),
+      classe,
+      parent_name: parent,
+      phone,
+      city,
+      school,
+      remarks,
+    });
+  }
+  return rows;
+}
+
+function downloadCsv(filename, header, rows) {
+  const quote = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const csv = '﻿' + [header, ...rows].map((r) => r.map(quote).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function viewImport(el) {
+  if (state.user.role !== 'admin') throw new Error('ليس لديك صلاحية');
+  el.innerHTML = `
+    <a href="#/students" class="muted small">→ الرجوع إلى القائمة</a>
+    <h2>استيراد قائمة التلاميذ</h2>
+    <div class="card">
+      <p>انسخ الجدول من Excel أو Google Sheets والصقه هنا. ترتيب الأعمدة:
+        <b>التلميذ، القسم، الولي، الهاتف، المدينة، المؤسسة</b> (عمود الترقيم # وسطر العناوين يُتجاهلان).</p>
+      <ul class="muted small">
+        <li>القسم: 5ème … 9ème، و«6ème en ligne» تُسجّل في «السادسة أساسي (عن بعد)».</li>
+        <li>ما بين قوسين في اسم التلميذ، مثل (SAUF FR)، يُنقل إلى «ملاحظات التسجيل».</li>
+        <li>يُنشأ حساب لكل ولي: اسم المستخدم رقم الهاتف وكلمة سر من 6 أرقام. الإخوة يُربطون بنفس الولي.</li>
+        <li>التلميذ الموجود مسبقًا (نفس الاسم والمستوى) لا يُضاف مرة ثانية.</li>
+      </ul>
+      <textarea id="import-text" rows="10" dir="auto" placeholder="الصق الجدول هنا…"></textarea>
+      <button class="btn" id="import-preview">معاينة</button>
+    </div>
+    <div id="import-result"></div>`;
+
+  $('#import-preview').addEventListener('click', () => {
+    const rows = parseStudentList($('#import-text').value);
+    const valid = rows.filter((r) => r.full_name && r.level);
+    const counts = {};
+    for (const r of valid) counts[r.level] = (counts[r.level] || 0) + 1;
+    const result = $('#import-result');
+    if (!rows.length) {
+      result.innerHTML = '<div class="card error">لم يتم التعرف على أي سطر. تأكد من نسخ الجدول كاملًا.</div>';
+      return;
+    }
+    result.innerHTML = `
+      <div class="card">
+        <h3>المعاينة: ${valid.length} تلميذ</h3>
+        <p>${state.meta.levels.filter((l) => counts[l.code]).map((l) => `<span class="pill">${esc(l.label)}: ${counts[l.code]}</span>`).join(' ')}</p>
+        ${rows.length > valid.length ? `<p class="error">${rows.length - valid.length} سطر لم يُعرف مستواه ولن يُستورد (بالأحمر).</p>` : ''}
+        <div class="table-wrap"><table>
+          <thead><tr><th>#</th><th>التلميذ</th><th>المستوى</th><th>ملاحظات</th><th>الولي</th><th>الهاتف</th><th>المدينة</th><th>المؤسسة</th></tr></thead>
+          <tbody>${rows
+            .map(
+              (r, i) => `<tr class="${r.level ? '' : 'bad'}"><td>${i + 1}</td><td><b>${esc(r.full_name)}</b></td>
+                <td>${r.level ? esc(levelLabel(r.level)) : esc(r.classe) + ' ⚠'}</td><td>${esc(r.remarks)}</td>
+                <td>${esc(r.parent_name)}</td><td dir="ltr">${esc(r.phone)}</td><td>${esc(r.city)}</td><td>${esc(r.school)}</td></tr>`
+            )
+            .join('')}</tbody>
+        </table></div>
+        <p><button class="btn" id="import-go" ${valid.length ? '' : 'disabled'}>استيراد ${valid.length} تلميذ</button></p>
+      </div>`;
+    $('#import-go').addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      e.target.textContent = 'جاري الاستيراد…';
+      try {
+        const res = await api('POST', '/api/import/students', {
+          rows: valid.map(({ classe, ...r }) => r),
+        });
+        showImportResult(result, res);
+      } catch (err) {
+        toast(err.message, true);
+        e.target.disabled = false;
+        e.target.textContent = `استيراد ${valid.length} تلميذ`;
+      }
+    });
+  });
+}
+
+function showImportResult(el, res) {
+  const csvRows = res.parents.map((p) => [p.full_name, p.username, p.password, p.phone, p.children.join(' / ')]);
+  el.innerHTML = `
+    <div class="card">
+      <h3>✅ تمت إضافة ${res.created_students} تلميذ و${res.parents.length} حساب ولي</h3>
+      ${res.skipped.length ? `<p class="muted">موجودون مسبقًا ولم يُضافوا: ${res.skipped.map(esc).join('، ')}</p>` : ''}
+      ${
+        res.parents.length
+          ? `<p class="error"><b>مهم:</b> كلمات السر تظهر هنا مرة واحدة فقط. حمّلها أو اطبعها الآن وأعطِ كل ولي معلوماته.</p>
+             <p class="actions"><button class="btn" id="dl-csv">⬇ تحميل (Excel / CSV)</button>
+               <button class="btn ghost" id="print">🖨 طباعة</button></p>
+             <div class="table-wrap print-area"><table>
+               <thead><tr><th>الولي</th><th>اسم المستخدم</th><th>كلمة السر</th><th>الهاتف</th><th>الأبناء</th></tr></thead>
+               <tbody>${res.parents
+                 .map(
+                   (p) => `<tr><td>${esc(p.full_name)}</td><td dir="ltr"><b>${esc(p.username)}</b></td>
+                     <td dir="ltr"><b>${esc(p.password)}</b></td><td dir="ltr">${esc(p.phone || '')}</td><td>${p.children.map(esc).join('، ')}</td></tr>`
+                 )
+                 .join('')}</tbody>
+             </table></div>`
+          : ''
+      }
+      <p><a href="#/students" class="btn ghost">عرض قائمة التلاميذ</a></p>
+    </div>`;
+  $('#dl-csv')?.addEventListener('click', () =>
+    downloadCsv('comptes-parents-feed.csv', ['الولي', 'اسم المستخدم', 'كلمة السر', 'الهاتف', 'الأبناء'], csvRows)
+  );
+  $('#print')?.addEventListener('click', () => window.print());
 }
 
 // ---------- حسابي ----------

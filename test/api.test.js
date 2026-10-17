@@ -89,3 +89,36 @@ test('rejects bad credentials and anonymous access', async () => {
   assert.strictEqual((await call('GET', '/api/students')).status, 401);
   assert.strictEqual((await call('GET', '/api/students/99999999999')).status, 404);
 });
+
+test('imports a student list and groups siblings under one parent account', async () => {
+  const admin = await login('admin', 'admin123');
+  const rows = [
+    { full_name: 'Imp A', level: '5', parent_name: 'Parent X', phone: '99 111 222/94000000', city: 'Ariana', remarks: 'SAUF FR' },
+    { full_name: 'Imp B', level: '6-distance', parent_name: 'parent  x', phone: '' }, // نفس الولي بالاسم
+    { full_name: 'Imp C', level: '9', parent_name: 'Other', phone: '+21699111222' }, // نفس الولي بالهاتف
+    { full_name: 'Imp D', level: '7', parent_name: 'Validé', phone: '' }, // دون ولي
+    { full_name: 'Imp E', level: '8', parent_name: '', phone: '55 000 111' }, // هاتف فقط
+  ];
+  const res = await admin('POST', '/api/import/students', { rows });
+  assert.strictEqual(res.status, 201);
+  assert.strictEqual(res.body.created_students, 5);
+  assert.strictEqual(res.body.parents.length, 2);
+  const [px, pe] = res.body.parents;
+  assert.strictEqual(px.username, '99111222');
+  assert.deepStrictEqual(px.children, ['Imp A', 'Imp B', 'Imp C']);
+  assert.strictEqual(pe.full_name, 'ولي Imp E');
+
+  const parent = await login(px.username, px.password);
+  const { body } = await parent('GET', '/api/students');
+  assert.deepStrictEqual(body.students.map((s) => s.full_name).sort(), ['Imp A', 'Imp B', 'Imp C']);
+  assert.strictEqual(body.students.find((s) => s.full_name === 'Imp A').remarks, 'SAUF FR');
+
+  // إعادة الاستيراد: لا تكرار للتلاميذ ولا للأولياء
+  const again = await admin('POST', '/api/import/students', { rows });
+  assert.strictEqual(again.body.created_students, 0);
+  assert.strictEqual(again.body.skipped.length, 5);
+  assert.strictEqual(again.body.parents.length, 0);
+
+  assert.strictEqual((await admin('POST', '/api/import/students', { rows: [{ full_name: 'X', level: '4' }] })).status, 400);
+  assert.strictEqual((await parent('POST', '/api/import/students', { rows })).status, 403);
+});

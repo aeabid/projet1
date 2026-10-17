@@ -193,3 +193,14 @@ dialog .actions { display: flex; gap: .5rem; margin-top: 1rem; }
   .filters select, .filters input { width: 100%; }
   .who span { display: none; }
 }
+
+.remarks { margin: .4rem 0 0; color: var(--feed-pink); font-weight: 500; }
+#import-text { font-family: ui-monospace, monospace; font-size: .85rem; margin-bottom: .8rem; }
+tr.bad td { background: #fdeef4; color: var(--danger); }
+
+@media print {
+  body { background: #fff; }
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { position: absolute; top: 0; inset-inline: 0; border: 0; }
+}
