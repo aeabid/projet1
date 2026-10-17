@@ -206,8 +206,11 @@ function viewLogin(el) {
   el.innerHTML = `
     <div class="login">
       <div class="card">
-        <h1>📘 متابعة التلاميذ</h1>
-        <p class="muted">فضاء الأولياء والمعلمين والإدارة</p>
+        <div class="login-hero">
+          <img src="feed-logo-white.png" alt="فيد">
+          <span class="tag">فضاء الأولياء والمعلمين والإدارة</span>
+          <h1>متابعة التلاميذ في منصّة <em>فيد</em> التعليميّة</h1>
+        </div>
         <form id="login-form">
           <label>اسم المستخدم<input name="username" autocomplete="username" required></label>
           <label>كلمة السر<input name="password" type="password" autocomplete="current-password" required></label>
