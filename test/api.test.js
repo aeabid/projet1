@@ -320,3 +320,51 @@ test('whatsapp groups: admin manages links, parent sees their child group', asyn
   assert.strictEqual((await parent('GET', '/api/whatsapp-groups')).status, 403);
   assert.strictEqual((await admin('GET', '/api/whatsapp-groups')).body.groups.length, 3);
 });
+
+test('teacher payroll: hours from timetable, adjustments, payments, history kept', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const math = meta.subjects.find((s) => s.name === 'الرياضيات').id;
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'tpay', full_name: 'T Pay', password: 'secret1', subject_ids: [math], hourly_rate: '20' })).body.user;
+  assert.strictEqual(t.hourly_rate, 20);
+  await admin('POST', '/api/users', { role: 'teacher', username: 'tother', full_name: 'Other', password: 'secret1' });
+
+  // الأربعاء 14:00–15:30 منذ 1 سبتمبر 2025: أيام الأربعاء في سبتمبر 2025 = 3، 10، 17، 24
+  const slot = (await admin('POST', '/api/timetable', { level: '5', day: 3, start_time: '14:00', end_time: '15:30', subject_id: math, teacher_id: t.id, valid_from: '2025-09-01' })).body.slot;
+  let m = (await admin('GET', `/api/payroll/${t.id}?month=2025-09`)).body;
+  assert.deepStrictEqual(m.sessions.map((x) => x.date), ['2025-09-03', '2025-09-10', '2025-09-17', '2025-09-24']);
+  assert.strictEqual(m.hours_done, 6);
+  assert.strictEqual(m.due, 120);
+
+  // غياب يوم 10، حصة إضافية ساعتان يوم 13
+  await admin('POST', `/api/payroll/${t.id}/adjustments`, { date: '2025-09-10', timetable_id: slot.id, hours: 0, note: 'غياب' });
+  await admin('POST', `/api/payroll/${t.id}/adjustments`, { date: '2025-09-13', hours: 2, note: 'حصة تدارك' });
+  m = (await admin('GET', `/api/payroll/${t.id}?month=2025-09`)).body;
+  assert.strictEqual(m.hours_done, 6.5);
+  assert.strictEqual(m.due, 130);
+  assert.strictEqual(m.sessions.find((x) => x.date === '2025-09-10').status, 'absent');
+
+  // تسبقة ثم الباقي
+  await admin('POST', `/api/payroll/${t.id}/payments`, { month: '2025-09', amount: 100, kind: 'advance' });
+  m = (await admin('GET', `/api/payroll/${t.id}?month=2025-09`)).body;
+  assert.strictEqual(m.remaining, 30);
+
+  // تعديل ثم حذف الحصة اليوم لا يغيّر الأشهر الماضية
+  assert.strictEqual((await admin('PUT', `/api/timetable/${slot.id}`, { level: '5', day: 4, start_time: '10:00', end_time: '11:00', subject_id: math, teacher_id: t.id })).status, 200);
+  const current = (await admin('GET', '/api/timetable?level=5')).body.slots.filter((x) => x.teacher_id === t.id);
+  assert.strictEqual(current.length, 1);
+  assert.strictEqual(current[0].day, 4);
+  await admin('DELETE', `/api/timetable/${current[0].id}`);
+  assert.strictEqual((await admin('GET', `/api/payroll/${t.id}?month=2025-09`)).body.due, 130);
+
+  // المعلم يرى حسابه طيلة السنة، ولا يرى حساب غيره
+  const teacher = await login('tpay', 'secret1');
+  assert.strictEqual((await teacher('GET', `/api/payroll/${t.id}?month=2025-09`)).body.paid, 100);
+  const year = (await teacher('GET', `/api/payroll/${t.id}/year`)).body;
+  assert.ok(year.months.length >= 1 && year.months[0].month.endsWith('-09'));
+  const other = await login('tother', 'secret1');
+  assert.strictEqual((await other('GET', `/api/payroll/${t.id}?month=2025-09`)).status, 403);
+  assert.strictEqual((await teacher('POST', `/api/payroll/${t.id}/payments`, { month: '2025-09', amount: 5 })).status, 403);
+  const list = (await admin('GET', '/api/payroll?month=2025-09')).body;
+  assert.strictEqual(list.teachers.find((x) => x.id === t.id).remaining, 30);
+});

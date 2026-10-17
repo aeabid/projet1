@@ -248,6 +248,9 @@ const routes = [
   [/^#\/timetable$/, viewTimetable],
   [/^#\/whatsapp$/, viewWhatsappGroups],
   [/^#\/broadcast$/, viewBroadcast],
+  [/^#\/payroll$/, viewPayroll],
+  [/^#\/payroll\/(\d+)$/, (el, id) => viewTeacherPay(el, Number(id))],
+  [/^#\/my-pay$/, (el) => viewTeacherPay(el, state.user.id)],
   [/^#\/registrations$/, (el) => {
     sessionStorage.setItem('statusFilter', 'waiting');
     sessionStorage.setItem('levelFilter', '');
@@ -314,6 +317,7 @@ const NAV = {
         ['#/attendance', 'الحضور'],
         ['#/tasks', 'المهام'],
         ['#/subjects', 'المواد'],
+        ['#/payroll', 'ساعات وخلاص المعلمين'],
       ],
     },
     {
@@ -338,6 +342,7 @@ const NAV = {
     ['#/timetable', 'جدولي'],
     ['#/attendance', 'الحضور'],
     ['#/tasks', 'المهام'],
+    ['#/my-pay', 'ساعاتي وخلاصي'],
     ['#/account', 'حسابي'],
   ],
   parent: [
@@ -1089,14 +1094,15 @@ async function viewUsers(el, role) {
       users.length
         ? `<div class="table-wrap"><table>
             <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الهاتف</th>${role === 'parent' ? '<th>ب.ت.و</th>' : ''}
-              ${role === 'teacher' ? '<th>المواد</th>' : ''}${role === 'parent' ? '<th>الأبناء</th>' : ''}<th></th></tr></thead>
+              ${role === 'teacher' ? '<th>المواد</th><th>معلوم الساعة</th>' : ''}${role === 'parent' ? '<th>الأبناء</th>' : ''}<th></th></tr></thead>
             <tbody>${users
               .map(
                 (u) => `<tr>
                   <td><b>${esc(u.full_name)}</b></td>
                   <td dir="ltr">${esc(u.username)}</td>
                   <td><span class="phone-line"><span dir="ltr">${esc(u.phone || '—')}</span>${waButton(u.phone)}</span></td>${role === 'parent' ? `<td dir="ltr">${esc(u.cin || '—')}</td>` : ''}
-                  ${role === 'teacher' ? `<td>${u.subjects.map((s) => `<span class="pill">${esc(s.name)}</span>`).join(' ') || '—'}</td>` : ''}
+                  ${role === 'teacher' ? `<td>${u.subjects.map((s) => `<span class="pill">${esc(s.name)}</span>`).join(' ') || '—'}</td>
+                    <td>${u.hourly_rate ? fmtMoney(u.hourly_rate) : '<span class="muted">—</span>'} <a class="small" href="#/payroll/${u.id}">الساعات ←</a></td>` : ''}
                   ${
                     role === 'parent'
                       ? `<td>${u.children.map((c) => `<a href="#/students/${c.id}">${esc(c.full_name)}</a>`).join('، ') || '—'}</td>`
@@ -1123,6 +1129,7 @@ async function viewUsers(el, role) {
          <label>اسم المستخدم<input name="username" value="${esc(u.username)}" dir="ltr" required></label>
          <label>الهاتف<input name="phone" value="${esc(u.phone)}" dir="ltr"></label>
        </div>
+       ${role === 'teacher' ? `<label>معلوم الساعة (د.ت)<input name="hourly_rate" inputmode="decimal" value="${esc(u.hourly_rate ?? '')}" placeholder="مثال: 20"></label>` : ''}
        <div class="row">
          <label>رقم بطاقة التعريف<input name="cin" value="${esc(u.cin)}" dir="ltr" inputmode="numeric"></label>
          <label>البريد الإلكتروني<input name="email" type="email" value="${esc(u.email)}" dir="ltr"></label>
@@ -1592,7 +1599,7 @@ async function viewTimetable(el) {
     );
     $('#tt-week').querySelectorAll('[data-del-slot]').forEach((b) =>
       b.addEventListener('click', async () => {
-        if (!confirmAction('حذف هذه الحصة؟')) return;
+        if (!confirmAction('حذف هذه الحصة من الجدول ابتداءً من اليوم؟ (الساعات الماضية تبقى محتسبة للمعلم)')) return;
         await api('DELETE', `/api/timetable/${b.dataset.delSlot}`).catch((err) => toast(err.message, true));
         load();
       })
@@ -1615,7 +1622,9 @@ async function viewTimetable(el) {
        </div>
        <label>المادة<select name="subject_id" id="slot-subject">${subjectOptions(subjects, slot?.subject_id)}</select></label>
        <label>المعلم<select name="teacher_id" id="slot-teacher"></select></label>
-       <label>القاعة / الرابط<input name="room" value="${esc(slot?.room || '')}" placeholder="مثال: قاعة 2 أو عن بعد"></label>`,
+       <label>القاعة / الرابط<input name="room" value="${esc(slot?.room || '')}" placeholder="مثال: قاعة 2 أو عن بعد"></label>
+       <label>تُحتسب ابتداءً من<input type="date" name="valid_from" value="${esc(slot ? today() : today())}"></label>
+       <p class="muted small">${slot ? 'التعديل يُطبَّق ابتداءً من هذا التاريخ، والأسابيع الماضية تبقى كما هي في حساب ساعات المعلم.' : 'لحساب ساعات المعلم: ضع تاريخ بداية الدراسة إن كانت الحصة قائمة منذ مدة.'}</p>`,
       async (data) => {
         if (slot) await api('PUT', `/api/timetable/${slot.id}`, data);
         else await api('POST', '/api/timetable', data);
@@ -1803,6 +1812,250 @@ async function viewBroadcast(el) {
       })
     );
   });
+}
+
+// ---------- ساعات وخلاص المعلمين ----------
+const SESSION_LABELS = {
+  done: ['تمت', 'good'],
+  planned: ['مبرمجة', 'general'],
+  absent: ['غياب', 'weak'],
+  adjusted: ['معدّلة', 'average'],
+  extra: ['إضافية', 'level'],
+};
+const fmtHours = (h) => `${Number(h).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} س`;
+const payMonth = () => sessionStorage.getItem('payMonth') || today().slice(0, 7);
+const weekdayName = (d) => DAYS_AR[(new Date(d + 'T00:00:00Z').getUTCDay() || 7) - 1];
+
+async function viewPayroll(el) {
+  el.innerHTML = `
+    <div class="page-head">
+      <h2>ساعات وخلاص المعلمين</h2>
+      <input type="month" id="pay-month" value="${payMonth()}">
+    </div>
+    <div id="pay-body"></div>`;
+  const load = async () => {
+    sessionStorage.setItem('payMonth', $('#pay-month').value);
+    const { teachers, totals, month } = await api('GET', '/api/payroll?month=' + $('#pay-month').value);
+    $('#pay-body').innerHTML = `
+      <div class="stats compact">
+        <div class="stat"><b>${fmtHours(totals.hours_done)}</b><span>الساعات المنجزة — ${esc(monthLabel(month))}</span></div>
+        <div class="stat"><b>${fmtMoney(totals.due)}</b><span>المستحق</span></div>
+        <div class="stat good"><b>${fmtMoney(totals.paid)}</b><span>المدفوع</span></div>
+        <div class="stat warn"><b>${fmtMoney(totals.remaining)}</b><span>الباقي</span></div>
+      </div>
+      ${
+        teachers.length
+          ? `<div class="table-wrap"><table>
+              <thead><tr><th>المعلم</th><th>معلوم الساعة</th><th>الحصص</th><th>الساعات</th><th>المستحق</th><th>المدفوع</th><th>الباقي</th><th></th></tr></thead>
+              <tbody>${teachers
+                .map(
+                  (t) => `<tr>
+                    <td><b>${esc(t.full_name)}</b></td>
+                    <td>${t.hourly_rate ? fmtMoney(t.hourly_rate) : '<span class="error small">غير محدّد</span>'}</td>
+                    <td>${t.sessions}${t.absences ? ` <span class="badge weak">${t.absences} غياب</span>` : ''}</td>
+                    <td><b>${fmtHours(t.hours_done)}</b>${t.hours_planned ? `<div class="muted small">+ ${fmtHours(t.hours_planned)} مبرمجة</div>` : ''}</td>
+                    <td>${fmtMoney(t.due)}</td>
+                    <td>${fmtMoney(t.paid)}</td>
+                    <td>${t.remaining > 0 ? `<b class="owed">${fmtMoney(t.remaining)}</b>` : t.due > 0 ? '<span class="badge good">خالص</span>' : '—'}</td>
+                    <td><a class="btn ghost small" href="#/payroll/${t.id}">التفاصيل</a></td>
+                  </tr>`
+                )
+                .join('')}</tbody></table></div>`
+          : '<div class="card muted">لا يوجد معلمون.</div>'
+      }
+      <p class="muted small">الساعات تُحسب تلقائيًا من جدول الأوقات، يومًا بيوم من 1 إلى آخر الشهر. الحصص المقبلة «مبرمجة» ولا تدخل في المستحق حتى يحين موعدها.</p>`;
+  };
+  $('#pay-month').addEventListener('change', load);
+  await load();
+}
+
+async function viewTeacherPay(el, teacherId) {
+  const isAdmin = state.user.role === 'admin';
+  el.innerHTML = `
+    <div class="page-head">
+      <div>
+        ${isAdmin ? '<a href="#/payroll" class="muted small">→ كل المعلمين</a>' : ''}
+        <h2 id="tp-title">ساعاتي وخلاصي</h2>
+      </div>
+      <input type="month" id="tp-month" value="${payMonth()}">
+    </div>
+    <div id="tp-body"></div>
+    <section class="card"><h3>📆 السنة الدراسية</h3><div id="tp-year"></div></section>`;
+
+  const loadYear = async () => {
+    const { months, totals } = await api('GET', `/api/payroll/${teacherId}/year`);
+    $('#tp-year').innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>الشهر</th><th>الساعات</th><th>المستحق</th><th>المدفوع</th><th>الباقي</th></tr></thead>
+      <tbody>${[...months]
+        .reverse()
+        .map(
+          (m) => `<tr class="clickable" data-month="${m.month}">
+            <td><b>${esc(monthLabel(m.month))}</b></td>
+            <td>${fmtHours(m.hours_done)}${m.hours_planned ? ` <span class="muted small">(+${fmtHours(m.hours_planned)})</span>` : ''}</td>
+            <td>${fmtMoney(m.due)}</td>
+            <td>${fmtMoney(m.paid)}${m.payments.some((p) => p.kind === 'advance') ? ' <span class="badge average">تسبقة</span>' : ''}</td>
+            <td>${m.remaining > 0 ? `<b class="owed">${fmtMoney(m.remaining)}</b>` : m.due > 0 ? '<span class="badge good">خالص</span>' : '—'}</td>
+          </tr>`
+        )
+        .join('')}</tbody>
+      <tfoot><tr><th>المجموع</th><th>${fmtHours(totals.hours_done)}</th><th>${fmtMoney(totals.due)}</th><th>${fmtMoney(totals.paid)}</th><th>${fmtMoney(totals.remaining)}</th></tr></tfoot>
+    </table></div>`;
+    $('#tp-year').querySelectorAll('[data-month]').forEach((tr) =>
+      tr.addEventListener('click', () => {
+        $('#tp-month').value = tr.dataset.month;
+        load();
+        el.scrollIntoView({ behavior: 'smooth' });
+      })
+    );
+  };
+
+  const load = async () => {
+    const month = $('#tp-month').value;
+    sessionStorage.setItem('payMonth', month);
+    const m = await api('GET', `/api/payroll/${teacherId}?month=${month}`);
+    if (isAdmin) $('#tp-title').textContent = m.teacher.full_name;
+    $('#tp-body').innerHTML = `
+      <div class="stats compact">
+        <div class="stat"><b>${m.hourly_rate ? fmtMoney(m.hourly_rate) : '—'}</b><span>معلوم الساعة</span></div>
+        <div class="stat"><b>${fmtHours(m.hours_done)}</b><span>الساعات المنجزة${m.hours_planned ? ` (+${fmtHours(m.hours_planned)} مبرمجة)` : ''}</span></div>
+        <div class="stat"><b>${fmtMoney(m.due)}</b><span>المستحق — ${esc(monthLabel(month))}</span></div>
+        <div class="stat good"><b>${fmtMoney(m.paid)}</b><span>المدفوع</span></div>
+        <div class="stat ${m.remaining > 0 ? 'warn' : 'good'}"><b>${fmtMoney(Math.max(m.remaining, 0))}</b><span>${m.remaining < 0 ? `الباقي (دُفع زيادة ${fmtMoney(-m.remaining)})` : 'الباقي'}</span></div>
+      </div>
+      ${!m.hourly_rate ? `<p class="error">لم يُحدَّد معلوم الساعة${isAdmin ? ' — حدّده من «الحسابات ← المعلمون ← تعديل»' : ''}.</p>` : ''}
+      <section class="card">
+        <div class="section-head">
+          <h3>💵 الدفعات</h3>
+          ${isAdmin ? '<button class="btn small" id="tp-pay">+ دفعة</button>' : ''}
+        </div>
+        ${
+          m.payments.length
+            ? `<ul class="levels">${m.payments
+                .map(
+                  (p) => `<li><span>${fmtDate(p.paid_on)} — ${p.kind === 'advance' ? '<span class="badge average">تسبقة</span>' : '<span class="badge good">خلاص</span>'}
+                    ${p.method ? esc(PAYMENT_LABELS[p.method] || p.method) : ''} ${p.note ? `<span class="muted small">${esc(p.note)}</span>` : ''}</span>
+                    <span><b>${fmtMoney(p.amount)}</b>${isAdmin ? ` <button class="link danger" data-del-pay="${p.id}">حذف</button>` : ''}</span></li>`
+                )
+                .join('')}</ul>`
+            : '<p class="muted">لا توجد دفعات لهذا الشهر.</p>'
+        }
+      </section>
+      <section class="card">
+        <div class="section-head">
+          <h3>🕘 الحصص يومًا بيوم</h3>
+          ${isAdmin ? '<button class="btn small ghost" id="tp-extra">+ حصة إضافية</button>' : ''}
+        </div>
+        ${
+          m.sessions.length
+            ? `<div class="table-wrap"><table>
+                <thead><tr><th>التاريخ</th><th>الحصة</th><th>الساعات</th><th>الحالة</th>${isAdmin ? '<th></th>' : ''}</tr></thead>
+                <tbody>${m.sessions
+                  .map((x, i) => {
+                    const [label, cls] = SESSION_LABELS[x.status];
+                    return `<tr class="${x.status === 'planned' ? 'planned' : ''}">
+                      <td><b>${weekdayName(x.date)}</b> ${fmtDate(x.date)}</td>
+                      <td>${
+                        x.timetable_id
+                          ? `من <bdi>${esc(x.start_time)}</bdi> إلى <bdi>${esc(x.end_time)}</bdi> — ${esc(x.subject_name || '')}
+                             <span class="muted small">${esc(levelLabel(x.level))}${x.group_name ? ` (${esc(x.group_name)})` : ''}</span>`
+                          : '<span class="muted">حصة إضافية</span>'
+                      }${x.note ? `<div class="muted small">📝 ${esc(x.note)}</div>` : ''}</td>
+                      <td>${fmtHours(x.hours)}${x.status === 'adjusted' ? ` <span class="muted small">(بدل ${fmtHours(x.scheduled_hours)})</span>` : ''}</td>
+                      <td><span class="badge ${cls}">${label}</span></td>
+                      ${
+                        isAdmin
+                          ? `<td class="row-actions">${
+                              x.timetable_id && x.status !== 'absent'
+                                ? `<button class="link danger" data-absent="${i}">غياب</button> <button class="link" data-hours="${i}">تعديل</button>`
+                                : ''
+                            }${x.adjustment_id ? ` <button class="link" data-undo="${x.adjustment_id}">${x.status === 'extra' ? 'حذف' : 'إلغاء التعديل'}</button>` : ''}</td>`
+                          : ''
+                      }
+                    </tr>`;
+                  })
+                  .join('')}</tbody>
+                <tfoot><tr><th colspan="2">المجموع المنجز</th><th>${fmtHours(m.hours_done)}</th><th colspan="${isAdmin ? 2 : 1}">${fmtMoney(m.due)}</th></tr></tfoot>
+              </table></div>`
+            : '<p class="muted">لا توجد حصص في هذا الشهر. تأكد من جدول الأوقات.</p>'
+        }
+      </section>`;
+
+    if (!isAdmin) return;
+    const reload = () => Promise.all([load(), loadYear()]);
+    const adjust = (body) =>
+      api('POST', `/api/payroll/${teacherId}/adjustments`, body)
+        .then(() => {
+          toast('تم التعديل');
+          reload();
+        })
+        .catch((err) => toast(err.message, true));
+    $('#tp-body').querySelectorAll('[data-absent]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const x = m.sessions[Number(b.dataset.absent)];
+        openModal(
+          `غياب المعلم — ${weekdayName(x.date)} ${fmtDate(x.date)}`,
+          `<p>هذه الحصة لن تُحتسب (${fmtHours(x.scheduled_hours)}).</p><label>ملاحظة<input name="note" placeholder="مثال: غياب بعذر"></label>`,
+          (data) => adjust({ date: x.date, timetable_id: x.timetable_id, hours: 0, note: data.note })
+        );
+      })
+    );
+    $('#tp-body').querySelectorAll('[data-hours]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const x = m.sessions[Number(b.dataset.hours)];
+        openModal(
+          `تعديل مدة الحصة — ${weekdayName(x.date)} ${fmtDate(x.date)}`,
+          `<label>عدد الساعات المنجزة<input name="hours" inputmode="decimal" value="${x.hours}" required></label>
+           <label>ملاحظة<input name="note" value="${esc(x.note || '')}"></label>`,
+          (data) => adjust({ date: x.date, timetable_id: x.timetable_id, hours: data.hours, note: data.note })
+        );
+      })
+    );
+    $('#tp-body').querySelectorAll('[data-undo]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        await api('DELETE', `/api/payroll/adjustments/${b.dataset.undo}`).catch((err) => toast(err.message, true));
+        reload();
+      })
+    );
+    $('#tp-extra').addEventListener('click', () =>
+      openModal(
+        'حصة إضافية',
+        `<div class="row"><label>التاريخ<input type="date" name="date" value="${today()}" required></label>
+           <label>عدد الساعات<input name="hours" inputmode="decimal" value="1.5" required></label></div>
+         <label>ملاحظة<input name="note" placeholder="مثال: حصة تدارك للتاسعة"></label>`,
+        (data) => adjust(data)
+      )
+    );
+    $('#tp-pay').addEventListener('click', () =>
+      openModal(
+        `دفعة للمعلم — ${monthLabel(month)}`,
+        `<div class="row">
+           <label>النوع<select name="kind"><option value="full">خلاص الشهر</option><option value="advance">تسبقة</option></select></label>
+           <label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${Math.max(m.remaining, 0) || ''}" required></label>
+         </div>
+         <input type="hidden" name="month" value="${month}">
+         <div class="row">
+           <label>تاريخ الدفع<input type="date" name="paid_on" value="${today()}"></label>
+           <label>طريقة الدفع<select name="method">${Object.entries(PAYMENT_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
+         </div>
+         <label>ملاحظة<input name="note"></label>`,
+        async (data) => {
+          await api('POST', `/api/payroll/${teacherId}/payments`, data);
+          toast('تم تسجيل الدفعة');
+          reload();
+        }
+      )
+    );
+    $('#tp-body').querySelectorAll('[data-del-pay]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirmAction('حذف هذه الدفعة؟')) return;
+        await api('DELETE', `/api/payroll/payments/${b.dataset.delPay}`).catch((err) => toast(err.message, true));
+        reload();
+      })
+    );
+  };
+
+  $('#tp-month').addEventListener('change', load);
+  await Promise.all([load(), loadYear()]);
 }
 
 // ---------- تسجيل الأولياء (رابط عمومي) ----------

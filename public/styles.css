@@ -327,3 +327,10 @@ label.free-check { align-self: end; margin-bottom: 1.1rem; }
 .recipients li { display: flex; justify-content: space-between; align-items: center; gap: .6rem; padding: .5rem 0; border-bottom: 1px solid var(--border); }
 .recipients .owed { margin-inline-start: .4rem; }
 .b-progress { font-weight: 700; color: var(--feed-purple); }
+
+/* ساعات المعلمين */
+tr.planned td { color: var(--muted); }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: #faf7fd; }
+tfoot th { background: #f1e8f8; color: var(--feed-purple); font-weight: 700; }
+input[type=month] { width: auto; }
