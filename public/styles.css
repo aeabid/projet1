@@ -288,3 +288,29 @@ label.free-check { align-self: end; margin-bottom: 1.1rem; }
 .register form.card { border-radius: 0 0 var(--radius) var(--radius); }
 .child-block { position: relative; margin-bottom: 1rem; }
 .child-block .remove-child { position: absolute; top: .2rem; inset-inline-end: .5rem; }
+
+/* القائمة الفرعية */
+.nav-group {
+  font: inherit; background: none; border: 0; cursor: pointer;
+  padding: .35rem .9rem; border-radius: 999px; color: rgba(255, 255, 255, .85); white-space: nowrap;
+}
+.nav-group:hover, .nav-group[aria-expanded=true] { background: rgba(255, 255, 255, .12); color: #fff; }
+.nav-group.active { background: #fff; color: var(--feed-purple); font-weight: 700; }
+.nav-group .caret { font-size: .7rem; opacity: .8; }
+.subnav {
+  position: absolute; z-index: 20; min-width: 210px; display: flex; flex-direction: column; padding: .4rem;
+  background: #fff; border-radius: 12px; box-shadow: 0 12px 32px rgba(40, 10, 90, .25); border: 1px solid var(--border);
+}
+.subnav a { padding: .55rem .9rem; border-radius: 8px; color: var(--text); }
+.subnav a:hover { background: #f3eafb; text-decoration: none; }
+.subnav a.active { background: #f1e8f8; color: var(--feed-purple); font-weight: 700; }
+
+/* جدول الأوقات */
+.week { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .8rem; }
+.day { background: #faf7fd; border: 1px solid var(--border); border-radius: 10px; padding: .6rem; }
+.day.today { border-color: var(--feed-purple); box-shadow: 0 0 0 2px #e4cdf3; }
+.day h4 { margin: 0 0 .5rem; color: var(--feed-purple); font-size: 1rem; }
+.slot { background: #fff; border-radius: 8px; padding: .5rem .6rem; margin-bottom: .5rem; border-inline-start: 4px solid var(--feed-purple); box-shadow: 0 1px 3px rgba(60, 10, 120, .08); }
+.slot-time { font-weight: 700; color: var(--feed-indigo); font-size: .9rem; }
+.slot-child { color: var(--feed-pink); font-size: .85rem; font-weight: 500; }
+.slot-actions { margin-top: .3rem; }

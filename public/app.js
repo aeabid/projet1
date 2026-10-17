@@ -170,6 +170,12 @@ const routes = [
   [/^#\/register$/, viewRegister],
   [/^#\/attendance$/, viewAttendance],
   [/^#\/tasks$/, viewTasks],
+  [/^#\/timetable$/, viewTimetable],
+  [/^#\/registrations$/, (el) => {
+    sessionStorage.setItem('statusFilter', 'waiting');
+    sessionStorage.setItem('levelFilter', '');
+    return viewStudents(el);
+  }],
   [/^#\/account$/, viewAccount],
   [/^#\/dashboard$/, viewDashboard],
 ];
@@ -212,38 +218,113 @@ async function router() {
   location.hash = state.user ? homeFor(state.user) : '#/login';
 }
 
+// القائمة: عناصر أساسية، وبعضها مجموعات بعناصر فرعية
+const NAV = {
+  admin: [
+    ['#/dashboard', 'لوحة القيادة'],
+    {
+      label: 'التلاميذ',
+      items: [
+        ['#/students', 'قائمة التلاميذ'],
+        ['#/registrations', 'التسجيلات الجديدة'],
+        ['#/import', 'استيراد قائمة'],
+      ],
+    },
+    {
+      label: 'التدريس',
+      items: [
+        ['#/timetable', 'جداول الأوقات'],
+        ['#/attendance', 'الحضور'],
+        ['#/tasks', 'المهام'],
+        ['#/subjects', 'المواد'],
+      ],
+    },
+    {
+      label: 'الحسابات',
+      items: [
+        ['#/teachers', 'المعلمون'],
+        ['#/parents', 'الأولياء'],
+        ['#/admins', 'الإدارة'],
+      ],
+    },
+    ['#/account', 'حسابي'],
+  ],
+  teacher: [
+    ['#/students', 'تلاميذي'],
+    ['#/timetable', 'جدولي'],
+    ['#/attendance', 'الحضور'],
+    ['#/tasks', 'المهام'],
+    ['#/account', 'حسابي'],
+  ],
+  parent: [
+    ['#/students', 'أبنائي'],
+    ['#/timetable', 'جدول الأوقات'],
+    ['#/account', 'حسابي'],
+  ],
+};
+
 function renderTopbar() {
   const bar = $('#topbar');
+  closeSubnav();
   if (!state.user) {
     bar.hidden = true;
     return;
   }
   bar.hidden = false;
-  const links = {
-    admin: [
-      ['#/dashboard', 'لوحة القيادة'],
-      ['#/students', 'التلاميذ'],
-      ['#/teachers', 'المعلمون'],
-      ['#/parents', 'الأولياء'],
-      ['#/attendance', 'الحضور'],
-      ['#/tasks', 'المهام'],
-      ['#/subjects', 'المواد'],
-      ['#/admins', 'الإدارة'],
-    ],
-    teacher: [
-      ['#/students', 'تلاميذي'],
-      ['#/attendance', 'الحضور'],
-      ['#/tasks', 'المهام'],
-    ],
-    parent: [['#/students', 'أبنائي']],
-  }[state.user.role];
-  links.push(['#/account', 'حسابي']);
-  const current = location.hash;
-  $('#nav').innerHTML = links
-    .map(([href, label]) => `<a href="${href}" class="${current.startsWith(href) ? 'active' : ''}">${label}</a>`)
+  const current = location.hash.split('?')[0];
+  const isActive = (href) => current === href || (href !== '#/' && current.startsWith(href + '/'));
+  const nav = NAV[state.user.role];
+  $('#nav').innerHTML = nav
+    .map((entry, i) =>
+      Array.isArray(entry)
+        ? `<a href="${entry[0]}" class="${isActive(entry[0]) ? 'active' : ''}">${entry[1]}</a>`
+        : `<button type="button" class="nav-group ${entry.items.some(([h]) => isActive(h)) ? 'active' : ''}" data-group="${i}"
+             aria-haspopup="true" aria-expanded="false">${entry.label} <span class="caret">▾</span></button>`
+    )
     .join('');
+  $('#nav').querySelectorAll('.nav-group').forEach((btn) =>
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const panel = $('#subnav');
+      if (!panel.hidden && panel.dataset.group === btn.dataset.group) return closeSubnav();
+      openSubnav(btn, nav[Number(btn.dataset.group)], isActive);
+    })
+  );
   $('#who-name').textContent = `${state.user.full_name} · ${ROLE_LABELS[state.user.role]}`;
 }
+
+function openSubnav(btn, group, isActive) {
+  closeSubnav();
+  const panel = $('#subnav');
+  const bar = $('#topbar').getBoundingClientRect();
+  const rect = btn.getBoundingClientRect();
+  panel.innerHTML = group.items
+    .map(([href, label]) => `<a href="${href}" class="${isActive(href) ? 'active' : ''}">${label}</a>`)
+    .join('');
+  panel.dataset.group = btn.dataset.group;
+  panel.style.top = `${rect.bottom - bar.top + 6}px`;
+  if (window.innerWidth <= 600) {
+    panel.style.right = panel.style.left = '8px';
+  } else {
+    panel.style.left = 'auto';
+    panel.style.right = `${Math.max(bar.right - rect.right, 8)}px`;
+  }
+  panel.hidden = false;
+  btn.setAttribute('aria-expanded', 'true');
+  panel.querySelectorAll('a').forEach((a) => a.addEventListener('click', closeSubnav));
+}
+
+function closeSubnav() {
+  const panel = $('#subnav');
+  if (panel) panel.hidden = true;
+  document.querySelectorAll('.nav-group[aria-expanded=true]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#subnav')) closeSubnav();
+});
+document.addEventListener('keydown', (e) => e.key === 'Escape' && closeSubnav());
+window.addEventListener('resize', closeSubnav);
 
 $('#logout').addEventListener('click', async () => {
   await api('POST', '/api/logout').catch(() => {});
@@ -567,7 +648,7 @@ async function viewMyChildren(el) {
 // ---------- ملف التلميذ ----------
 async function viewStudent(el, id) {
   const role = state.user.role;
-  const { student, absences, notes, finance, tasks } = await api('GET', `/api/students/${id}`);
+  const { student, absences, notes, finance, tasks, timetable } = await api('GET', `/api/students/${id}`);
   const adminNotes = notes.filter((n) => !n.subject_id && n.author_role === 'admin');
   const teacherNotes = notes.filter((n) => !adminNotes.includes(n));
   const unjustified = absences.filter((a) => !a.justified).length;
@@ -648,6 +729,10 @@ async function viewStudent(el, id) {
       </dl>
     </section>
 ${finance ? financeSection(finance, role) : ''}
+    <section class="card">
+      <h3>🗓 جدول الأوقات</h3>
+      ${weekView(timetable, { showTeacher: true })}
+    </section>
     <section class="card">
       <h3>📌 مهام القسم</h3>
       ${tasks.length ? `<ul class="tasks">${tasks.map((t) => taskItem(t, false)).join('')}</ul>` : '<p class="muted">لا توجد مهام.</p>'}
@@ -1314,6 +1399,139 @@ async function viewAttendance(el) {
   };
   for (const id of ['#a-subject', '#a-level', '#a-date']) $(id).addEventListener('change', load);
   await load();
+}
+
+// ---------- جداول الأوقات ----------
+const DAYS_AR = ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
+const todayIso = () => new Date().getDay() || 7;
+
+// عرض أسبوعي: عمود لكل يوم فيه حصص
+function weekView(slots, { showLevel = false, showTeacher = false, showChild = false, editable = false } = {}) {
+  if (!slots.length) return '<p class="muted">لا توجد حصص في الجدول بعد.</p>';
+  const days = [...new Set(slots.map((x) => x.day))].sort((a, b) => a - b);
+  return `<div class="week">${days
+    .map(
+      (d) => `<div class="day ${d === todayIso() ? 'today' : ''}">
+        <h4>${DAYS_AR[d - 1]}${d === todayIso() ? ' <span class="badge average">اليوم</span>' : ''}</h4>
+        ${slots
+          .filter((x) => x.day === d)
+          .map(
+            (x) => `<div class="slot">
+              <div class="slot-time">من <bdi>${esc(x.start_time)}</bdi> إلى <bdi>${esc(x.end_time)}</bdi></div>
+              <b>${esc(x.subject_name || '')}</b>
+              ${showChild && x.child_name ? `<div class="slot-child">👤 ${esc(x.child_name)}</div>` : ''}
+              ${showLevel ? `<div class="muted small">${esc(levelLabel(x.level))}${x.group_name ? ` — فوج ${esc(x.group_name)}` : ''}</div>` : ''}
+              ${!showLevel && x.group_name ? `<span class="badge general">فوج ${esc(x.group_name)}</span>` : ''}
+              ${showTeacher && x.teacher_name ? `<div class="muted small">👩‍🏫 ${esc(x.teacher_name)}</div>` : ''}
+              ${x.room ? `<div class="muted small">📍 ${esc(x.room)}</div>` : ''}
+              ${
+                editable
+                  ? `<div class="slot-actions"><button class="link" data-edit-slot="${x.id}">تعديل</button>
+                     <button class="link danger" data-del-slot="${x.id}">حذف</button></div>`
+                  : ''
+              }
+            </div>`
+          )
+          .join('')}
+      </div>`
+    )
+    .join('')}</div>`;
+}
+
+async function viewTimetable(el) {
+  const role = state.user.role;
+  if (role === 'teacher') {
+    const { slots } = await api('GET', '/api/timetable');
+    const hours = slots.reduce((t, x) => t + (toMinutes(x.end_time) - toMinutes(x.start_time)), 0) / 60;
+    el.innerHTML = `<h2>جدولي</h2>
+      <p class="muted">${slots.length} حصة في الأسبوع — ${hours.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} ساعة</p>
+      <div class="card">${weekView(slots, { showLevel: true })}</div>`;
+    return;
+  }
+  if (role === 'parent') {
+    const { children } = await api('GET', '/api/timetable/children');
+    const slots = children
+      .flatMap((c) => c.slots.map((x) => ({ ...x, child_name: c.full_name })))
+      .sort((a, b) => a.day - b.day || a.start_time.localeCompare(b.start_time));
+    el.innerHTML = `<h2>جدول الأوقات</h2>
+      ${children.length > 1 ? `<p class="muted">جدول كل أبنائك معًا: ${children.map((c) => esc(c.full_name)).join('، ')}</p>` : ''}
+      <div class="card">${weekView(slots, { showTeacher: true, showChild: children.length > 1 })}</div>`;
+    return;
+  }
+
+  // الإدارة: جدول كل مستوى
+  const level = sessionStorage.getItem('ttLevel') || state.meta.levels[0].code;
+  const { users: teachers } = await api('GET', '/api/users?role=teacher');
+  el.innerHTML = `
+    <div class="page-head">
+      <h2>جداول الأوقات</h2>
+      <button class="btn" id="add-slot">+ حصة جديدة</button>
+    </div>
+    <div class="filters"><select id="tt-level">${levelOptions(level)}</select></div>
+    <div class="card" id="tt-week"></div>`;
+
+  const load = async () => {
+    const lvl = $('#tt-level').value;
+    sessionStorage.setItem('ttLevel', lvl);
+    const { slots } = await api('GET', '/api/timetable?level=' + encodeURIComponent(lvl));
+    $('#tt-week').innerHTML = weekView(slots, { showTeacher: true, editable: true, showLevel: false });
+    $('#tt-week').querySelectorAll('[data-edit-slot]').forEach((b) =>
+      b.addEventListener('click', () => slotForm(slots.find((x) => x.id === Number(b.dataset.editSlot))))
+    );
+    $('#tt-week').querySelectorAll('[data-del-slot]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirmAction('حذف هذه الحصة؟')) return;
+        await api('DELETE', `/api/timetable/${b.dataset.delSlot}`).catch((err) => toast(err.message, true));
+        load();
+      })
+    );
+  };
+
+  const slotForm = (slot) => {
+    const lvl = slot?.level || $('#tt-level').value;
+    const subjects = state.meta.subjects.filter((x) => !x.levels || x.levels.includes(lvl));
+    openModal(
+      slot ? 'تعديل الحصة' : `حصة جديدة — ${levelLabel(lvl)}`,
+      `<input type="hidden" name="level" value="${esc(lvl)}">
+       <div class="row">
+         <label>اليوم<select name="day">${DAYS_AR.map((d, i) => `<option value="${i + 1}" ${slot?.day === i + 1 ? 'selected' : ''}>${d}</option>`).join('')}</select></label>
+         <label>الفوج (اختياري)<input name="group_name" value="${esc(slot?.group_name || '')}" placeholder="كل الأفواج"></label>
+       </div>
+       <div class="row">
+         <label>من<input type="time" name="start_time" value="${esc(slot?.start_time || '14:00')}" required></label>
+         <label>إلى<input type="time" name="end_time" value="${esc(slot?.end_time || '15:30')}" required></label>
+       </div>
+       <label>المادة<select name="subject_id" id="slot-subject">${subjectOptions(subjects, slot?.subject_id)}</select></label>
+       <label>المعلم<select name="teacher_id" id="slot-teacher"></select></label>
+       <label>القاعة / الرابط<input name="room" value="${esc(slot?.room || '')}" placeholder="مثال: قاعة 2 أو عن بعد"></label>`,
+      async (data) => {
+        if (slot) await api('PUT', `/api/timetable/${slot.id}`, data);
+        else await api('POST', '/api/timetable', data);
+        toast('تم الحفظ');
+        load();
+      }
+    );
+    // المعلمون الذين يدرّسون المادة المختارة
+    const syncTeachers = () => {
+      const sid = Number($('#slot-subject').value);
+      const list = teachers.filter((t) => t.subjects.some((x) => x.id === sid));
+      $('#slot-teacher').innerHTML =
+        '<option value="">— بدون —</option>' +
+        list.map((t) => `<option value="${t.id}" ${t.id === slot?.teacher_id ? 'selected' : ''}>${esc(t.full_name)}</option>`).join('');
+      if (list.length === 1 && !slot) $('#slot-teacher').value = list[0].id;
+    };
+    $('#slot-subject').addEventListener('change', syncTeachers);
+    syncTeachers();
+  };
+
+  $('#tt-level').addEventListener('change', load);
+  $('#add-slot').addEventListener('click', () => slotForm(null));
+  await load();
+}
+
+function toMinutes(t) {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
 }
 
 // ---------- تسجيل الأولياء (رابط عمومي) ----------

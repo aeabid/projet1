@@ -274,3 +274,34 @@ test('teacher class list, bulk attendance and class tasks', async () => {
   assert.strictEqual((await parent('GET', '/api/tasks')).status, 403);
   void d;
 });
+
+test('timetables: admin builds per level, teacher and parents see theirs', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const math = meta.subjects.find((s) => s.name === 'الرياضيات').id;
+  const fr = meta.subjects.find((s) => s.name === 'الفرنسية').id;
+  const svt = meta.subjects.find((s) => s.name === 'علوم الحياة والأرض').id;
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'ttt', full_name: 'TT', password: 'secret1', subject_ids: [math] })).body.user;
+  const pa = (await admin('POST', '/api/users', { role: 'parent', username: 'ptt', full_name: 'PT', password: 'secret1' })).body.user;
+  const kid = (await admin('POST', '/api/students', { full_name: 'TT Kid', level: '7', group_name: 'A', parent_id: pa.id, subject_ids: [math] })).body.student;
+
+  const slot = (extra) => admin('POST', '/api/timetable', { level: '7', day: 3, start_time: '14:00', end_time: '15:30', subject_id: math, teacher_id: t.id, ...extra });
+  assert.strictEqual((await slot({})).status, 201);
+  // نفس المعلم في نفس الوقت (حتى في مستوى آخر): مرفوض
+  assert.strictEqual((await slot({ level: '8', start_time: '15:00', end_time: '16:00' })).status, 409);
+  assert.strictEqual((await slot({ start_time: '16:00', end_time: '15:00' })).status, 400);
+  assert.strictEqual((await slot({ subject_id: svt, teacher_id: null })).status, 400); // علوم للتاسعة فقط
+  await slot({ day: 5, start_time: '09:00', end_time: '10:00', subject_id: fr, teacher_id: null }); // مادة غير مسجّل فيها
+  await slot({ day: 6, start_time: '09:00', end_time: '10:00', group_name: 'B' }); // فوج آخر
+
+  const teacher = await login('ttt', 'secret1');
+  const mine = (await teacher('GET', '/api/timetable')).body.slots;
+  assert.deepStrictEqual(mine.map((s) => [s.day, s.start_time]), [[3, '14:00'], [6, '09:00']]);
+  assert.strictEqual((await teacher('POST', '/api/timetable', { level: '7', day: 1, start_time: '08:00', end_time: '09:00', subject_id: math })).status, 403);
+
+  const parent = await login('ptt', 'secret1');
+  const { children } = (await parent('GET', '/api/timetable/children')).body;
+  assert.deepStrictEqual(children[0].slots.map((s) => s.day), [3]); // لا الفرنسية ولا الفوج B
+  assert.deepStrictEqual((await parent('GET', `/api/students/${kid.id}`)).body.timetable.map((s) => s.subject_name), ['الرياضيات']);
+  assert.strictEqual((await parent('GET', '/api/timetable')).status, 403);
+});
