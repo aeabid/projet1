@@ -394,7 +394,58 @@ function renderTopbar() {
     })
   );
   $('#who-name').textContent = `${state.user.full_name} · ${ROLE_LABELS[state.user.role]}`;
+
+  // نسخة عمودية من نفس القائمة: المجموعة التي فيها الصفحة الحالية مفتوحة
+  $('#vmenu').innerHTML =
+    nav
+      .map((entry) =>
+        Array.isArray(entry)
+          ? `<a href="${entry[0]}" class="${isActive(entry[0]) ? 'active' : ''}">${entry[1]}</a>`
+          : `<details ${entry.items.some(([h]) => isActive(h)) ? 'open' : ''}><summary>${entry.label}</summary>${entry.items
+              .map(([h, l]) => `<a href="${h}" class="${isActive(h) ? 'active' : ''}">${l}</a>`)
+              .join('')}</details>`
+      )
+      .join('') + `<div class="vmenu-user">${esc(state.user.full_name)} · ${ROLE_LABELS[state.user.role]}</div>`;
+  $('#vmenu').querySelectorAll('a').forEach((a) => a.addEventListener('click', closeVmenu));
+  fitNav();
 }
+
+// القائمة على سطر واحد فقط؛ إذا لم تتّسع تتحوّل إلى زر ☰ وقائمة عمودية
+function fitNav() {
+  const bar = $('#topbar');
+  if (bar.hidden) return;
+  bar.classList.remove('compact');
+  $('#menu-toggle').hidden = true;
+  const nav = $('#nav');
+  if (nav.scrollWidth > nav.clientWidth + 1) {
+    bar.classList.add('compact');
+    $('#menu-toggle').hidden = false;
+  } else {
+    closeVmenu();
+  }
+}
+
+function closeVmenu() {
+  $('#vmenu').hidden = true;
+  $('#menu-toggle').setAttribute('aria-expanded', 'false');
+}
+
+$('#menu-toggle').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = $('#vmenu').hidden;
+  $('#vmenu').hidden = !open;
+  $('#menu-toggle').setAttribute('aria-expanded', String(open));
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#vmenu')) closeVmenu();
+});
+document.addEventListener('keydown', (e) => e.key === 'Escape' && closeVmenu());
+let fitTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(fitTimer);
+  fitTimer = setTimeout(fitNav, 100);
+});
+document.fonts?.ready.then(fitNav);
 
 function openSubnav(btn, group, isActive) {
   closeSubnav();
