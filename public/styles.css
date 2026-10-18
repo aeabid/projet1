@@ -334,3 +334,70 @@ tr.clickable { cursor: pointer; }
 tr.clickable:hover td { background: #faf7fd; }
 tfoot th { background: #f1e8f8; color: var(--feed-purple); font-weight: 700; }
 input[type=month] { width: auto; }
+
+/* ===== الرئيسية والمالية ===== */
+:root { --profit: #2a78d6; --loss: #d03b3b; }
+.in { color: var(--good); }
+.out { color: var(--loss); }
+.net { display: inline-block; font-weight: 700; font-size: .9rem; border-radius: 999px; padding: .1rem .6rem; white-space: nowrap; }
+.net.up { background: #e8f1fc; color: #1d5fae; }
+.net.down { background: #fbe9e9; color: #a82828; }
+.net.zero { background: #eef1f8; color: var(--muted); }
+.stat.profit b { color: var(--profit); }
+.stat.loss b { color: var(--loss); }
+
+.activity-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+.card.activity h3 { margin: 0; }
+.io { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: .6rem; }
+.io > div > b { display: block; font-size: 1.25rem; margin-bottom: .3rem; }
+.line { display: flex; justify-content: space-between; gap: .5rem; font-size: .85rem; padding: .15rem 0; }
+.line.total { border-top: 1px solid var(--border); margin-top: .4rem; padding-top: .5rem; font-weight: 700; }
+.card .line b { font-size: inherit; }
+
+.home-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin: 1.2rem 0 .6rem; }
+.home-tile {
+  display: flex; flex-direction: column; gap: .3rem; padding: 1.3rem; border-radius: 16px; color: #fff;
+  background: var(--feed-gradient); box-shadow: 0 8px 24px rgba(60, 10, 120, .2); transition: transform .15s;
+}
+.home-tile:hover { text-decoration: none; transform: translateY(-2px); }
+.home-tile .ico { font-size: 2.2rem; }
+.home-tile b { font-size: 1.15rem; }
+.home-tile small { opacity: .85; }
+.quick-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+.alert-card ul { margin: .4rem 0 0; padding-inline-start: 1.2rem; }
+
+.class-chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: 1rem; align-items: center; }
+.chip-wrap { display: inline-flex; align-items: center; }
+.chip { font: inherit; cursor: pointer; border: 1px solid var(--border); background: #fff; border-radius: 999px; padding: .3rem .8rem; color: var(--text); }
+.chip.on { background: var(--feed-purple); color: #fff; border-color: var(--feed-purple); }
+.card.course { color: var(--text); display: block; }
+.card.course:hover { text-decoration: none; box-shadow: 0 4px 16px rgba(30, 50, 120, .1); }
+.card.course h3 { margin: 0; }
+.grid2.even { grid-template-columns: 1fr 1fr; }
+.grid2 h4 { margin: 0 0 .4rem; color: var(--feed-purple); }
+table.fin td { vertical-align: top; }
+
+/* مخطط الصافي الشهري: عمود لكل شهر حول خط الصفر */
+.netchart { display: flex; gap: 4px; align-items: stretch; height: 200px; padding: .5rem 0 1.6rem; margin-bottom: 1rem; }
+.nc-col { position: relative; flex: 1; display: flex; flex-direction: column; min-width: 18px; outline: none; }
+.nc-half { flex: 1; display: flex; justify-content: center; }
+.nc-half.up { align-items: flex-end; border-bottom: 1px solid #c9c3d3; }
+.nc-half.down { align-items: flex-start; }
+.nc-bar { width: min(60%, 28px); }
+.nc-bar.pos { background: var(--profit); border-radius: 4px 4px 0 0; }
+.nc-bar.neg { background: var(--loss); border-radius: 0 0 4px 4px; }
+.nc-label { position: absolute; bottom: -1.5rem; inset-inline: 0; text-align: center; font-size: .75rem; color: var(--muted); }
+.nc-tip {
+  display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); z-index: 5; white-space: nowrap;
+  background: #2a1840; color: #fff; font-size: .8rem; padding: .4rem .6rem; border-radius: 6px; pointer-events: none;
+}
+.nc-col:hover .nc-tip, .nc-col:focus .nc-tip { display: block; }
+.nc-col:hover .nc-half { background: #f6f0fb; }
+
+@media (max-width: 600px) {
+  .io, .grid2.even { grid-template-columns: 1fr; }
+  .nc-label { font-size: .6rem; }
+}
+.activity-cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+.line > span:last-child, .stat b, .io b { white-space: nowrap; }
+div.phone-line { display: flex; }

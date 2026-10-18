@@ -249,6 +249,14 @@ const routes = [
   [/^#\/whatsapp$/, viewWhatsappGroups],
   [/^#\/broadcast$/, viewBroadcast],
   [/^#\/payroll$/, viewPayroll],
+  [/^#\/home$/, (el) => viewHome(el)],
+  [/^#\/program$/, (el) => viewProgram(el)],
+  [/^#\/program\/child\/(\d+)$/, (el, id) => viewProgramChild(el, Number(id))],
+  [/^#\/courses$/, (el) => viewCourses(el)],
+  [/^#\/courses\/(\d+)$/, (el, id) => viewCourse(el, Number(id))],
+  [/^#\/ledger$/, (el) => viewLedger(el)],
+  [/^#\/staff$/, (el) => viewStaff(el)],
+  [/^#\/finance$/, (el) => viewFinance(el)],
   [/^#\/payroll\/(\d+)$/, (el, id) => viewTeacherPay(el, Number(id))],
   [/^#\/my-pay$/, (el) => viewTeacherPay(el, state.user.id)],
   [/^#\/registrations$/, (el) => {
@@ -261,7 +269,7 @@ const routes = [
 ];
 
 function homeFor(user) {
-  return user.role === 'admin' ? '#/dashboard' : '#/students';
+  return user.role === 'admin' ? '#/home' : '#/students';
 }
 
 async function router() {
@@ -301,23 +309,29 @@ async function router() {
 // القائمة: عناصر أساسية، وبعضها مجموعات بعناصر فرعية
 const NAV = {
   admin: [
-    ['#/dashboard', 'لوحة القيادة'],
+    ['#/home', 'الرئيسية'],
     {
-      label: 'التلاميذ',
+      label: 'دروس الدعم',
       items: [
-        ['#/students', 'قائمة التلاميذ'],
+        ['#/dashboard', 'لوحة دروس الدعم'],
+        ['#/students', 'التلاميذ'],
         ['#/registrations', 'التسجيلات الجديدة'],
-        ['#/import', 'استيراد قائمة'],
-      ],
-    },
-    {
-      label: 'التدريس',
-      items: [
         ['#/timetable', 'جداول الأوقات'],
         ['#/attendance', 'الحضور'],
         ['#/tasks', 'المهام'],
-        ['#/subjects', 'المواد'],
         ['#/payroll', 'ساعات وخلاص المعلمين'],
+        ['#/subjects', 'المواد'],
+        ['#/import', 'استيراد قائمة'],
+      ],
+    },
+    ['#/program', 'البرنامج التربوي'],
+    ['#/courses', 'الدورات'],
+    {
+      label: 'المالية',
+      items: [
+        ['#/finance', 'المردودية المالية'],
+        ['#/ledger', 'المداخيل والمصاريف'],
+        ['#/staff', 'الإطار والأجور'],
       ],
     },
     {
@@ -333,9 +347,9 @@ const NAV = {
         ['#/teachers', 'المعلمون'],
         ['#/parents', 'الأولياء'],
         ['#/admins', 'الإدارة'],
+        ['#/account', 'حسابي'],
       ],
     },
-    ['#/account', 'حسابي'],
   ],
   teacher: [
     ['#/students', 'تلاميذي'],
@@ -464,7 +478,8 @@ async function viewDashboard(el) {
   const s = await api('GET', '/api/stats');
   const byLevel = Object.fromEntries(s.by_level.map((r) => [r.level, r.n]));
   el.innerHTML = `
-    <h2>لوحة القيادة</h2>
+    <a href="#/home" class="muted small">→ الرئيسية</a>
+    <h2>لوحة دروس الدعم</h2>
     <div class="stats">
       <div class="stat"><b>${s.students}</b><span>تلميذ</span></div>
       <div class="stat"><b>${s.teachers}</b><span>معلم</span></div>

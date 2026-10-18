@@ -368,3 +368,57 @@ test('teacher payroll: hours from timetable, adjustments, payments, history kept
   const list = (await admin('GET', '/api/payroll?month=2025-09')).body;
   assert.strictEqual(list.teachers.find((x) => x.id === t.id).remaining, 30);
 });
+
+test('educational program, courses, staff, ledger and monthly finance summary', async () => {
+  const admin = await login('admin', 'admin123');
+  const month = new Date().toISOString().slice(0, 7);
+  const day = new Date().toISOString().slice(0, 10);
+  const before = (await admin('GET', `/api/finance/summary?month=${month}`)).body;
+  const act = (sum, key) => sum.activities.find((a) => a.key === key);
+
+  // البرنامج التربوي
+  const cls = (await admin('POST', '/api/program/classes', { name: 'قسم 4-5 سنوات', age_range: '4-5' })).body.class;
+  const child = (await admin('POST', '/api/program/children', { full_name: 'Prog Kid', class_id: cls.id, monthly_fee: 150, start_date: `${month}-01`, guardian_phone: '22000111' })).body.child;
+  assert.strictEqual((await admin('POST', `/api/program/children/${child.id}/payments`, { month, amount: 150 })).status, 201);
+  const prog = (await admin('GET', '/api/program')).body;
+  assert.strictEqual(prog.classes.find((k) => k.id === cls.id).children, 1);
+  assert.strictEqual(prog.children.find((c) => c.id === child.id).balance, 0);
+  // جوان-أوت لا تُحتسب
+  const summer = (await admin('POST', '/api/program/children', { full_name: 'Summer Kid', monthly_fee: 100, start_date: '2025-06-01', status: 'left', end_date: '2025-08-31' })).body.child;
+  assert.strictEqual((await admin('GET', `/api/program/children/${summer.id}`)).body.finance.total_due, 0);
+
+  // دورة
+  const course = (await admin('POST', '/api/courses', { name: 'دورة عطلة الشتاء', kind: 'holiday', price: 80, start_date: day, end_date: day })).body.course;
+  await admin('POST', `/api/courses/${course.id}/participants`, { full_name: 'P1', paid_now: 80 });
+  const p2 = (await admin('POST', `/api/courses/${course.id}/participants`, { full_name: 'P2', fee: 60 })).body.participant;
+  await admin('POST', `/api/courses/participants/${p2.id}/payments`, { amount: 30 });
+  await admin('POST', '/api/ledger', { direction: 'expense', activity: 'courses', category: 'supplies', amount: 40, course_id: course.id, description: 'أدوات' });
+  const cd = (await admin('GET', `/api/courses/${course.id}`)).body;
+  assert.strictEqual(cd.course.expected, 140);
+  assert.strictEqual(cd.course.received, 110);
+  assert.strictEqual(cd.course.net, 70);
+  assert.strictEqual(cd.participants.find((p) => p.full_name === 'P2').remaining, 30);
+
+  // الإطار: أجور الشهر مرة واحدة فقط
+  await admin('POST', '/api/staff', { full_name: 'مربية', activity: 'program', monthly_salary: 600 });
+  await admin('POST', '/api/staff', { full_name: 'قديم', activity: 'program', monthly_salary: 500, active: false });
+  assert.strictEqual((await admin('POST', '/api/staff/salaries', { month, date: day })).body.created, 1);
+  assert.strictEqual((await admin('POST', '/api/staff/salaries', { month, date: day })).body.created, 0);
+  await admin('POST', '/api/ledger', { direction: 'expense', activity: 'general', category: 'rent', amount: 1000, date: day });
+  assert.strictEqual((await admin('POST', '/api/ledger', { direction: 'expense', activity: 'x', category: 'rent', amount: 1 })).status, 400);
+
+  const after = (await admin('GET', `/api/finance/summary?month=${month}`)).body;
+  const delta = (key, k) => Math.round((act(after, key)[k] - act(before, key)[k]) * 1000) / 1000;
+  assert.strictEqual(delta('program', 'income'), 150);
+  assert.strictEqual(delta('program', 'expense'), 600);
+  assert.strictEqual(delta('courses', 'income'), 110);
+  assert.strictEqual(delta('courses', 'expense'), 40);
+  assert.strictEqual(delta('general', 'expense'), 1000);
+  assert.ok(after.accrual.program.billed >= 150);
+  const year = (await admin('GET', '/api/finance/year')).body;
+  assert.ok(year.months.some((m) => m.month === month));
+
+  const teacher = await login('tpay', 'secret1');
+  assert.strictEqual((await teacher('GET', `/api/finance/summary?month=${month}`)).status, 403);
+  assert.strictEqual((await teacher('GET', '/api/program')).status, 403);
+});
