@@ -257,6 +257,14 @@ const routes = [
   [/^#\/ledger$/, (el) => viewLedger(el)],
   [/^#\/staff$/, (el) => viewStaff(el)],
   [/^#\/finance$/, (el) => viewFinance(el)],
+  [/^#\/people$/, (el) => viewPeople(el)],
+  [/^#\/debts$/, (el) => viewDebts(el)],
+  [/^#\/receipts$/, (el) => viewReceipts(el)],
+  [/^#\/receipt\/(support|program|course)\/(\d+)$/, (el, kind, id) => viewReceipt(el, kind, Number(id))],
+  [/^#\/todo$/, (el) => viewTodo(el)],
+  [/^#\/meetings$/, (el) => viewMeetings(el)],
+  [/^#\/alerts$/, (el) => viewAlerts(el)],
+  [/^#\/fees$/, (el) => viewFees(el)],
   [/^#\/payroll\/(\d+)$/, (el, id) => viewTeacherPay(el, Number(id))],
   [/^#\/my-pay$/, (el) => viewTeacherPay(el, state.user.id)],
   [/^#\/registrations$/, (el) => {
@@ -324,13 +332,25 @@ const NAV = {
         ['#/import', 'استيراد قائمة'],
       ],
     },
+    {
+      label: 'إدارة المركز',
+      items: [
+        ['#/alerts', 'التنبيهات'],
+        ['#/todo', 'المهام والمشاكل'],
+        ['#/meetings', 'الاجتماعات والقرارات'],
+        ['#/people', 'كل تلاميذ المركز'],
+      ],
+    },
     ['#/program', 'البرنامج التربوي'],
-    ['#/courses', 'الدورات'],
+    ['#/courses', 'الدورات والأنشطة'],
     {
       label: 'المالية',
       items: [
         ['#/finance', 'المردودية المالية'],
+        ['#/debts', 'المتخلّد بذمتهم'],
+        ['#/receipts', 'الوصولات'],
         ['#/ledger', 'المداخيل والمصاريف'],
+        ['#/fees', 'التعريفات والتخفيضات'],
         ['#/staff', 'الإطار والأجور'],
       ],
     },
@@ -357,6 +377,7 @@ const NAV = {
     ['#/attendance', 'الحضور'],
     ['#/tasks', 'المهام'],
     ['#/my-pay', 'ساعاتي وخلاصي'],
+    ['#/todo', 'مهامي'],
     ['#/account', 'حسابي'],
   ],
   parent: [
@@ -407,7 +428,23 @@ function renderTopbar() {
       )
       .join('') + `<div class="vmenu-user">${esc(state.user.full_name)} · ${ROLE_LABELS[state.user.role]}</div>`;
   $('#vmenu').querySelectorAll('a').forEach((a) => a.addEventListener('click', closeVmenu));
+  $('#bell').hidden = state.user.role !== 'admin';
+  if (state.user.role === 'admin') refreshBell();
   fitNav();
+}
+
+// جرس التنبيهات (الإدارة): يُحدَّث كل دقيقتين على الأكثر
+let bellAt = 0;
+async function refreshBell(force = false) {
+  if (!force && Date.now() - bellAt < 120000) return;
+  bellAt = Date.now();
+  try {
+    const { count } = await api('GET', '/api/alerts');
+    $('#bell-count').textContent = count;
+    $('#bell-count').hidden = !count;
+  } catch {
+    /* لا شيء */
+  }
 }
 
 // القائمة على سطر واحد فقط؛ إذا لم تتّسع تتحوّل إلى زر ☰ وقائمة عمودية
@@ -744,6 +781,10 @@ async function studentForm(student, onDone) {
        <label>المبلغ الشهري المتفق عليه (د.ت)<input name="monthly_fee" inputmode="decimal" value="${esc(s.monthly_fee ?? '')}" placeholder="مثال: 120"></label>
        <label class="check free-check"><input type="checkbox" name="free" ${s.free ? 'checked' : ''}> يدرس مجانًا</label>
      </div>
+     <div class="row">
+       <label>تخفيض شهري (د.ت)<input name="discount" inputmode="decimal" value="${esc(s.discount ?? '')}" placeholder="0"></label>
+       <label>سبب التخفيض<input name="discount_reason" value="${esc(s.discount_reason || '')}" placeholder="مثال: إخوة، منحة"></label>
+     </div>
      <label>ملاحظات التسجيل<input name="remarks" value="${esc(s.remarks)}" placeholder="مثال: ما عدا الفرنسية"></label>
      <label>الولي
        <select name="parent_id">
@@ -766,6 +807,18 @@ async function studentForm(student, onDone) {
   const syncPack = () => $('#subject-checks').classList.toggle('disabled', pack.checked);
   pack.addEventListener('change', syncPack);
   syncPack();
+  // المعلوم الافتراضي حسب المستوى (من «التعريفات») لتلميذ جديد
+  if (!student) {
+    const fees = await api('GET', '/api/settings/fees').then((r) => r.support).catch(() => ({}));
+    const feeInput = $('#modal input[name=monthly_fee]');
+    const levelSel = $('#modal select[name=level]');
+    const applyFee = () => {
+      if (!feeInput.dataset.touched && fees[levelSel.value]) feeInput.value = fees[levelSel.value];
+    };
+    feeInput.addEventListener('input', () => (feeInput.dataset.touched = '1'));
+    levelSel.addEventListener('change', applyFee);
+    applyFee();
+  }
   const statusSel = $('#modal select[name=status]');
   const syncStatus = () => ($('#end-date-field').hidden = !['left', 'stopped'].includes(statusSel.value));
   statusSel.addEventListener('change', syncStatus);
@@ -1012,9 +1065,10 @@ ${finance ? financeSection(finance, role) : ''}
        </div>
        <label>ملاحظة<input name="note" placeholder="مثال: رقم الوصل"></label>`,
       async (data) => {
-        await api('POST', `/api/students/${id}/payments`, data);
+        const { payment } = await api('POST', `/api/students/${id}/payments`, data);
         toast('تم تسجيل الدفعة');
-        reload();
+        if (confirmAction(`تم تسجيل الدفعة (وصل رقم ${payment.receipt_no}). فتح الوصل للطباعة؟`)) location.hash = `#/receipt/support/${payment.id}`;
+        else reload();
       }
     );
   });
@@ -1093,7 +1147,7 @@ ${finance ? financeSection(finance, role) : ''}
 }
 
 // الوضعية المالية: الولي والإدارة
-function financeSection(f, role) {
+function financeSection(f, role, kind = 'support') {
   const status = (m) =>
     m.due === 0
       ? '<span class="badge general">دفع مسبق</span>'
@@ -1109,6 +1163,7 @@ function financeSection(f, role) {
         ${role === 'admin' ? '<button class="btn small" id="add-payment">+ دفعة</button>' : ''}
       </div>
       ${f.free ? '<p class="free-note">🎓 هذا التلميذ يدرس مجانًا.</p>' : ''}
+      ${!f.free && f.discount ? `<p class="free-note">🏷️ تخفيض ${fmtMoney(f.discount)} في الشهر${f.discount_reason ? ` (${esc(f.discount_reason)})` : ''} — المبلغ الصافي: <b>${fmtMoney(f.net_fee)}</b></p>` : ''}
       <div class="stats compact">
         <div class="stat"><b>${f.free ? 'مجاني' : fmtMoney(f.monthly_fee)}</b><span>المبلغ الشهري</span></div>
         <div class="stat"><b>${fmtMoney(f.total_due)}</b><span>مجموع المستحق</span></div>
@@ -1134,7 +1189,9 @@ function financeSection(f, role) {
                         .map(
                           (p) => `<div>${fmtMoney(p.amount)} · ${fmtDate(p.paid_on)}${p.method ? ' · ' + esc(PAYMENT_LABELS[p.method] || p.method) : ''}${
                             p.note ? ` · <span class="muted">${esc(p.note)}</span>` : ''
-                          }${role === 'admin' ? ` <button class="link danger" data-del-pay="${p.id}">حذف</button>` : ''}</div>`
+                          } <a class="receipt-link" href="#/receipt/${kind}/${p.id}">🧾 وصل ${p.receipt_no ?? ''}</a>${
+                            role === 'admin' ? ` <button class="link danger" data-del-pay="${p.id}">حذف</button>` : ''
+                          }</div>`
                         )
                         .join('') || '<span class="muted">—</span>'
                     }</td>

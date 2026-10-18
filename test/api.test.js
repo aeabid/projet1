@@ -422,3 +422,73 @@ test('educational program, courses, staff, ledger and monthly finance summary', 
   assert.strictEqual((await teacher('GET', `/api/finance/summary?month=${month}`)).status, 403);
   assert.strictEqual((await teacher('GET', '/api/program')).status, 403);
 });
+
+test('center management: discounts, receipts, debts, people, tasks, meetings, alerts, kpis', async () => {
+  const admin = await login('admin', 'admin123');
+  const pa = (await admin('POST', '/api/users', { role: 'parent', username: 'pcm', full_name: 'Famille CM', password: 'secret1', phone: '20 999 888' })).body.user;
+  // تخفيض: 150 - 30 = 120 في الشهر، دين منذ 3 أشهر
+  const start = '2026-03-01'; // جويلية وأوت لا يُحتسبان: تاريخ ثابت خارج الصيف
+  const st = (await admin('POST', '/api/students', { full_name: 'CM Kid', level: '6', parent_id: pa.id, monthly_fee: 150, discount: 30, discount_reason: 'إخوة', start_date: start })).body.student;
+  let f = (await admin('GET', `/api/students/${st.id}`)).body.finance;
+  assert.strictEqual(f.net_fee, 120);
+  assert.strictEqual(f.months.length >= 2, true);
+  assert.strictEqual(f.months[0].due, 120);
+
+  // نفس العائلة في البرنامج التربوي (نفس الهاتف) ودورة
+  const child = (await admin('POST', '/api/program/children', { full_name: 'CM Small', guardian_name: 'Famille CM', guardian_phone: '+216 20999888', monthly_fee: 100, start_date: start })).body.child;
+  const course = (await admin('POST', '/api/courses', { name: 'رحلة إلى عين دراهم', kind: 'trip', price: 50, place: 'عين دراهم', capacity: 30 })).body.course;
+  await admin('POST', `/api/courses/${course.id}/participants`, { full_name: 'CM Kid', student_id: st.id, discount: 10 });
+
+  const debts = (await admin('GET', '/api/debts')).body;
+  const fam = debts.families.find((x) => x.key === '20999888');
+  assert.ok(fam, 'family grouped by phone');
+  assert.deepStrictEqual(fam.items.map((i) => i.type).sort(), ['course', 'program', 'support']);
+  assert.ok(fam.months_late >= 2 && fam.severity === 'high');
+  assert.strictEqual(fam.items.find((i) => i.type === 'course').amount, 40);
+
+  // وصل
+  const pay = (await admin('POST', `/api/students/${st.id}/payments`, { month: start.slice(0, 7), amount: 120 })).body.payment;
+  assert.ok(pay.receipt_no > 0);
+  const r = (await admin('GET', `/api/receipts/support/${pay.id}`)).body.receipt;
+  assert.strictEqual(r.receipt_no, pay.receipt_no);
+  assert.strictEqual(r.beneficiary, 'CM Kid');
+  assert.strictEqual(r.payer, 'Famille CM');
+  const parent = await login('pcm', 'secret1');
+  assert.strictEqual((await parent('GET', `/api/receipts/support/${pay.id}`)).status, 200);
+  assert.strictEqual((await parent('GET', `/api/receipts/program/1`)).status, 403);
+  const p2 = (await admin('POST', `/api/program/children/${child.id}/payments`, { amount: 100 })).body.payment;
+  assert.strictEqual(p2.receipt_no, pay.receipt_no + 1);
+  const list = (await admin('GET', '/api/receipts')).body.receipts;
+  assert.ok(list.some((x) => x.receipt_no === p2.receipt_no && x.kind === 'program'));
+
+  // كل تلاميذ المركز: نفس الطفل في الدعم والرحلة
+  const people = (await admin('GET', '/api/center/people')).body.people;
+  const kid = people.find((x) => x.full_name === 'CM Kid');
+  assert.deepStrictEqual(kid.programs.map((p) => p.type).sort(), ['support', 'trip']);
+
+  // مهام ومشاكل
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'tcm', full_name: 'T CM', password: 'secret1' })).body.user;
+  await admin('POST', '/api/todo', { title: 'إصلاح المكيّف', kind: 'problem', priority: 'urgent' });
+  const late = (await admin('POST', '/api/todo', { title: 'تحضير امتحان', assignee_user_id: t.id, due_date: '2026-01-01' })).body.task;
+  const teacher = await login('tcm', 'secret1');
+  assert.deepStrictEqual((await teacher('GET', '/api/todo')).body.tasks.map((x) => x.title), ['تحضير امتحان']);
+  let alerts = (await admin('GET', '/api/alerts')).body;
+  assert.ok(alerts.alerts.some((a) => a.link === '#/todo' && a.level === 'urgent'));
+  assert.ok(alerts.alerts.some((a) => a.link === '#/debts'));
+  assert.strictEqual((await teacher('PATCH', `/api/todo/${late.id}`, { status: 'done' })).status, 200);
+
+  // اجتماع وقرار ← مهمة
+  const m = (await admin('POST', '/api/meetings', { title: 'اجتماع الإطار', date: '2026-10-01', minutes: 'نقاش حول الرحلات' })).body.meeting;
+  const d = (await admin('POST', `/api/meetings/${m.id}/decisions`, { text: 'تنظيم رحلة في العطلة', owner: 'المدير', due_date: '2026-11-01' })).body.decision;
+  const task = (await admin('POST', `/api/decisions/${d.id}/task`)).body.task;
+  await admin('PATCH', `/api/todo/${task.id}`, { status: 'done' });
+  const meetings = (await admin('GET', '/api/meetings')).body.meetings;
+  assert.strictEqual(meetings.find((x) => x.id === m.id).decisions[0].status, 'done');
+
+  // التعريفات والمؤشرات
+  await admin('PUT', '/api/settings/fees', { support: { 9: 160, 5: '120' } });
+  assert.deepStrictEqual((await admin('GET', '/api/settings/fees')).body.support, { 5: 120, 9: 160 });
+  const k = (await admin('GET', '/api/kpis')).body;
+  assert.ok(k.support_active >= 1 && k.debtors >= 1 && k.tasks_open >= 1);
+  assert.strictEqual((await teacher('GET', '/api/kpis')).status, 403);
+});

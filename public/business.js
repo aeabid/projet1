@@ -3,7 +3,16 @@
 // تستعمل الأدوات المعرّفة في app.js ($، esc، api، openModal، fmtMoney، ...)
 
 const ACTIVITY_ICONS = { support: '📚', program: '🎨', courses: '🏕️', general: '🏢' };
-const COURSE_KIND_LABELS = { holiday: 'دورة عطلة', summer: 'دورة صيفية', other: 'مجموعة / أخرى' };
+const COURSE_KIND_LABELS = {
+  holiday: 'دورة عطلة',
+  summer: 'دورة صيفية',
+  other: 'مجموعة / أخرى',
+  activity: 'نشاط',
+  trip: 'رحلة',
+  camp: 'مخيم',
+};
+const COURSE_KIND_ICONS = { holiday: '📘', summer: '☀️', other: '👥', activity: '🎭', trip: '🚌', camp: '⛺' };
+const COURSE_STATUS_LABELS = { planned: 'مبرمج', done: 'تمّ', cancelled: 'أُلغي' };
 
 async function financeMeta() {
   state.finMeta ||= await api('GET', '/api/finance/meta');
@@ -37,14 +46,18 @@ async function viewHome(el) {
       <h2>حوصلة الشهر</h2>
       ${monthPicker('home-month')}
     </div>
+    <div id="home-kpis"></div>
+    <div id="home-alerts"></div>
     <div id="home-summary"><p class="muted">جاري التحميل…</p></div>
     <div class="home-tiles">
       <a class="home-tile" href="#/dashboard"><span class="ico">📚</span><b>دروس الدعم</b>
         <small>التلاميذ، الجداول، الحضور، الخلاص، المعلمون</small></a>
       <a class="home-tile" href="#/program"><span class="ico">🎨</span><b>البرنامج التربوي</b>
         <small>الأقسام حسب الأعمار، الأطفال، الخلاص الشهري</small></a>
-      <a class="home-tile" href="#/courses"><span class="ico">🏕️</span><b>الدورات</b>
-        <small>دورات العطل والصيف والمجموعات</small></a>
+      <a class="home-tile" href="#/courses"><span class="ico">🏕️</span><b>الدورات والأنشطة</b>
+        <small>دورات العطل والصيف، الأنشطة، الرحلات والمخيمات</small></a>
+      <a class="home-tile alt" href="#/todo"><span class="ico">🗂️</span><b>إدارة المركز</b>
+        <small>المهام، الاجتماعات والقرارات، التنبيهات</small></a>
       <a class="home-tile" href="#/finance"><span class="ico">📈</span><b>تفاصيل المردودية المالية</b>
         <small>المداخيل والمصاريف والربح حسب كل نشاط</small></a>
     </div>
@@ -79,6 +92,26 @@ async function viewHome(el) {
         .join('')}</div>
       ${unpaidNote(s.accrual)}`;
   };
+  // مؤشرات المركز والتنبيهات (للشهر الحالي)
+  api('GET', '/api/kpis').then((k) => {
+    $('#home-kpis').innerHTML = `<div class="kpis">
+      <a class="kpi" href="#/people"><b>${k.support_active + k.program_active}</b><span>تلميذ وطفل مسجّل<small>${k.support_active} دعم · ${k.program_active} تربوي</small></span></a>
+      <a class="kpi" href="#/courses"><b>${k.events_open}</b><span>دورة ونشاط مفتوح</span></a>
+      <a class="kpi" href="#/finance"><b class="${k.net >= 0 ? 'in' : 'out'}">${k.net >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(k.net))}</b><span>صافي ${esc(monthLabel(k.month))}</span></a>
+      <a class="kpi" href="#/debts"><b>${k.collection_rate ?? '—'}${k.collection_rate !== null ? '%' : ''}</b><span>نسبة الاستخلاص هذا الشهر</span></a>
+      <a class="kpi" href="#/debts"><b class="${k.debts_total ? 'out' : ''}">${fmtMoney(k.debts_total)}</b><span>ديون ${k.debtors} عائلة</span></a>
+      <a class="kpi" href="#/payroll"><b>${fmtHours(k.teacher_hours)}</b><span>ساعات تدريس هذا الشهر</span></a>
+      <a class="kpi" href="#/todo"><b>${k.tasks_open}</b><span>مهمة مفتوحة${k.tasks_overdue ? `<small class="out">${k.tasks_overdue} متأخرة</small>` : ''}</span></a>
+      <a class="kpi" href="#/attendance"><b>${k.absences_month}</b><span>غياب هذا الشهر</span></a>
+    </div>`;
+  });
+  api('GET', '/api/alerts').then(({ alerts }) => {
+    const top = alerts.filter((a) => a.level !== 'info');
+    $('#home-alerts').innerHTML = top.length
+      ? `<div class="card alerts-box"><div class="section-head"><h3>🔔 تنبيهات</h3><a href="#/alerts" class="small">كل التنبيهات ←</a></div>
+          ${top.map((a) => `<a class="alert-line ${a.level}" href="${a.link}">${a.level === 'urgent' ? '⛔' : '⚠️'} ${esc(a.text)}</a>`).join('')}</div>`
+      : '';
+  });
   bindMonth('home-month', load);
   $('#q-expense').addEventListener('click', () => ledgerForm(null, 'expense', load));
   $('#q-income').addEventListener('click', () => ledgerForm(null, 'income', load));
@@ -361,7 +394,10 @@ async function viewProgram(el) {
     openModal(
       k ? 'تعديل القسم' : 'قسم جديد',
       `<label>اسم القسم<input name="name" value="${esc(k?.name || '')}" required placeholder="مثال: قسم الصغار"></label>
-       <label>الأعمار<input name="age_range" value="${esc(k?.age_range || '')}" placeholder="مثال: 4-5 سنوات"></label>
+       <div class="row">
+         <label>الأعمار<input name="age_range" value="${esc(k?.age_range || '')}" placeholder="مثال: 4-5 سنوات"></label>
+         <label>المعلوم الشهري (د.ت)<input name="default_fee" inputmode="decimal" value="${esc(k?.default_fee ?? '')}"></label>
+       </div>
        <label>ملاحظات<input name="notes" value="${esc(k?.notes || '')}"></label>
        ${k ? '<p><button type="button" class="link danger" id="del-class">حذف القسم</button></p>' : ''}`,
       async (data) => {
@@ -410,6 +446,10 @@ function childForm(c, classes, onDone) {
        <label>الحالة<select name="status"><option value="active">مسجّل</option><option value="left" ${c?.status === 'left' ? 'selected' : ''}>خرج</option></select></label>
        <label>تاريخ الخروج<input type="date" name="end_date" value="${esc(c?.end_date || '')}"></label>
      </div>
+     <div class="row">
+       <label>تخفيض شهري (د.ت)<input name="discount" inputmode="decimal" value="${esc(c?.discount ?? '')}"></label>
+       <label>سبب التخفيض<input name="discount_reason" value="${esc(c?.discount_reason || '')}"></label>
+     </div>
      <label class="check"><input type="checkbox" name="free" ${c?.free ? 'checked' : ''}> مجاني</label>
      <label>ملاحظات<input name="notes" value="${esc(c?.notes || '')}"></label>
      <p class="muted small">الشهر الأول بالـ prorata حسب تاريخ البداية. ${c ? '<button type="button" class="link danger" id="del-child">حذف الطفل نهائيًا</button>' : ''}</p>`,
@@ -420,6 +460,13 @@ function childForm(c, classes, onDone) {
       onDone();
     }
   );
+  // المعلوم الافتراضي للقسم
+  const classSel = $('#modal select[name=class_id]');
+  const feeInput = $('#modal input[name=monthly_fee]');
+  classSel.addEventListener('change', () => {
+    const k = classes.find((x) => x.id === Number(classSel.value));
+    if (k?.default_fee && !feeInput.value) feeInput.value = k.default_fee;
+  });
   $('#del-child')?.addEventListener('click', async () => {
     if (!confirmAction('حذف الطفل وكل دفعاته؟ (لخروجه من البرنامج استعمل الحالة «خرج»)')) return;
     await api('DELETE', `/api/program/children/${c.id}`);
@@ -442,7 +489,7 @@ async function viewProgramChild(el, id) {
         ${c.notes ? `<p class="remarks">📝 ${esc(c.notes)}</p>` : ''}
       </div>
     </div>
-    ${financeSection(finance, 'admin')}`;
+    ${financeSection(finance, 'admin', 'program')}`;
   const reload = () => viewProgramChild(el, id);
   $('#add-payment').addEventListener('click', () => {
     const current = finance.months.find((m) => m.remaining > 0) || { month: today().slice(0, 7), remaining: finance.monthly_fee || '' };
@@ -458,9 +505,10 @@ async function viewProgramChild(el, id) {
        </div>
        <label>ملاحظة<input name="note"></label>`,
       async (data) => {
-        await api('POST', `/api/program/children/${id}/payments`, data);
+        const { payment } = await api('POST', `/api/program/children/${id}/payments`, data);
         toast('تم تسجيل الدفعة');
-        reload();
+        if (confirmAction(`تم تسجيل الدفعة (وصل رقم ${payment.receipt_no}). فتح الوصل للطباعة؟`)) location.hash = `#/receipt/program/${payment.id}`;
+        else reload();
       }
     );
   });
@@ -474,43 +522,76 @@ async function viewProgramChild(el, id) {
 }
 
 // ---------- الدورات ----------
+const COURSE_FILTERS = {
+  '': 'الكل',
+  courses: 'الدورات',
+  activity: 'الأنشطة',
+  trip: 'الرحلات',
+  camp: 'المخيمات',
+};
+const courseMatches = (c, f) =>
+  !f || (f === 'courses' ? ['holiday', 'summer', 'other'].includes(c.kind) : c.kind === f);
+
 async function viewCourses(el) {
   const { courses } = await api('GET', '/api/courses');
+  const filter = sessionStorage.getItem('courseFilter') || '';
   el.innerHTML = `
     <div class="page-head">
-      <div><a href="#/home" class="muted small">→ الرئيسية</a><h2>🏕️ الدورات</h2></div>
-      <button class="btn" id="add-course">+ دورة</button>
+      <div><a href="#/home" class="muted small">→ الرئيسية</a><h2>🏕️ الدورات والأنشطة</h2></div>
+      <button class="btn" id="add-course">+ جديد</button>
     </div>
-    ${
-      courses.length
-        ? `<div class="cards">${courses
-            .map(
-              (c) => `<a class="card course" href="#/courses/${c.id}">
-                <div class="section-head"><h3>${esc(c.name)}</h3><span class="badge level">${COURSE_KIND_LABELS[c.kind]}</span></div>
-                <p class="muted small">${c.start_date ? `من ${fmtDate(c.start_date)}` : ''} ${c.end_date ? `إلى ${fmtDate(c.end_date)}` : ''}</p>
-                <div class="line"><span>المشاركون</span><b>${c.participants}</b></div>
-                <div class="line"><span>المقبوض</span><b class="in">${fmtMoney(c.received + c.other_income)}</b></div>
-                <div class="line"><span>المصاريف</span><b class="out">${fmtMoney(c.expenses)}</b></div>
-                <div class="line"><span>الصافي</span>${netBadge(c.net)}</div>
-                ${c.expected > c.received ? `<div class="line muted small"><span>باقي معاليم لم تُقبض</span><span>${fmtMoney(c.expected - c.received)}</span></div>` : ''}
-              </a>`
-            )
-            .join('')}</div>`
-        : '<div class="card muted">لا توجد دورات بعد.</div>'
-    }`;
+    <div class="class-chips">${Object.entries(COURSE_FILTERS)
+      .map(([k, v]) => `<button class="chip ${filter === k ? 'on' : ''}" data-f="${k}">${v} <b>${courses.filter((c) => courseMatches(c, k)).length}</b></button>`)
+      .join('')}</div>
+    <div id="course-list"></div>`;
+  const render = () => {
+    const f = sessionStorage.getItem('courseFilter') || '';
+    const list = courses.filter((c) => courseMatches(c, f));
+    $('#course-list').innerHTML = list.length
+      ? `<div class="cards">${list
+          .map(
+            (c) => `<a class="card course ${c.status === 'cancelled' ? 'cancelled' : ''}" href="#/courses/${c.id}">
+              <div class="section-head"><h3>${COURSE_KIND_ICONS[c.kind]} ${esc(c.name)}</h3><span class="badge level">${COURSE_KIND_LABELS[c.kind]}</span></div>
+              <p class="muted small">${c.start_date ? `من ${fmtDate(c.start_date)}` : ''} ${c.end_date ? `إلى ${fmtDate(c.end_date)}` : ''}
+                ${c.place ? `· 📍 ${esc(c.place)}` : ''} ${c.status !== 'planned' ? `· <b>${COURSE_STATUS_LABELS[c.status]}</b>` : ''}</p>
+              <div class="line"><span>المشاركون</span><b>${c.participants}${c.capacity ? ` / ${c.capacity}` : ''}</b></div>
+              <div class="line"><span>المقبوض</span><b class="in">${fmtMoney(c.received + c.other_income)}</b></div>
+              <div class="line"><span>المصاريف</span><b class="out">${fmtMoney(c.expenses)}</b></div>
+              <div class="line"><span>الصافي</span>${netBadge(c.net)}</div>
+              ${c.expected > c.received ? `<div class="line muted small"><span>باقي معاليم لم تُقبض</span><span>${fmtMoney(c.expected - c.received)}</span></div>` : ''}
+            </a>`
+          )
+          .join('')}</div>`
+      : '<div class="card muted">لا يوجد شيء في هذا الصنف بعد.</div>';
+  };
+  el.querySelectorAll('[data-f]').forEach((b) =>
+    b.addEventListener('click', () => {
+      sessionStorage.setItem('courseFilter', b.dataset.f);
+      el.querySelectorAll('[data-f]').forEach((x) => x.classList.toggle('on', x === b));
+      render();
+    })
+  );
   $('#add-course').addEventListener('click', () => courseForm(null, () => viewCourses(el)));
+  render();
 }
 
 function courseForm(c, onDone) {
   openModal(
-    c ? 'تعديل الدورة' : 'دورة جديدة',
-    `<label>الاسم<input name="name" value="${esc(c?.name || '')}" required placeholder="مثال: دورة عطلة الشتاء — رياضيات التاسعة"></label>
+    c ? 'تعديل' : 'دورة / نشاط / رحلة / مخيم جديد',
+    `<label>الاسم<input name="name" value="${esc(c?.name || '')}" required placeholder="مثال: رحلة إلى عين دراهم، دورة عطلة الشتاء…"></label>
      <div class="row">
        <label>النوع<select name="kind">${Object.entries(COURSE_KIND_LABELS)
          .map(([k, v]) => `<option value="${k}" ${c?.kind === k ? 'selected' : ''}>${v}</option>`)
          .join('')}</select></label>
        <label>معلوم المشاركة (د.ت)<input name="price" inputmode="decimal" value="${esc(c?.price ?? '')}"></label>
      </div>
+     <div class="row">
+       <label>المكان<input name="place" value="${esc(c?.place || '')}"></label>
+       <label>عدد الأماكن<input name="capacity" type="number" min="0" value="${esc(c?.capacity ?? '')}"></label>
+     </div>
+     <label>الحالة<select name="status">${Object.entries(COURSE_STATUS_LABELS)
+       .map(([k, v]) => `<option value="${k}" ${(c?.status || 'planned') === k ? 'selected' : ''}>${v}</option>`)
+       .join('')}</select></label>
      <div class="row">
        <label>من<input type="date" name="start_date" value="${esc(c?.start_date || '')}"></label>
        <label>إلى<input type="date" name="end_date" value="${esc(c?.end_date || '')}"></label>
@@ -532,7 +613,9 @@ async function viewCourse(el, id) {
     <a href="#/courses" class="muted small">→ الدورات</a>
     <div class="page-head">
       <div><h2>${esc(c.name)}</h2>
-        <div class="meta"><span class="badge level">${COURSE_KIND_LABELS[c.kind]}</span>
+        <div class="meta"><span class="badge level">${COURSE_KIND_ICONS[c.kind]} ${COURSE_KIND_LABELS[c.kind]}</span>
+          <span class="badge general">${COURSE_STATUS_LABELS[c.status]}</span>
+          ${c.place ? `<span>📍 ${esc(c.place)}</span>` : ''}
           ${c.start_date ? `<span>من ${fmtDate(c.start_date)}</span>` : ''}${c.end_date ? `<span>إلى ${fmtDate(c.end_date)}</span>` : ''}
           ${c.price ? `<span>المعلوم: ${fmtMoney(c.price)}</span>` : ''}</div></div>
       <div class="actions">
@@ -541,7 +624,7 @@ async function viewCourse(el, id) {
       </div>
     </div>
     <div class="stats compact">
-      <div class="stat"><b>${c.participants}</b><span>مشارك</span></div>
+      <div class="stat"><b>${c.participants}${c.capacity ? ` / ${c.capacity}` : ''}</b><span>مشارك${c.capacity && c.participants >= c.capacity ? ' — مكتمل' : ''}</span></div>
       <div class="stat good"><b>${fmtMoney(c.received + c.other_income)}</b><span>المقبوض</span></div>
       <div class="stat warn"><b>${fmtMoney(c.expenses)}</b><span>المصاريف</span></div>
       <div class="stat ${c.net >= 0 ? 'profit' : 'loss'}"><b>${c.net >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(c.net))}</b><span>${c.net >= 0 ? 'ربح' : 'خسارة'}</span></div>
@@ -557,8 +640,8 @@ async function viewCourse(el, id) {
                   (p) => `<tr>
                     <td><b>${esc(p.full_name)}</b>${p.student_id ? ' <span class="badge level">تلميذ دعم</span>' : ''}</td>
                     <td><span class="phone-line"><span dir="ltr">${esc(p.phone || '—')}</span>${waButton(p.phone)}</span></td>
-                    <td>${fmtMoney(p.due)}</td>
-                    <td>${fmtMoney(p.paid)}</td>
+                    <td>${fmtMoney(p.due)}${p.discount ? `<div class="muted small">بعد تخفيض ${fmtMoney(p.discount)}</div>` : ''}</td>
+                    <td>${fmtMoney(p.paid)}${p.payments.map((x) => `<div class="small"><a class="receipt-link" href="#/receipt/course/${x.id}">🧾 ${x.receipt_no} · ${fmtMoney(x.amount)}</a></div>`).join('')}</td>
                     <td>${p.remaining > 0 ? `<b class="owed">${fmtMoney(p.remaining)}</b>` : '<span class="badge good">خالص</span>'}</td>
                     <td class="row-actions">${p.remaining > 0 ? `<button class="btn small" data-pay="${p.id}">+ دفعة</button>` : ''}
                       <button class="link danger" data-del-part="${p.id}">حذف</button></td>
@@ -607,8 +690,9 @@ async function viewCourse(el, id) {
        </div>
        <div class="row">
          <label>المعلوم (د.ت)<input name="fee" inputmode="decimal" value="${esc(c.price ?? '')}"></label>
-         <label>مدفوع الآن (د.ت)<input name="paid_now" inputmode="decimal" placeholder="0"></label>
+         <label>تخفيض (د.ت)<input name="discount" inputmode="decimal" placeholder="0"></label>
        </div>
+       <label>مدفوع الآن (د.ت)<input name="paid_now" inputmode="decimal" placeholder="0"></label>
        <label>ملاحظات<input name="notes"></label>`,
       async (data) => {
         await api('POST', `/api/courses/${id}/participants`, data);
@@ -636,9 +720,10 @@ async function viewCourse(el, id) {
          </div>
          <label>طريقة الدفع<select name="method">${Object.entries(PAYMENT_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>`,
         async (data) => {
-          await api('POST', `/api/courses/participants/${p.id}/payments`, data);
+          const { payment } = await api('POST', `/api/courses/participants/${p.id}/payments`, data);
           toast('تم تسجيل الدفعة');
-          reload();
+          if (confirmAction(`تم تسجيل الدفعة (وصل رقم ${payment.receipt_no}). فتح الوصل للطباعة؟`)) location.hash = `#/receipt/course/${payment.id}`;
+          else reload();
         }
       );
     })
