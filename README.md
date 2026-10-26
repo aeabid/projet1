@@ -35,10 +35,13 @@
 المواد الافتراضية: العربية، الفرنسية، الإنجليزية، الرياضيات (كل المستويات) وعلوم الحياة والأرض (التاسعة فقط).
 الإدارة تزيد مواد أخرى من صفحة «المواد» وتحدّد في أي مستوى تُدرّس كل مادة.
 
-## النشر على Netlify
+## النشر: Netlify + Supabase
 
 - الواجهة في `public/`، والـ API دالة Netlify في `netlify/functions/api.mjs` (منطقها في `lib/app.js`).
-- قاعدة البيانات Netlify Database (Postgres)، تتكوّن تلقائيًا، والجداول في `netlify/database/migrations/`.
+- **قاعدة البيانات: Supabase** (مشروع `wunachimbqwjdkgguhzf`). الدالة تتصل بها عبر المتغير السرّي `DATABASE_URL`
+  في Netlify (Transaction pooler، المستعمل `feed_app` صاحب الجداول). دون هذا المتغير تعود إلى قاعدة Netlify القديمة.
+- الجداول: `netlify/database/migrations/` (نفس الملفات تُطبَّق على Supabase). كل الجداول مغلقة بـ RLS.
+- عند أول تشغيل على Supabase فارغة، تُنقل كل المعطيات تلقائيًا من قاعدة Netlify القديمة (`lib/db.js`).
 - حساب الإدارة `admin` يُنشأ أول مرة بكلمة السر الموجودة في المتغير `ADMIN_PASSWORD` (في إعدادات المشروع على Netlify).
 - بيانات تجريبية (اختياري): `node scripts/seed-demo.js https://<الموقع> <كلمة سر الإدارة>`
 
