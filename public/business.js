@@ -46,6 +46,7 @@ async function viewHome(el) {
       <h2>حوصلة الشهر</h2>
       ${monthPicker('home-month')}
     </div>
+    <div id="home-db"></div>
     <div id="home-kpis"></div>
     <div id="home-alerts"></div>
     <div id="home-summary"><p class="muted">جاري التحميل…</p></div>
@@ -92,6 +93,30 @@ async function viewHome(el) {
         .join('')}</div>
       ${unpaidNote(s.accrual)}`;
   };
+  // نقل المعطيات إلى Supabase (يظهر فقط إن كانت قاعدة Supabase فارغة والقديمة فيها معطيات)
+  api('GET', '/api/admin/db-status').then((db) => {
+    if (!db.migration_available || db.target_rows > 0 || !db.source_rows) return;
+    $('#home-db').innerHTML = `<div class="card alert-card">
+      <b>🔄 التطبيق يعمل الآن على Supabase، وقاعدة البيانات الجديدة فارغة.</b>
+      <p>المعطيات الحالية (التلاميذ، الخلاص، الحسابات…) مازالت في قاعدة Netlify. انقلها كلها بنقرة واحدة.</p>
+      <button class="btn" id="db-migrate">نقل كل المعطيات إلى Supabase</button></div>`;
+    $('#db-migrate').addEventListener('click', async (e) => {
+      if (!confirmAction('نقل كل المعطيات من قاعدة Netlify إلى Supabase؟ (قاعدة Netlify تبقى كما هي)')) return;
+      e.target.disabled = true;
+      e.target.textContent = 'جاري النقل…';
+      try {
+        const { copied } = await api('POST', '/api/admin/migrate-db', {});
+        const total = Object.values(copied).reduce((t, n) => t + n, 0);
+        alert(`تم نقل ${total} سجل. ادخل من جديد بكلمة سرّك المعتادة.`);
+        location.reload();
+      } catch (err) {
+        toast(err.message, true);
+        e.target.disabled = false;
+        e.target.textContent = 'نقل كل المعطيات إلى Supabase';
+      }
+    });
+  });
+
   // مؤشرات المركز والتنبيهات (للشهر الحالي)
   api('GET', '/api/kpis').then((k) => {
     $('#home-kpis').innerHTML = `<div class="kpis">

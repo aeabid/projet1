@@ -12,10 +12,10 @@
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "@netlify/database": "^2.0.1"
+    "@netlify/database": "^2.0.1",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
-    "@netlify/database-dev": "^1.0.1",
-    "pg": "^8.23.1"
+    "@netlify/database-dev": "^1.0.1"
   }
 }
