@@ -46,14 +46,16 @@ test('copy every table from the Netlify database to Supabase, then keep working'
   await oldApi('PUT', '/api/settings/fees', { support: { 9: 160 } }, cookie);
   await oldApi('POST', '/api/program/classes', { name: 'الصغار' }, cookie);
 
-  // التطبيق على Supabase (فارغة: حساب إدارة من ADMIN_PASSWORD فقط)
+  // التطبيق على Supabase: أول طلب ينقل المعطيات تلقائيًا
   const newApi = call(createHandler(target, { adminPassword: 'env-pass', engine: 'supabase', migrationSource: source }));
-  const login = await newApi('POST', '/api/login', { username: 'admin', password: 'env-pass' });
+  const login = await newApi('POST', '/api/login', { username: 'admin', password: 'old-pass' });
+  assert.strictEqual(login.status, 200);
   const status = (await newApi('GET', '/api/admin/db-status', null, login.cookie)).body;
-  assert.deepStrictEqual([status.engine, status.migration_available, status.target_rows], ['supabase', true, 0]);
-  assert.ok(status.source_rows > 0);
-
-  const res = await newApi('POST', '/api/admin/migrate-db', {}, login.cookie);
+  assert.deepStrictEqual([status.engine, status.migration_available], ['supabase', true]);
+  assert.strictEqual(status.target_rows, status.source_rows);
+  // إعادة النقل يدويًا ممكنة بتأكيد صريح فقط
+  assert.strictEqual((await newApi('POST', '/api/admin/migrate-db', {}, login.cookie)).status, 409);
+  const res = await newApi('POST', '/api/admin/migrate-db', { confirm: 'REPLACE' }, login.cookie);
   assert.strictEqual(res.status, 200);
   assert.strictEqual(res.body.copied.students, 1);
 
@@ -76,6 +78,27 @@ test('copy every table from the Netlify database to Supabase, then keep working'
   assert.ok(st2.id > st.id);
   const pay2 = (await newApi('POST', `/api/students/${st.id}/payments`, { amount: 10 }, relog.cookie)).body.payment;
   assert.strictEqual(pay2.receipt_no, pay.receipt_no + 1);
-  // مرة ثانية: ممنوع دون تأكيد لأن Supabase فيها معطيات
-  assert.strictEqual((await newApi('POST', '/api/admin/migrate-db', {}, relog.cookie)).status, 409);
+});
+
+test('first request on an empty Supabase copies the Netlify data automatically', async () => {
+  const source = await freshPool();
+  const target = await freshPool();
+  const req = (handle, method, url, body, cookie) =>
+    handle(new Request('http://x' + url, {
+      method,
+      headers: { ...(cookie ? { cookie } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    }));
+  const old = createHandler(source, { adminPassword: 'old' });
+  const c = (await req(old, 'POST', '/api/login', { username: 'admin', password: 'old' })).headers.get('set-cookie').split(';')[0];
+  await req(old, 'POST', '/api/students', { full_name: 'Auto Kid', level: '7' }, c);
+
+  const fresh = createHandler(target, { adminPassword: 'env', migrationSource: source });
+  // نفس الكوكي القديم يعمل: الجلسات منقولة
+  const res = await req(fresh, 'GET', '/api/students', null, c);
+  assert.strictEqual(res.status, 200);
+  assert.deepStrictEqual((await res.json()).students.map((s) => s.full_name), ['Auto Kid']);
+  // كلمة سر ADMIN_PASSWORD لا تعوّض كلمة السر القديمة
+  assert.strictEqual((await req(fresh, 'POST', '/api/login', { username: 'admin', password: 'env' })).status, 401);
+  assert.strictEqual((await req(fresh, 'POST', '/api/login', { username: 'admin', password: 'old' })).status, 200);
 });
