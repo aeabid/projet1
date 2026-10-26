@@ -409,7 +409,7 @@ CREATE INDEX center_tasks_status_idx ON center_tasks (status);
 DO $$
 DECLARE t record;
 BEGIN
-  FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+  FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tableowner = current_user LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t.tablename);
   END LOOP;
 END $$;
