@@ -192,7 +192,7 @@ async function viewReceipt(el, kind, id) {
 
 // ---------- التعريفات والتخفيضات ----------
 async function viewFees(el) {
-  const { support, classes } = await api('GET', '/api/settings/fees');
+  const { support, classes, family, school_year, registration_fee } = await api('GET', '/api/settings/fees');
   const { courses } = await api('GET', '/api/courses');
   el.innerHTML = `
     <h2>🏷️ التعريفات والتخفيضات</h2>
@@ -215,6 +215,20 @@ async function viewFees(el) {
             : '<p class="muted">لا توجد أقسام بعد — أضفها من صفحة البرنامج التربوي.</p>'
         }
       </section>
+      <section class="card">
+        <h3>🪪 معلوم التسجيل السنوي — ${esc(school_year)}</h3>
+        <p class="muted small">يُدفع مرة واحدة لكل طفل في السنة الدراسية، حتى لو كان في دروس الدعم والبرنامج التربوي معًا. اتركه فارغًا إن لم يكن هناك معلوم تسجيل.</p>
+        <div class="fee-grid"><label>المبلغ (د.ت)<input name="registration_fee" inputmode="decimal" value="${esc(registration_fee ?? '')}" placeholder="د.ت"></label></div>
+      </section>
+      <section class="card">
+        <h3>👨‍👩‍👧 تخفيض الإخوة</h3>
+        <p class="muted small">نسبة تُخصم من المعلوم الشهري لكل طفل في العائلة (نفس حساب الولي)، حسب عدد الأبناء المسجّلين في ذلك الشهر في دروس الدعم أو البرنامج التربوي.
+          الطفل المسجّل في البرنامجين يُحسب مرة واحدة، والمجاني لا يُحسب.</p>
+        <div class="fee-grid">
+          <label>أخوان (%)<input name="family_two" inputmode="decimal" value="${esc(family.two ?? '')}" placeholder="مثال: 10"></label>
+          <label>ثلاثة إخوة أو أكثر (%)<input name="family_three" inputmode="decimal" value="${esc(family.three ?? '')}" placeholder="مثال: 15"></label>
+        </div>
+      </section>
       <button class="btn">حفظ التعريفات</button>
     </form>
     <section class="card">
@@ -230,7 +244,8 @@ async function viewFees(el) {
     <section class="card">
       <h3>ℹ️ التخفيضات والتسبقة والأقساط</h3>
       <ul class="help">
-        <li><b>التخفيض:</b> في بطاقة كل تلميذ أو طفل (تخفيض شهري بالدينار وسببه، مثل الإخوة أو منحة)، وفي كل مشارك في دورة. خانة «مجاني» للإعفاء الكامل.</li>
+        <li><b>التخفيض:</b> في بطاقة كل تلميذ أو طفل (تخفيض شهري بالدينار وسببه، مثل منحة)، وفي كل مشارك في دورة. خانة «مجاني» للإعفاء الكامل.
+          تخفيض الإخوة يُحسب وحده بالنسب أعلاه.</li>
         <li><b>التسبقة:</b> سجّل دفعة لشهر قادم (أو مبلغًا أكبر من المستحق): يظهر «رصيد مسبق» ويُخصم تلقائيًا.</li>
         <li><b>الأقساط:</b> معلوم الدورة أو الرحلة يُدفع على عدّة دفعات؛ كل دفعة بوصل، والباقي يظهر حتى الخلاص الكامل.</li>
       </ul>
@@ -242,6 +257,8 @@ async function viewFees(el) {
       await api('PUT', '/api/settings/fees', {
         support: Object.fromEntries(state.meta.levels.map((l) => [l.code, data[`s_${l.code}`]])),
         classes: classes.map((k) => ({ id: k.id, default_fee: data[`c_${k.id}`] })),
+        family: { two: data.family_two, three: data.family_three },
+        registration_fee: data.registration_fee,
       });
       toast('تم حفظ التعريفات');
     } catch (err) {

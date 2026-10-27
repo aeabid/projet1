@@ -88,6 +88,12 @@ async function viewHome(el) {
               <div><span class="muted small">المصاريف</span><b class="out">${fmtMoney(a.expense)}</b>
                 ${a.expense_lines.map((l) => `<div class="line"><span>${esc(l.label)}</span><span>${fmtMoney(l.amount)}</span></div>`).join('')}</div>
             </div>
+            ${
+              a.shared_pct
+                ? `<div class="line"><span>نصيبه من المصاريف المشتركة (${a.shared_pct}%)</span><span class="out">${fmtMoney(a.shared)}</span></div>
+                   <div class="line total"><span>الصافي بعد التوزيع</span>${netBadge(a.net_after)}</div>`
+                : ''
+            }
           </div>`
         )
         .join('')}</div>
@@ -347,7 +353,14 @@ const ageOf = (birth) => {
 };
 
 async function viewProgram(el) {
+  if (state.user.role === 'teacher') return viewProgramTeacher(el);
   const { classes, children } = await api('GET', '/api/program');
+  const [{ users: parents }, { users: teachers }, { students }] = await Promise.all([
+    api('GET', '/api/users?role=parent'),
+    api('GET', '/api/users?role=teacher'),
+    api('GET', '/api/students'),
+  ]);
+  const lists = { classes, parents, teachers, students, children };
   const filter = sessionStorage.getItem('progClass') || '';
   const active = children.filter((c) => c.status === 'active');
   const monthlyExpected = active.filter((c) => !c.free).reduce((t, c) => t + (c.monthly_fee || 0), 0);
@@ -356,11 +369,13 @@ async function viewProgram(el) {
     <div class="page-head">
       <div><a href="#/home" class="muted small">→ الرئيسية</a><h2>🎨 البرنامج التربوي</h2></div>
       <div class="actions">
+        <a class="btn ghost" href="#/program/attendance">الحضور</a>
         <button class="btn ghost" id="add-class">+ قسم</button>
         <button class="btn" id="add-child">+ طفل</button>
       </div>
     </div>
-    <p class="muted">برنامج سنوي من 1 سبتمبر إلى موفى ماي (جوان-أوت لا تُحتسب). تديره الإدارة فقط، دون حسابات للأولياء.</p>
+    <p class="muted">برنامج سنوي من 1 سبتمبر إلى موفى ماي (جوان-أوت لا تُحتسب). اربط كل طفل بحساب وليّه ليتابع الغيابات والملاحظات والخلاص،
+      وإن كان الطفل يدرس أيضًا في دروس الدعم اختره من القائمة: يبقى شخصًا واحدًا بمعلوم تسجيل واحد.</p>
     <div class="stats compact">
       <div class="stat"><b>${active.length}</b><span>طفل مسجّل</span></div>
       <div class="stat"><b>${classes.length}</b><span>أقسام</span></div>
@@ -372,7 +387,7 @@ async function viewProgram(el) {
       ${classes
         .map(
           (k) => `<span class="chip-wrap"><button class="chip ${filter === String(k.id) ? 'on' : ''}" data-class="${k.id}">
-            ${esc(k.name)}${k.age_range ? ` <small>(${esc(k.age_range)})</small>` : ''} <b>${k.children}</b></button>
+            ${esc(k.name)}${k.age_range ? ` <small>(${esc(k.age_range)})</small>` : ''} <b>${k.children}</b>${k.teacher_name ? ` <small>· ${esc(k.teacher_name)}</small>` : ''}</button>
             <button class="link small" data-edit-class="${k.id}" title="تعديل القسم">✎</button></span>`
         )
         .join('')}
@@ -391,11 +406,12 @@ async function viewProgram(el) {
           <tbody>${list
             .map(
               (c) => `<tr class="${c.status === 'left' ? 'planned' : ''}">
-                <td><a href="#/program/child/${c.id}"><b>${esc(c.full_name)}</b></a>${c.status === 'left' ? ' <span class="badge status-left">خرج</span>' : ''}</td>
+                <td><a href="#/program/child/${c.id}"><b>${esc(c.full_name)}</b></a>${c.status === 'left' ? ' <span class="badge status-left">خرج</span>' : ''}
+                  ${c.student_id ? ' <span class="badge level">+ دروس الدعم</span>' : ''}</td>
                 <td>${ageOf(c.birth_date)}</td>
                 <td>${esc(c.class_name || '—')}</td>
-                <td>${esc(c.guardian_name || '—')}${c.guardian_phone ? `<div class="phone-line small"><span dir="ltr">${esc(c.guardian_phone)}</span>${waButton(c.guardian_phone)}</div>` : ''}</td>
-                <td>${c.free ? '<span class="badge free">مجاني</span>' : fmtMoney(c.monthly_fee)}</td>
+                <td>${esc(c.contact_name || '—')}${c.family_parent_id ? ' <span title="له حساب ولي">👤</span>' : ''}${c.contact_phone ? `<div class="phone-line small"><span dir="ltr">${esc(c.contact_phone)}</span>${waButton(c.contact_phone)}</div>` : ''}</td>
+                <td>${c.free ? '<span class="badge free">مجاني</span>' : fmtMoney(c.monthly_fee)}${c.sibling_pct ? `<div class="muted small">إخوة −${c.sibling_pct}%</div>` : ''}</td>
                 <td>${c.balance > 0 ? `<b class="owed">${fmtMoney(c.balance)}</b>` : c.monthly_fee && !c.free ? '<span class="badge good">خالص</span>' : '—'}</td>
                 <td class="row-actions"><button class="btn ghost small" data-edit="${c.id}">تعديل</button></td>
               </tr>`
@@ -403,7 +419,7 @@ async function viewProgram(el) {
             .join('')}</tbody></table></div>`
       : '<div class="card muted">لا يوجد أطفال في هذا القسم.</div>';
     $('#prog-list').querySelectorAll('[data-edit]').forEach((b) =>
-      b.addEventListener('click', () => childForm(children.find((c) => c.id === Number(b.dataset.edit)), classes, reload))
+      b.addEventListener('click', () => childForm(children.find((c) => c.id === Number(b.dataset.edit)), lists, reload))
     );
   };
   const reload = () => viewProgram(el);
@@ -423,6 +439,9 @@ async function viewProgram(el) {
          <label>الأعمار<input name="age_range" value="${esc(k?.age_range || '')}" placeholder="مثال: 4-5 سنوات"></label>
          <label>المعلوم الشهري (د.ت)<input name="default_fee" inputmode="decimal" value="${esc(k?.default_fee ?? '')}"></label>
        </div>
+       <label>المنشط (حساب معلم: يسجّل الحضور والملاحظات)<select name="teacher_id"><option value="">—</option>${teachers
+         .map((t) => `<option value="${t.id}" ${k?.teacher_id === t.id ? 'selected' : ''}>${esc(t.full_name)}</option>`)
+         .join('')}</select></label>
        <label>ملاحظات<input name="notes" value="${esc(k?.notes || '')}"></label>
        ${k ? '<p><button type="button" class="link danger" id="del-class">حذف القسم</button></p>' : ''}`,
       async (data) => {
@@ -445,24 +464,36 @@ async function viewProgram(el) {
       });
     })
   );
-  $('#add-child').addEventListener('click', () => childForm(null, classes, reload));
+  $('#add-child').addEventListener('click', () => childForm(null, lists, reload));
   render();
 }
 
-function childForm(c, classes, onDone) {
+function childForm(c, { classes, parents, students, children }, onDone) {
+  // تلاميذ الدعم غير المرتبطين بطفل آخر في البرنامج
+  const taken = new Set(children.filter((x) => x.student_id && x.id !== c?.id).map((x) => x.student_id));
   openModal(
     c ? 'تعديل' : 'طفل جديد',
-    `<label>الاسم واللقب<input name="full_name" value="${esc(c?.full_name || '')}" required></label>
+    `<label>يدرس أيضًا في دروس الدعم؟<select name="student_id" id="cf-student"><option value="">— لا —</option>${students
+      .filter((st) => !taken.has(st.id))
+      .map((st) => `<option value="${st.id}" ${c?.student_id === st.id ? 'selected' : ''}>${esc(st.full_name)} — ${esc(levelLabel(st.level))}</option>`)
+      .join('')}</select></label>
+     <label>الاسم واللقب<input name="full_name" id="cf-name" value="${esc(c?.full_name || '')}"></label>
      <div class="row">
        <label>تاريخ الولادة<input type="date" name="birth_date" value="${esc(c?.birth_date || '')}"></label>
        <label>القسم<select name="class_id"><option value="">—</option>${classes
          .map((k) => `<option value="${k.id}" ${c?.class_id === k.id ? 'selected' : ''}>${esc(k.name)}</option>`)
          .join('')}</select></label>
      </div>
-     <div class="row">
-       <label>اسم الولي<input name="guardian_name" value="${esc(c?.guardian_name || '')}"></label>
-       <label>الهاتف<input name="guardian_phone" dir="ltr" value="${esc(c?.guardian_phone || '')}"></label>
+     <div id="cf-parent">
+       <label>حساب الولي (ليتابع ابنه من التطبيق)<select name="parent_id"><option value="">— دون حساب —</option>${parents
+         .map((u) => `<option value="${u.id}" ${c?.parent_id === u.id ? 'selected' : ''}>${esc(u.full_name)}${u.phone ? ` — ${esc(u.phone)}` : ''}</option>`)
+         .join('')}</select></label>
+       <div class="row">
+         <label>اسم الولي (دون حساب)<input name="guardian_name" value="${esc(c?.guardian_name || '')}"></label>
+         <label>الهاتف<input name="guardian_phone" dir="ltr" value="${esc(c?.guardian_phone || '')}"></label>
+       </div>
      </div>
+     <p class="muted small" id="cf-linked" hidden>الولي وحسابه ومعلوم التسجيل السنوي من ملف دروس الدعم.</p>
      <div class="row">
        <label>المبلغ الشهري (د.ت)<input name="monthly_fee" inputmode="decimal" value="${esc(c?.monthly_fee ?? '')}"></label>
        <label>تاريخ البداية<input type="date" name="start_date" value="${esc(c?.start_date || '')}"></label>
@@ -477,7 +508,8 @@ function childForm(c, classes, onDone) {
      </div>
      <label class="check"><input type="checkbox" name="free" ${c?.free ? 'checked' : ''}> مجاني</label>
      <label>ملاحظات<input name="notes" value="${esc(c?.notes || '')}"></label>
-     <p class="muted small">الشهر الأول بالـ prorata حسب تاريخ البداية. ${c ? '<button type="button" class="link danger" id="del-child">حذف الطفل نهائيًا</button>' : ''}</p>`,
+     <p class="muted small">الشهر الأول بالـ prorata حسب تاريخ البداية. تخفيض الإخوة يُحسب وحده من «التعريفات والتخفيضات».
+       ${c ? '<button type="button" class="link danger" id="del-child">حذف الطفل نهائيًا</button>' : ''}</p>`,
     async (data) => {
       if (c) await api('PUT', `/api/program/children/${c.id}`, data);
       else await api('POST', '/api/program/children', data);
@@ -492,6 +524,15 @@ function childForm(c, classes, onDone) {
     const k = classes.find((x) => x.id === Number(classSel.value));
     if (k?.default_fee && !feeInput.value) feeInput.value = k.default_fee;
   });
+  // طفل مرتبط بتلميذ دعم: الاسم من ملفه، والولي من هناك
+  const sync = () => {
+    const st = students.find((x) => x.id === Number($('#cf-student').value));
+    $('#cf-parent').hidden = !!st;
+    $('#cf-linked').hidden = !st;
+    if (st && !$('#cf-name').value) $('#cf-name').value = st.full_name;
+  };
+  $('#cf-student').addEventListener('change', sync);
+  sync();
   $('#del-child')?.addEventListener('click', async () => {
     if (!confirmAction('حذف الطفل وكل دفعاته؟ (لخروجه من البرنامج استعمل الحالة «خرج»)')) return;
     await api('DELETE', `/api/program/children/${c.id}`);
@@ -500,50 +541,221 @@ function childForm(c, classes, onDone) {
   });
 }
 
+const PROGRAM_NOTE_LABELS = { level: 'المستوى', content: 'متابعة المحتوى', behavior: 'السلوك', general: 'عامة' };
+
+// متابعة طفل البرنامج التربوي: الملاحظات والغيابات (مع أزرار الإضافة للإدارة والمنشط)
+function childFollowUpSection(file, role) {
+  const { child: c, absences, notes } = file;
+  const canWrite = role !== 'parent';
+  const mine = (authorId) => role === 'admin' || authorId === state.user.id;
+  return `
+    <section class="card">
+      <div class="section-head"><h3>🎨 البرنامج التربوي${c.class_name ? ` — ${esc(c.class_name)}` : ''}</h3>
+        ${canWrite ? `<div><button class="btn small" data-pnote="${c.id}">+ ملاحظة</button> <button class="btn small warn" data-pabs="${c.id}">+ غياب</button></div>` : ''}</div>
+      <div class="stats compact">
+        <div class="stat"><b>${absences.length}</b><span>الغيابات</span></div>
+        <div class="stat"><b>${notes.filter((n) => n.category === 'level').length}</b><span>ملاحظات المستوى</span></div>
+        <div class="stat"><b>${notes.filter((n) => n.category === 'content').length}</b><span>متابعة المحتوى</span></div>
+      </div>
+      <h4>📝 الملاحظات</h4>
+      ${
+        notes.length
+          ? `<ul class="notes">${notes
+              .map(
+                (n) => `<li class="note"><div class="note-head">
+                  <span class="badge ${n.category}">${PROGRAM_NOTE_LABELS[n.category]}</span>
+                  ${n.rating ? `<span class="badge ${n.rating}">${RATING_LABELS[n.rating]}</span>` : ''}
+                  <span class="muted small">${fmtDate(n.date)} · ${esc(n.author_name || '')}</span>
+                  ${canWrite && mine(n.author_id) ? `<button class="link danger" data-del-pnote="${n.id}">حذف</button>` : ''}
+                </div><p>${esc(n.content)}</p></li>`
+              )
+              .join('')}</ul>`
+          : '<p class="muted">لا توجد ملاحظات بعد.</p>'
+      }
+      <h4>📅 الغيابات</h4>
+      ${
+        absences.length
+          ? `<ul class="levels">${absences
+              .map(
+                (a) => `<li><span>${fmtDate(a.date)} ${a.justified ? '<span class="badge good">مبرر</span>' : '<span class="badge weak">غير مبرر</span>'}
+                  ${a.reason ? `<span class="muted small">${esc(a.reason)}</span>` : ''}</span>
+                  <span>${role === 'admin' ? `<button class="link" data-pjustify="${a.id}" data-j="${a.justified ? 0 : 1}">${a.justified ? 'إلغاء التبرير' : 'تبرير'}</button>` : ''}
+                  ${canWrite && mine(a.recorded_by) ? `<button class="link danger" data-del-pabs="${a.id}">حذف</button>` : ''}</span></li>`
+              )
+              .join('')}</ul>`
+          : '<p class="muted">لا توجد غيابات 👏</p>'
+      }
+    </section>`;
+}
+
+// قسم البرنامج التربوي في ملف تلميذ الدعم (نفس الطفل في البرنامجين)
+function childProgramSections(file, role) {
+  return childFollowUpSection(file, role) +
+    (file.finance ? financeSection(file.finance, role, 'program', '💰 الوضعية المالية — البرنامج التربوي') : '');
+}
+
+function bindChildFollowUp(el, file, reload) {
+  const id = file.child.id;
+  el.querySelector(`[data-pnote="${id}"]`)?.addEventListener('click', () =>
+    openModal(
+      'ملاحظة — البرنامج التربوي',
+      `<div class="row">
+         <label>النوع<select name="category">${Object.entries(PROGRAM_NOTE_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
+         <label>التقييم<select name="rating"><option value="">—</option>${Object.entries(RATING_LABELS)
+           .map(([k, v]) => `<option value="${k}">${v}</option>`)
+           .join('')}</select></label>
+       </div>
+       <label>التاريخ<input type="date" name="date" value="${today()}"></label>
+       <label>الملاحظة<textarea name="content" rows="4" required placeholder="مثال: يتابع أنشطة المحتوى بانتظام ويشارك بحماس"></textarea></label>`,
+      async (data) => {
+        await api('POST', `/api/program/children/${id}/notes`, data);
+        toast('تمت إضافة الملاحظة');
+        reload();
+      }
+    )
+  );
+  el.querySelector(`[data-pabs="${id}"]`)?.addEventListener('click', () =>
+    openModal(
+      'تسجيل غياب',
+      `<label>التاريخ<input type="date" name="date" value="${today()}"></label>
+       <label>ملاحظة / سبب<input name="reason"></label>
+       ${state.user.role === 'admin' ? '<label class="check"><input type="checkbox" name="justified"> غياب مبرر</label>' : ''}`,
+      async (data) => {
+        await api('POST', `/api/program/children/${id}/absences`, data);
+        toast('تم تسجيل الغياب');
+        reload();
+      }
+    )
+  );
+  const act = (sel, fn) => el.querySelectorAll(sel).forEach((b) => b.addEventListener('click', () => fn(b)));
+  act('[data-del-pnote]', async (b) => {
+    if (!confirmAction('حذف هذه الملاحظة؟')) return;
+    await api('DELETE', `/api/program/notes/${b.dataset.delPnote}`).catch((e) => toast(e.message, true));
+    reload();
+  });
+  act('[data-del-pabs]', async (b) => {
+    if (!confirmAction('حذف هذا الغياب؟')) return;
+    await api('DELETE', `/api/program/absences/${b.dataset.delPabs}`).catch((e) => toast(e.message, true));
+    reload();
+  });
+  act('[data-pjustify]', async (b) => {
+    await api('PATCH', `/api/program/absences/${b.dataset.pjustify}`, { justified: b.dataset.j === '1' }).catch((e) => toast(e.message, true));
+    reload();
+  });
+}
+
+// ملف طفل البرنامج التربوي: الإدارة، الولي (#/kid/..)، والمنشط
 async function viewProgramChild(el, id) {
-  const { child: c, finance } = await api('GET', `/api/program/children/${id}`);
+  const role = state.user.role;
+  const file = await api('GET', `/api/program/children/${id}`);
+  const { child: c, finance } = file;
+  const back = role === 'parent' ? ['#/students', 'أبنائي'] : ['#/program', 'البرنامج التربوي'];
   el.innerHTML = `
-    <a href="#/program" class="muted small">→ البرنامج التربوي</a>
+    <a href="${back[0]}" class="muted small">→ ${back[1]}</a>
     <div class="page-head">
       <div><h2>${esc(c.full_name)}</h2>
         <div class="meta">${c.class_name ? `<span class="pill">${esc(c.class_name)}</span>` : ''}
           ${c.birth_date ? `<span>${ageOf(c.birth_date)}</span>` : ''}
-          ${c.guardian_name ? `<span>الولي: ${esc(c.guardian_name)}</span>` : ''}
-          ${c.guardian_phone ? `<span class="phone-line"><span dir="ltr">${esc(c.guardian_phone)}</span>${waButton(c.guardian_phone)}</span>` : ''}
-          ${c.status === 'left' ? `<span class="badge status-left">خرج في ${fmtDate(c.end_date)}</span>` : ''}</div>
-        ${c.notes ? `<p class="remarks">📝 ${esc(c.notes)}</p>` : ''}
+          ${role !== 'parent' && c.contact_name ? `<span>الولي: ${esc(c.contact_name)}</span>` : ''}
+          ${role === 'admin' && c.contact_phone ? `<span class="phone-line"><span dir="ltr">${esc(c.contact_phone)}</span>${waButton(c.contact_phone)}</span>` : ''}
+          ${c.status === 'left' ? `<span class="badge status-left">خرج في ${fmtDate(c.end_date)}</span>` : ''}
+          ${c.student_id && role !== 'teacher' ? `<a class="badge level" href="#/students/${c.student_id}">مسجّل أيضًا في دروس الدعم ←</a>` : ''}</div>
+        ${c.notes && role === 'admin' ? `<p class="remarks">📝 ${esc(c.notes)}</p>` : ''}
       </div>
     </div>
-    ${financeSection(finance, 'admin', 'program')}`;
+    ${childFollowUpSection(file, role)}
+    ${finance ? financeSection(finance, role, 'program') : ''}
+    ${c.student_id && finance ? '<p class="muted small">معلوم التسجيل السنوي في ملف دروس الدعم (يُدفع مرة واحدة).</p>' : ''}`;
   const reload = () => viewProgramChild(el, id);
-  $('#add-payment').addEventListener('click', () => {
-    const current = finance.months.find((m) => m.remaining > 0) || { month: today().slice(0, 7), remaining: finance.monthly_fee || '' };
-    openModal(
-      'تسجيل دفعة',
-      `<div class="row">
-         <label>الشهر<input type="month" name="month" value="${esc(current.month)}" required></label>
-         <label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(current.remaining || '')}" required></label>
-       </div>
-       <div class="row">
-         <label>تاريخ الدفع<input type="date" name="paid_on" value="${today()}"></label>
-         <label>طريقة الدفع<select name="method">${Object.entries(PAYMENT_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
-       </div>
-       <label>ملاحظة<input name="note"></label>`,
-      async (data) => {
-        const { payment } = await api('POST', `/api/program/children/${id}/payments`, data);
-        toast('تم تسجيل الدفعة');
-        if (confirmAction(`تم تسجيل الدفعة (وصل رقم ${payment.receipt_no}). فتح الوصل للطباعة؟`)) location.hash = `#/receipt/program/${payment.id}`;
-        else reload();
-      }
+  bindChildFollowUp(el, file, reload);
+  if (finance) bindFinance(el, finance, { kind: 'program', id }, reload);
+}
+
+// المنشط: أقسامه وأطفالها
+async function viewProgramTeacher(el) {
+  const { classes, children } = await api('GET', '/api/program');
+  el.innerHTML = `
+    <div class="page-head"><h2>🎨 البرنامج التربوي</h2><a class="btn" href="#/program/attendance">تسجيل الحضور</a></div>
+    ${
+      classes.length
+        ? classes
+            .map(
+              (k) => `<section class="card"><h3>${esc(k.name)}${k.age_range ? ` <small class="muted">(${esc(k.age_range)})</small>` : ''}</h3>
+                ${(() => {
+                  const list = children.filter((c) => c.class_id === k.id);
+                  return list.length
+                    ? `<ul class="levels">${list
+                        .map(
+                          (c) => `<li><a href="#/program/child/${c.id}"><b>${esc(c.full_name)}</b></a>
+                            <span class="muted small">${ageOf(c.birth_date)} · غيابات ${c.absence_count} · ملاحظات ${c.note_count}</span></li>`
+                        )
+                        .join('')}</ul>`
+                    : '<p class="muted">لا يوجد أطفال في هذا القسم.</p>';
+                })()}</section>`
+            )
+            .join('')
+        : '<div class="card muted">لم تُسند إليك أي مجموعة في البرنامج التربوي.</div>'
+    }`;
+}
+
+// الحضور لقسم: الكل حاضر، اضغط على الغائب
+async function viewProgramAttendance(el) {
+  const { classes } = await api('GET', '/api/program');
+  if (!classes.length) {
+    el.innerHTML = '<h2>تسجيل الحضور — البرنامج التربوي</h2><div class="card muted">لا توجد أقسام.</div>';
+    return;
+  }
+  const saved = Number(sessionStorage.getItem('progAttClass'));
+  el.innerHTML = `
+    <a href="#/program" class="muted small">→ البرنامج التربوي</a>
+    <h2>تسجيل الحضور — البرنامج التربوي</h2>
+    <div class="filters">
+      <select id="pa-class">${classes.map((k) => `<option value="${k.id}" ${k.id === saved ? 'selected' : ''}>${esc(k.name)}</option>`).join('')}</select>
+      <input type="date" id="pa-date" value="${today()}">
+    </div>
+    <div class="card" id="pa-list"></div>`;
+  const load = async () => {
+    sessionStorage.setItem('progAttClass', $('#pa-class').value);
+    const { children } = await api('GET', `/api/program/attendance?class_id=${$('#pa-class').value}&date=${$('#pa-date').value}`);
+    const list = $('#pa-list');
+    list.innerHTML = children.length
+      ? `<p class="muted">اضغط على الطفل الغائب. الكل حاضر افتراضيًا.</p>
+        <ul class="att">${children
+          .map(
+            (c) => `<li><button type="button" class="att-row ${c.absent ? 'absent' : ''}" data-id="${c.id}">
+              ${avatar(c, 'sm')}<span>${esc(c.full_name)}</span><b class="att-state"></b></button></li>`
+          )
+          .join('')}</ul>
+        <p class="att-summary"></p>
+        <button class="btn" id="pa-save">حفظ الحضور</button>`
+      : '<p class="muted">لا يوجد أطفال في هذا القسم.</p>';
+    const summary = () => {
+      const n = list.querySelectorAll('.att-row.absent').length;
+      list.querySelector('.att-summary').textContent = `الحاضرون: ${children.length - n} — الغائبون: ${n}`;
+    };
+    list.querySelectorAll('.att-row').forEach((b) =>
+      b.addEventListener('click', () => {
+        b.classList.toggle('absent');
+        summary();
+      })
     );
-  });
-  el.querySelectorAll('[data-del-pay]').forEach((b) =>
-    b.addEventListener('click', async () => {
-      if (!confirmAction('حذف هذه الدفعة؟')) return;
-      await api('DELETE', `/api/program/payments/${b.dataset.delPay}`).catch((err) => toast(err.message, true));
-      reload();
-    })
-  );
+    if (children.length) summary();
+    $('#pa-save')?.addEventListener('click', async () => {
+      try {
+        await api('POST', '/api/program/attendance', {
+          class_id: Number($('#pa-class').value),
+          date: $('#pa-date').value,
+          absent_ids: [...list.querySelectorAll('.att-row.absent')].map((b) => Number(b.dataset.id)),
+        });
+        toast('تم حفظ الحضور');
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  };
+  $('#pa-class').addEventListener('change', load);
+  $('#pa-date').addEventListener('change', load);
+  await load();
 }
 
 // ---------- الدورات ----------
@@ -803,6 +1015,7 @@ async function viewFinance(el) {
           <tfoot><tr><th>المجموع</th><th>${fmtMoney(s.totals.income)}</th><th>${fmtMoney(s.totals.expense)}</th><th>${netBadge(s.totals.net)}</th></tr></tfoot>
         </table></div>
       </section>
+      ${sharedSplitSection(s)}
       <section class="card">
         <h3>📋 حسب الاستحقاق: ما يجب أن يدخل ويخرج عن الشهر</h3>
         <p class="muted small">يُبيّن مردودية النشاط الحقيقية حتى لو تأخّر الخلاص.</p>
@@ -858,7 +1071,7 @@ async function viewFinance(el) {
           .join('')}</tbody>
         <tfoot><tr><th>المجموع</th><th colspan="4"></th><th>${fmtMoney(y.totals.income)}</th><th>${fmtMoney(y.totals.expense)}</th><th>${netBadge(y.totals.net)}</th></tr></tfoot>
       </table></div>
-      <p class="muted small">الأعمدة: صافي كل نشاط (📚 دروس الدعم، 🎨 البرنامج التربوي، 🏕️ الدورات، 🏢 مصاريف عامة). اضغط على شهر لعرض تفاصيله.</p>`;
+      <p class="muted small">الأعمدة: صافي كل نشاط قبل توزيع المشتركة (📚 دروس الدعم، 🎨 البرنامج التربوي، 🏕️ الدورات، 🏢 مصاريف مشتركة). اضغط على شهر لعرض تفاصيله.</p>`;
     $('#fin-year').querySelectorAll('[data-month]').forEach((tr) =>
       tr.addEventListener('click', () => {
         $('#fin-month').value = tr.dataset.month;
@@ -869,5 +1082,48 @@ async function viewFinance(el) {
     );
   };
   bindMonth('fin-month', load);
+  el.addEventListener('click', (e) => {
+    if (e.target.id === 'edit-split') splitForm(() => load());
+  });
   await Promise.all([load(), loadYear()]);
+}
+
+// المصاريف المشتركة (كراء، كهرباء، تنظيف…) تبقى وحدها، ثم تُوزَّع بالنسب التي تحدّدها الإدارة
+function sharedSplitSection(s) {
+  const acts = s.activities.filter((a) => a.key !== 'general');
+  return `<section class="card">
+    <div class="section-head"><h3>🏢 توزيع المصاريف المشتركة</h3><button class="btn small ghost" id="edit-split">تعديل النسب</button></div>
+    <p>المصاريف المشتركة هذا الشهر: <b class="out">${fmtMoney(s.shared.cost)}</b>
+      ${s.shared.allocated ? '' : '<span class="muted small">— لم تُحدَّد نسب التوزيع بعد.</span>'}</p>
+    ${
+      s.shared.allocated
+        ? `<div class="table-wrap"><table class="fin">
+            <thead><tr><th>النشاط</th><th>الصافي قبل التوزيع</th><th>النسبة</th><th>نصيبه</th><th>الصافي بعد التوزيع</th></tr></thead>
+            <tbody>${acts
+              .map(
+                (a) => `<tr><td><b>${ACTIVITY_ICONS[a.key]} ${esc(a.label)}</b></td><td>${netBadge(a.net)}</td>
+                  <td>${a.shared_pct}%</td><td class="out">${fmtMoney(a.shared)}</td><td>${netBadge(a.net_after)}</td></tr>`
+              )
+              .join('')}</tbody></table></div>
+          ${s.shared.allocated < 100 ? `<p class="muted small">${100 - s.shared.allocated}% غير موزّعة (${fmtMoney(s.shared.unallocated)}).</p>` : ''}`
+        : ''
+    }
+  </section>`;
+}
+
+async function splitForm(onDone) {
+  const { split } = await api('GET', '/api/settings/shared-split');
+  const meta = await financeMeta();
+  openModal(
+    'نسب توزيع المصاريف المشتركة',
+    `<p class="muted small">كم يتحمّل كل نشاط من الكراء والكهرباء والتنظيف والمصاريف المشتركة الأخرى؟ المجموع 100% على الأكثر.</p>
+     <div class="fee-grid">${['support', 'program', 'courses']
+       .map((k) => `<label>${ACTIVITY_ICONS[k]} ${esc(meta.activities[k])} (%)<input name="${k}" inputmode="decimal" value="${esc(split[k] ?? '')}" placeholder="0"></label>`)
+       .join('')}</div>`,
+    async (data) => {
+      await api('PUT', '/api/settings/shared-split', data);
+      toast('تم حفظ النسب');
+      onDone();
+    }
+  );
 }

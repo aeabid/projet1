@@ -420,7 +420,10 @@ test('educational program, courses, staff, ledger and monthly finance summary', 
 
   const teacher = await login('tpay', 'secret1');
   assert.strictEqual((await teacher('GET', `/api/finance/summary?month=${month}`)).status, 403);
-  assert.strictEqual((await teacher('GET', '/api/program')).status, 403);
+  // المعلم يرى فقط أقسام البرنامج التي ينشّطها، دون معطيات مالية
+  const tp = await teacher('GET', '/api/program');
+  assert.strictEqual(tp.status, 200);
+  assert.deepStrictEqual(tp.body.classes, []);
 });
 
 test('center management: discounts, receipts, debts, people, tasks, meetings, alerts, kpis', async () => {
@@ -455,7 +458,8 @@ test('center management: discounts, receipts, debts, people, tasks, meetings, al
   assert.strictEqual(r.payer, 'Famille CM');
   const parent = await login('pcm', 'secret1');
   assert.strictEqual((await parent('GET', `/api/receipts/support/${pay.id}`)).status, 200);
-  assert.strictEqual((await parent('GET', `/api/receipts/program/1`)).status, 403);
+  // وصل طفل ليس من أبنائه
+  assert.strictEqual((await parent('GET', `/api/receipts/program/1`)).status, 404);
   const p2 = (await admin('POST', `/api/program/children/${child.id}/payments`, { amount: 100 })).body.payment;
   assert.strictEqual(p2.receipt_no, pay.receipt_no + 1);
   const list = (await admin('GET', '/api/receipts')).body.receipts;
@@ -491,4 +495,90 @@ test('center management: discounts, receipts, debts, people, tasks, meetings, al
   const k = (await admin('GET', '/api/kpis')).body;
   assert.ok(k.support_active >= 1 && k.debtors >= 1 && k.tasks_open >= 1);
   assert.strictEqual((await teacher('GET', '/api/kpis')).status, 403);
+});
+
+test('program parents, one child in both programs, sibling discounts, yearly registration, shared expenses split', async () => {
+  const admin = await login('admin', 'admin123');
+  const year = (await admin('GET', '/api/settings/fees')).body.school_year;
+  assert.strictEqual((await admin('PUT', '/api/settings/fees', { support: {}, family: { two: 10, three: 20 }, registration_fee: 30 })).status, 200);
+  const fees = (await admin('GET', '/api/settings/fees')).body;
+  assert.deepStrictEqual(fees.family, { two: 10, three: 20 });
+  assert.strictEqual(fees.registration_fee, 30);
+  assert.strictEqual((await admin('PUT', '/api/settings/fees', { family: { two: 120 } })).status, 400);
+
+  const parent = (await admin('POST', '/api/users', { role: 'parent', username: 'pfam', full_name: 'Famille', phone: '22 555 111', password: 'secret1' })).body.user;
+  const anim = (await admin('POST', '/api/users', { role: 'teacher', username: 'anim', full_name: 'Animatrice', password: 'secret1' })).body.user;
+  const A = (await admin('POST', '/api/students', { full_name: 'Fam A', level: '7', parent_id: parent.id, monthly_fee: 100, start_date: '2026-09-01' })).body.student;
+  const k = (await admin('POST', '/api/program/classes', { name: 'Fam class', teacher_id: anim.id })).body.class;
+  const B = (await admin('POST', '/api/program/children', { full_name: 'Fam B', class_id: k.id, parent_id: parent.id, monthly_fee: 80, start_date: '2026-09-01' })).body.child;
+  // نفس التلميذ A في البرنامج التربوي: الاسم والولي من ملف الدعم
+  const A2 = (await admin('POST', '/api/program/children', { student_id: A.id, class_id: k.id, monthly_fee: 50, start_date: '2026-10-01' })).body.child;
+  assert.strictEqual((await admin('POST', '/api/program/children', { student_id: A.id })).status, 409);
+
+  // شهر سبتمبر وأكتوبر: طفلان (A و B) => تخفيض 10%، و A في البرنامجين يُحسب مرة واحدة
+  let a = (await admin('GET', `/api/students/${A.id}`)).body;
+  assert.strictEqual(a.finance.months.find((m) => m.month === '2026-09').due, 90);
+  assert.strictEqual(a.finance.months.find((m) => m.month === '2026-10').due, 90);
+  assert.deepStrictEqual(a.finance.registration.map((r) => [r.school_year, r.due]), [[year, 30]]);
+  assert.strictEqual(a.program.child.id, A2.id);
+  assert.strictEqual(a.program.finance.months.find((m) => m.month === '2026-10').due, 45);
+  assert.deepStrictEqual(a.program.finance.registration, []);
+  let b = (await admin('GET', `/api/program/children/${B.id}`)).body;
+  assert.strictEqual(b.finance.months.find((m) => m.month === '2026-09').due, 72);
+  assert.strictEqual(b.finance.registration[0].due, 30);
+
+  // ثالث ابن من أكتوبر: 20% في أكتوبر فقط
+  await admin('POST', '/api/students', { full_name: 'Fam C', level: '5', parent_id: parent.id, monthly_fee: 100, start_date: '2026-10-01' });
+  a = (await admin('GET', `/api/students/${A.id}`)).body;
+  assert.strictEqual(a.finance.months.find((m) => m.month === '2026-09').due, 90);
+  assert.strictEqual(a.finance.months.find((m) => m.month === '2026-10').due, 80);
+  b = (await admin('GET', `/api/program/children/${B.id}`)).body;
+  assert.strictEqual(b.finance.months.find((m) => m.month === '2026-10').due, 64);
+
+  // معلوم التسجيل: مرة واحدة؛ دفعة على ملف A2 تُسجَّل في ملف الدعم A
+  const reg = (await admin('POST', '/api/registration-payments', { child_id: A2.id, amount: 30, school_year: year })).body.payment;
+  a = (await admin('GET', `/api/students/${A.id}`)).body;
+  assert.strictEqual(a.finance.registration[0].remaining, 0);
+  assert.strictEqual((await admin('GET', `/api/receipts/registration/${reg.id}`)).body.receipt.beneficiary, 'Fam A');
+  assert.strictEqual((await admin('POST', '/api/registration-payments', { child_id: B.id, amount: 30, school_year: '2026-2028' })).status, 400);
+
+  // المنشط: حضور قسمه وملاحظات، دون معطيات مالية
+  const t = await login('anim', 'secret1');
+  assert.strictEqual((await t('POST', '/api/program/attendance', { class_id: k.id, date: '2026-10-20', absent_ids: [B.id] })).status, 200);
+  const att = (await t('GET', `/api/program/attendance?class_id=${k.id}&date=2026-10-20`)).body;
+  assert.deepStrictEqual(att.children.filter((c) => c.absent).map((c) => c.id), [B.id]);
+  assert.strictEqual((await t('POST', `/api/program/children/${B.id}/notes`, { category: 'content', rating: 'good', content: 'يتابع المحتوى جيدًا' })).status, 201);
+  const tb = (await t('GET', `/api/program/children/${B.id}`)).body;
+  assert.strictEqual(tb.finance, undefined);
+  assert.strictEqual(tb.child.monthly_fee, undefined);
+  assert.strictEqual(tb.absences.length, 1);
+  const tlist = (await t('GET', '/api/program')).body;
+  assert.deepStrictEqual(tlist.classes.map((x) => x.id), [k.id]);
+
+  // الولي: كل أبنائه مرة واحدة، ويرى ملف طفل التربوي ووصولاته
+  const p = await login('pfam', 'secret1');
+  const fam = (await p('GET', '/api/family')).body.kids;
+  assert.deepStrictEqual(fam.map((x) => x.full_name).sort(), ['Fam A', 'Fam B', 'Fam C']);
+  assert.strictEqual(fam.find((x) => x.full_name === 'Fam A').program.id, A2.id);
+  const pb = (await p('GET', `/api/program/children/${B.id}`)).body;
+  assert.strictEqual(pb.notes[0].category, 'content');
+  assert.ok(pb.finance.balance > 0);
+  assert.strictEqual((await p('GET', `/api/receipts/registration/${reg.id}`)).status, 200);
+  const other = (await admin('POST', '/api/program/children', { full_name: 'Other kid' })).body.child;
+  assert.strictEqual((await p('GET', `/api/program/children/${other.id}`)).status, 404);
+  assert.strictEqual((await p('POST', `/api/program/children/${B.id}/notes`, { category: 'level', content: 'x' })).status, 403);
+
+  // المصاريف المشتركة: وحدها، وتُوزَّع بالنسب التي تحدّدها الإدارة
+  const month = new Date().toISOString().slice(0, 7);
+  await admin('POST', '/api/ledger', { direction: 'expense', activity: 'general', category: 'rent', amount: 1000, date: `${month}-02` });
+  assert.strictEqual((await admin('PUT', '/api/settings/shared-split', { support: 70, program: 40 })).status, 400);
+  assert.strictEqual((await admin('PUT', '/api/settings/shared-split', { support: 60, program: 40 })).status, 200);
+  const sum = (await admin('GET', `/api/finance/summary?month=${month}`)).body;
+  const support = sum.activities.find((x) => x.key === 'support');
+  const general = sum.activities.find((x) => x.key === 'general');
+  assert.strictEqual(general.label, 'مصاريف مشتركة');
+  assert.ok(sum.shared.cost >= 1000);
+  assert.strictEqual(support.shared, Math.round(sum.shared.cost * 0.6 * 1000) / 1000);
+  assert.strictEqual(support.net_after, Math.round((support.net - support.shared) * 1000) / 1000);
+  assert.strictEqual(sum.shared.allocated, 100);
 });

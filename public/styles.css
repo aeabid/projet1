@@ -118,6 +118,7 @@ h3 { font-size: 1.1rem; }
 .badge.behavior { background: #f2e9ff; color: #7037c6; }
 .badge.level { background: #e6efff; color: var(--feed-indigo); }
 .badge.general { background: #eef1f8; color: #4a5575; }
+.badge.content { background: #fde8f1; color: #b0145a; }
 .badge.excellent { background: #dcf6e9; color: #127a4a; }
 .badge.good { background: #e6f7ee; color: var(--good); }
 .badge.average { background: #fff3df; color: #a7610a; }

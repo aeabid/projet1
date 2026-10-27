@@ -252,6 +252,8 @@ const routes = [
   [/^#\/home$/, (el) => viewHome(el)],
   [/^#\/program$/, (el) => viewProgram(el)],
   [/^#\/program\/child\/(\d+)$/, (el, id) => viewProgramChild(el, Number(id))],
+  [/^#\/kid\/(\d+)$/, (el, id) => viewProgramChild(el, Number(id))],
+  [/^#\/program\/attendance$/, (el) => viewProgramAttendance(el)],
   [/^#\/courses$/, (el) => viewCourses(el)],
   [/^#\/courses\/(\d+)$/, (el, id) => viewCourse(el, Number(id))],
   [/^#\/ledger$/, (el) => viewLedger(el)],
@@ -260,7 +262,7 @@ const routes = [
   [/^#\/people$/, (el) => viewPeople(el)],
   [/^#\/debts$/, (el) => viewDebts(el)],
   [/^#\/receipts$/, (el) => viewReceipts(el)],
-  [/^#\/receipt\/(support|program|course)\/(\d+)$/, (el, kind, id) => viewReceipt(el, kind, Number(id))],
+  [/^#\/receipt\/(support|program|course|registration)\/(\d+)$/, (el, kind, id) => viewReceipt(el, kind, Number(id))],
   [/^#\/todo$/, (el) => viewTodo(el)],
   [/^#\/meetings$/, (el) => viewMeetings(el)],
   [/^#\/alerts$/, (el) => viewAlerts(el)],
@@ -377,6 +379,7 @@ const NAV = {
     ['#/attendance', 'الحضور'],
     ['#/tasks', 'المهام'],
     ['#/my-pay', 'ساعاتي وخلاصي'],
+    ['#/program', 'البرنامج التربوي'],
     ['#/todo', 'مهامي'],
     ['#/account', 'حسابي'],
   ],
@@ -397,7 +400,8 @@ function renderTopbar() {
   bar.hidden = false;
   const current = location.hash.split('?')[0];
   const isActive = (href) => current === href || (href !== '#/' && current.startsWith(href + '/'));
-  const nav = NAV[state.user.role];
+  // «البرنامج التربوي» للمعلم فقط إن كان منشّطًا لقسم
+  const nav = NAV[state.user.role].filter((e) => !(state.user.role === 'teacher' && e[0] === '#/program' && !state.user.program_classes));
   $('#nav').innerHTML = nav
     .map((entry, i) =>
       Array.isArray(entry)
@@ -827,22 +831,23 @@ async function studentForm(student, onDone) {
 
 // ---------- فضاء الولي ----------
 async function viewMyChildren(el) {
-  const { students } = await api('GET', '/api/students');
-  if (students.length === 1) {
-    location.hash = `#/students/${students[0].id}`;
+  const { kids } = await api('GET', '/api/family');
+  if (kids.length === 1) {
+    location.hash = kids[0].link;
     return;
   }
   el.innerHTML = `
     <h2>أبنائي</h2>
     ${
-      students.length
-        ? `<div class="cards">${students
+      kids.length
+        ? `<div class="cards">${kids
             .map(
-              (s) => `<a class="card child" href="#/students/${s.id}">
-                <div class="child-head">${avatar(s, 'md')}<div>
+              (s) => `<a class="card child" href="${s.link}">
+                <div class="child-head">${s.type === 'student' ? avatar(s, 'md') : avatar({ full_name: s.full_name }, 'md')}<div>
                   <h3>${esc(s.full_name)}</h3>
-                  <span class="pill">${esc(levelLabel(s.level))}</span>
-                  ${s.status !== 'studying' ? statusBadge(s.status) : ''}
+                  ${s.level ? `<span class="pill">${esc(levelLabel(s.level))}</span>` : ''}
+                  ${s.program ? `<span class="pill">🎨 ${esc(s.program.class_name || 'البرنامج التربوي')}</span>` : ''}
+                  ${s.type === 'student' && s.status !== 'studying' ? statusBadge(s.status) : ''}
                 </div></div>
                 ${s.status === 'waiting' ? '<p class="muted small">التسجيل في انتظار تأكيد الإدارة.</p>' : ''}
                 <div class="mini-stats">
@@ -860,7 +865,7 @@ async function viewMyChildren(el) {
 // ---------- ملف التلميذ ----------
 async function viewStudent(el, id) {
   const role = state.user.role;
-  const { student, absences, notes, finance, tasks, timetable, whatsapp_groups } = await api('GET', `/api/students/${id}`);
+  const { student, absences, notes, finance, tasks, timetable, whatsapp_groups, program } = await api('GET', `/api/students/${id}`);
   const adminNotes = notes.filter((n) => !n.subject_id && n.author_role === 'admin');
   const teacherNotes = notes.filter((n) => !adminNotes.includes(n));
   const unjustified = absences.filter((a) => !a.justified).length;
@@ -941,7 +946,8 @@ async function viewStudent(el, id) {
         ${finance ? `<dt>المبلغ الشهري</dt><dd><b>${fmtMoney(finance.monthly_fee)}</b></dd>` : ''}
       </dl>
     </section>
-${finance ? financeSection(finance, role) : ''}
+${finance ? financeSection(finance, role, 'support', program ? '💰 الوضعية المالية — دروس الدعم' : '💰 الوضعية المالية') : ''}
+    ${program ? childProgramSections(program, role) : ''}
     ${
       whatsapp_groups.length
         ? `<section class="card wa-groups"><h3>💬 مجموعة واتساب</h3>${whatsapp_groups
@@ -1049,36 +1055,9 @@ ${finance ? financeSection(finance, role) : ''}
     reload();
   });
 
-  $('#add-payment')?.addEventListener('click', () => {
-    const current = finance.months.find((m) => m.remaining > 0) || { month: today().slice(0, 7), remaining: finance.monthly_fee || '' };
-    openModal(
-      'تسجيل دفعة',
-      `<div class="row">
-         <label>الشهر<input type="month" name="month" value="${esc(current.month)}" required></label>
-         <label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(current.remaining || '')}" required></label>
-       </div>
-       <div class="row">
-         <label>تاريخ الدفع<input type="date" name="paid_on" value="${today()}"></label>
-         <label>طريقة الدفع<select name="method">${Object.entries(PAYMENT_LABELS)
-           .map(([k, v]) => `<option value="${k}">${v}</option>`)
-           .join('')}</select></label>
-       </div>
-       <label>ملاحظة<input name="note" placeholder="مثال: رقم الوصل"></label>`,
-      async (data) => {
-        const { payment } = await api('POST', `/api/students/${id}/payments`, data);
-        toast('تم تسجيل الدفعة');
-        if (confirmAction(`تم تسجيل الدفعة (وصل رقم ${payment.receipt_no}). فتح الوصل للطباعة؟`)) location.hash = `#/receipt/support/${payment.id}`;
-        else reload();
-      }
-    );
-  });
-  el.querySelectorAll('[data-del-pay]').forEach((b) =>
-    b.addEventListener('click', async () => {
-      if (!confirmAction('حذف هذه الدفعة؟')) return;
-      await api('DELETE', `/api/payments/${b.dataset.delPay}`).catch((e) => toast(e.message, true));
-      reload();
-    })
-  );
+  if (finance) bindFinance(el, finance, { kind: 'support', id }, reload);
+  if (program?.finance) bindFinance(el, program.finance, { kind: 'program', id: program.child.id }, reload);
+  if (program) bindChildFollowUp(el, program, reload);
 
   $('#add-note')?.addEventListener('click', () => {
     if (role === 'teacher' && !mySubjects.length) return toast('ليس لك أي مادة في مستوى هذا التلميذ، اتصل بالإدارة', true);
@@ -1146,8 +1125,8 @@ ${finance ? financeSection(finance, role) : ''}
   );
 }
 
-// الوضعية المالية: الولي والإدارة
-function financeSection(f, role, kind = 'support') {
+// الوضعية المالية: الولي والإدارة (kind: support أو program — قسمان في نفس الصفحة ممكن)
+function financeSection(f, role, kind = 'support', title = '💰 الوضعية المالية') {
   const status = (m) =>
     m.due === 0
       ? '<span class="badge general">دفع مسبق</span>'
@@ -1156,14 +1135,20 @@ function financeSection(f, role, kind = 'support') {
         : m.paid > 0
           ? '<span class="badge average">جزئي</span>'
           : '<span class="badge weak">غير خالص</span>';
+  const regDue = f.registration.some((r) => r.remaining > 0);
   return `
     <section class="card">
       <div class="section-head">
-        <h3>💰 الوضعية المالية</h3>
-        ${role === 'admin' ? '<button class="btn small" id="add-payment">+ دفعة</button>' : ''}
+        <h3>${title}</h3>
+        ${
+          role === 'admin'
+            ? `<div>${regDue ? `<button class="btn small ghost" data-add-reg="${kind}">+ معلوم التسجيل</button> ` : ''}<button class="btn small" data-add-pay="${kind}">+ دفعة</button></div>`
+            : ''
+        }
       </div>
-      ${f.free ? '<p class="free-note">🎓 هذا التلميذ يدرس مجانًا.</p>' : ''}
+      ${f.free ? '<p class="free-note">🎓 يدرس مجانًا.</p>' : ''}
       ${!f.free && f.discount ? `<p class="free-note">🏷️ تخفيض ${fmtMoney(f.discount)} في الشهر${f.discount_reason ? ` (${esc(f.discount_reason)})` : ''} — المبلغ الصافي: <b>${fmtMoney(f.net_fee)}</b></p>` : ''}
+      ${!f.free && f.sibling_pct ? `<p class="free-note">👨‍👩‍👧 تخفيض الإخوة: <b>${f.sibling_pct}%</b> هذا الشهر</p>` : ''}
       <div class="stats compact">
         <div class="stat"><b>${f.free ? 'مجاني' : fmtMoney(f.monthly_fee)}</b><span>المبلغ الشهري</span></div>
         <div class="stat"><b>${fmtMoney(f.total_due)}</b><span>مجموع المستحق</span></div>
@@ -1173,6 +1158,29 @@ function financeSection(f, role, kind = 'support') {
         }</span></div>
       </div>
       ${
+        f.registration.length
+          ? `<h4>🪪 معلوم التسجيل السنوي</h4>
+            <div class="table-wrap"><table>
+              <thead><tr><th>السنة الدراسية</th><th>المعلوم</th><th>المدفوع</th><th>الباقي</th><th>الدفع</th></tr></thead>
+              <tbody>${f.registration
+                .map(
+                  (r) => `<tr><td><b>${esc(r.school_year)}</b></td><td>${fmtMoney(r.due)}</td><td>${fmtMoney(r.paid)}</td>
+                    <td>${r.remaining ? `<b class="owed">${fmtMoney(r.remaining)}</b>` : '<span class="badge good">خالص</span>'}</td>
+                    <td class="small">${
+                      r.payments
+                        .map(
+                          (p) => `<div>${fmtMoney(p.amount)} · ${fmtDate(p.paid_on)} <a class="receipt-link" href="#/receipt/registration/${p.id}">🧾 وصل ${p.receipt_no ?? ''}</a>${
+                            role === 'admin' ? ` <button class="link danger" data-del-reg="${p.id}">حذف</button>` : ''
+                          }</div>`
+                        )
+                        .join('') || '<span class="muted">—</span>'
+                    }</td></tr>`
+                )
+                .join('')}</tbody></table></div>
+            <h4>📆 المعلوم الشهري</h4>`
+          : ''
+      }
+      ${
         f.months.length
           ? `<div class="table-wrap"><table>
               <thead><tr><th>الشهر</th><th>المستحق</th><th>المدفوع</th><th>الباقي</th><th>الحالة</th><th>تفاصيل الدفع</th></tr></thead>
@@ -1180,7 +1188,9 @@ function financeSection(f, role, kind = 'support') {
                 .map(
                   (m) => `<tr>
                     <td><b>${esc(monthLabel(m.month))}</b></td>
-                    <td>${fmtMoney(m.due)}${m.prorata ? `<div class="muted small">prorata ${esc(m.prorata)} يوم</div>` : ''}</td>
+                    <td>${fmtMoney(m.due)}${m.prorata ? `<div class="muted small">prorata ${esc(m.prorata)} يوم</div>` : ''}${
+                      m.sibling_pct ? `<div class="muted small">تخفيض الإخوة ${m.sibling_pct}%</div>` : ''
+                    }</td>
                     <td>${fmtMoney(m.paid)}</td>
                     <td>${m.remaining ? `<b class="owed">${fmtMoney(m.remaining)}</b>` : '—'}</td>
                     <td>${status(m)}</td>
@@ -1190,7 +1200,7 @@ function financeSection(f, role, kind = 'support') {
                           (p) => `<div>${fmtMoney(p.amount)} · ${fmtDate(p.paid_on)}${p.method ? ' · ' + esc(PAYMENT_LABELS[p.method] || p.method) : ''}${
                             p.note ? ` · <span class="muted">${esc(p.note)}</span>` : ''
                           } <a class="receipt-link" href="#/receipt/${kind}/${p.id}">🧾 وصل ${p.receipt_no ?? ''}</a>${
-                            role === 'admin' ? ` <button class="link danger" data-del-pay="${p.id}">حذف</button>` : ''
+                            role === 'admin' ? ` <button class="link danger" data-del-pay="${p.id}" data-kind="${kind}">حذف</button>` : ''
                           }</div>`
                         )
                         .join('') || '<span class="muted">—</span>'
@@ -1201,6 +1211,69 @@ function financeSection(f, role, kind = 'support') {
           : `<p class="muted">${f.monthly_fee ? 'لا توجد أشهر مستحقة بعد.' : 'لم يُحدَّد المبلغ الشهري بعد.'}</p>`
       }
     </section>`;
+}
+
+// أزرار الوضعية المالية: دفعة شهرية، معلوم التسجيل، حذف
+// target: { kind, id } — kind = support (تلميذ دعم) أو program (طفل التربوي)
+function bindFinance(el, f, { kind, id }, reload) {
+  const urls = {
+    support: { pay: `/api/students/${id}/payments`, del: (x) => `/api/payments/${x}`, reg: { student_id: id } },
+    program: { pay: `/api/program/children/${id}/payments`, del: (x) => `/api/program/payments/${x}`, reg: { child_id: id } },
+  }[kind];
+  const methods = () => Object.entries(PAYMENT_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+  const afterPay = (receiptKind, payment) => {
+    toast('تم تسجيل الدفعة');
+    if (confirmAction(`تم تسجيل الدفعة (وصل رقم ${payment.receipt_no}). فتح الوصل للطباعة؟`)) location.hash = `#/receipt/${receiptKind}/${payment.id}`;
+    else reload();
+  };
+  el.querySelector(`[data-add-pay="${kind}"]`)?.addEventListener('click', () => {
+    const current = f.months.find((m) => m.remaining > 0) || { month: today().slice(0, 7), remaining: f.net_fee || f.monthly_fee || '' };
+    openModal(
+      'تسجيل دفعة',
+      `<div class="row">
+         <label>الشهر<input type="month" name="month" value="${esc(current.month)}" required></label>
+         <label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(current.remaining || '')}" required></label>
+       </div>
+       <div class="row">
+         <label>تاريخ الدفع<input type="date" name="paid_on" value="${today()}"></label>
+         <label>طريقة الدفع<select name="method">${methods()}</select></label>
+       </div>
+       <label>ملاحظة<input name="note" placeholder="مثال: رقم الوصل"></label>`,
+      async (data) => afterPay(kind, (await api('POST', urls.pay, data)).payment)
+    );
+  });
+  el.querySelector(`[data-add-reg="${kind}"]`)?.addEventListener('click', () => {
+    const r = f.registration.find((x) => x.remaining > 0);
+    openModal(
+      'معلوم التسجيل السنوي',
+      `<div class="row">
+         <label>السنة الدراسية<input name="school_year" value="${esc(r.school_year)}" dir="ltr" required></label>
+         <label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(r.remaining)}" required></label>
+       </div>
+       <div class="row">
+         <label>تاريخ الدفع<input type="date" name="paid_on" value="${today()}"></label>
+         <label>طريقة الدفع<select name="method">${methods()}</select></label>
+       </div>
+       <p class="muted small">يُدفع مرة واحدة في السنة حتى لو كان الطفل في دروس الدعم والبرنامج التربوي معًا.</p>`,
+      async (data) => afterPay('registration', (await api('POST', '/api/registration-payments', { ...data, ...urls.reg })).payment)
+    );
+  });
+  el.querySelectorAll(`[data-del-pay][data-kind="${kind}"]`).forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirmAction('حذف هذه الدفعة؟')) return;
+      await api('DELETE', urls.del(b.dataset.delPay)).catch((e) => toast(e.message, true));
+      reload();
+    })
+  );
+  el.querySelectorAll('[data-del-reg]').forEach((b) => {
+    if (b.dataset.bound) return;
+    b.dataset.bound = '1';
+    b.addEventListener('click', async () => {
+      if (!confirmAction('حذف دفعة معلوم التسجيل؟')) return;
+      await api('DELETE', `/api/registration-payments/${b.dataset.delReg}`).catch((e) => toast(e.message, true));
+      reload();
+    });
+  });
 }
 
 // ---------- المستخدمون ----------
