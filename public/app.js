@@ -252,7 +252,8 @@ const routes = [
   [/^#\/whatsapp$/, viewWhatsappGroups],
   [/^#\/broadcast$/, viewBroadcast],
   [/^#\/payroll$/, viewPayroll],
-  [/^#\/home$/, (el) => viewHome(el)],
+  [/^#\/home$/, (el) =>
+    state.user.role === 'teacher' ? viewTeacherHome(el) : state.user.role === 'parent' ? viewParentHome(el) : viewHome(el)],
   [/^#\/program$/, (el) => viewProgram(el)],
   [/^#\/program\/child\/(\d+)$/, (el, id) => viewProgramChild(el, Number(id))],
   [/^#\/kid\/(\d+)$/, (el, id) => viewProgramChild(el, Number(id))],
@@ -289,7 +290,7 @@ const routes = [
 ];
 
 function homeFor(user) {
-  return user.role === 'admin' ? '#/home' : '#/students';
+  return '#/home';
 }
 
 let navCount = 0;
@@ -391,6 +392,7 @@ const NAV = {
     },
   ],
   teacher: [
+    ['#/home', 'الرئيسية'],
     ['#/students', 'تلاميذي'],
     ['#/timetable', 'جدولي'],
     ['#/attendance', 'الحضور'],
@@ -404,6 +406,7 @@ const NAV = {
     ['#/account', 'حسابي'],
   ],
   parent: [
+    ['#/home', 'الرئيسية'],
     ['#/students', 'أبنائي'],
     ['#/timetable', 'جدول الأوقات'],
     ['#/messages', 'الرسائل'],
@@ -2443,7 +2446,7 @@ async function viewRegister(el) {
       state.user = user;
       state.meta = await api('GET', '/api/meta');
       toast('تم التسجيل، مرحبًا بك!');
-      location.hash = '#/students';
+      location.hash = '#/home';
     } catch (ex) {
       err.textContent = ex.message;
       err.hidden = false;

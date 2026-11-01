@@ -725,3 +725,34 @@ test('parent messages, bulk monthly cards, class overview, teacher self-signup',
   assert.deepStrictEqual(tov.subjects.map((x) => x.id), [math]);
   assert.strictEqual((await parent('GET', '/api/overview?level=8')).status, 403);
 });
+
+test('home pages: teacher sees students, notes, absences and pay; parent sees notes, payments, absences', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const math = meta.subjects.find((x) => x.name === 'الرياضيات').id;
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'thome', full_name: 'T Home', password: 'secret1', hourly_rate: 10, subject_ids: [math] })).body.user;
+  const p = (await admin('POST', '/api/users', { role: 'parent', username: 'phome', full_name: 'P Home', password: 'secret1' })).body.user;
+  const st = (await admin('POST', '/api/students', { full_name: 'Home Kid', level: '7', parent_id: p.id, monthly_fee: 100, start_date: '2026-09-01' })).body.student;
+  await admin('POST', `/api/students/${st.id}/payments`, { month: '2026-09', amount: 100, paid_on: '2026-09-03' });
+  const teacher = await login('thome', 'secret1');
+  await teacher('POST', `/api/students/${st.id}/notes`, { subject_id: math, category: 'level', rating: 'good', content: 'يتقدّم' });
+  await teacher('POST', `/api/students/${st.id}/notes`, { subject_id: math, category: 'behavior', rating: 'weak', content: 'داخلية', visible_to_parent: false });
+  await teacher('POST', `/api/students/${st.id}/absences`, { subject_id: math, date: new Date().toISOString().slice(0, 10) });
+
+  const th = (await teacher('GET', '/api/home/teacher')).body;
+  assert.ok(th.students >= 1);
+  assert.strictEqual(th.notes_month, 2);
+  assert.strictEqual(th.absences_month, 1);
+  assert.strictEqual(th.notes[0].student_name, 'Home Kid');
+  assert.ok('remaining' in th.pay && th.pay.hourly_rate === 10);
+
+  const parent = await login('phome', 'secret1');
+  const ph = (await parent('GET', '/api/home/parent')).body;
+  assert.deepStrictEqual(ph.kids.map((k) => k.full_name), ['Home Kid']);
+  assert.deepStrictEqual(ph.notes.map((n) => n.content), ['يتقدّم']); // الملاحظة الداخلية لا تظهر
+  assert.strictEqual(ph.notes[0].from, 'أستاذ(ة) الرياضيات');
+  assert.deepStrictEqual(ph.payments.map((x) => [x.kind, x.amount, x.paid_on]), [['support', 100, '2026-09-03']]);
+  assert.strictEqual(ph.absences.length, 1);
+  assert.strictEqual((await parent('GET', '/api/home/teacher')).status, 403);
+  assert.strictEqual((await teacher('GET', '/api/home/parent')).status, 403);
+});
