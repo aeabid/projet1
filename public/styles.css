@@ -517,3 +517,61 @@ a.card.alert.info { border-inline-start-color: var(--profit); }
 a.card.alert ul { margin: .4rem 0 0; padding-inline-start: 1.2rem; color: var(--muted); font-size: .9rem; }
 .kpis { grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); }
 .home-tiles { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+
+/* ===== بطاقة التقييم الشهرية (A4، كالبطاقة الورقية) ===== */
+.rc-wrap { display: grid; gap: 1.2rem; }
+.rc-sheet {
+  --pu: #4C2786; --pk: #EFC3E4; --line: #1a1a1a;
+  background: #fff; color: #141414; max-width: 210mm; width: 100%; margin: 0 auto; padding: 12mm 11mm 8mm;
+  box-shadow: 0 10px 40px -18px rgba(60, 20, 110, .45); display: flex; flex-direction: column;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.rc-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 7mm; }
+.rc-title { display: flex; align-items: center; gap: .7rem; color: var(--pu); }
+.rc-title h1 { margin: 0; font-size: 1.5rem; line-height: 1.2; color: var(--pu); }
+.rc-title small { display: block; color: #8a72b0; font-size: .8rem; margin-top: 2px; }
+.rc-logo { height: 42px; width: auto; }
+.rc-id { display: grid; grid-template-columns: 1fr 1fr auto; border: 1.4px solid var(--line); margin-bottom: 6mm; }
+.rc-id > div { padding: .55rem .8rem; font-weight: 700; display: flex; align-items: center; gap: .4rem; }
+.rc-id > div + div { border-inline-start: 1.4px solid var(--line); }
+.rc-id span { font-weight: 500; color: #444; }
+.rc-ph { padding: 4px !important; }
+.rc-ph img, .rc-ph i { width: 56px; height: 56px; object-fit: cover; border-radius: 10px; display: block; background: var(--pk); }
+.rc-box { border: 1.4px solid var(--line); margin-bottom: 6mm; break-inside: avoid; }
+.rc-box > h2 { margin: 0; background: var(--pk); color: var(--pu); font-size: .95rem; text-align: center; padding: .4rem; border-bottom: 1.4px solid var(--line); }
+.rc-in { padding: .6rem 1rem .8rem; line-height: 1.85; }
+.rc-sheet p { margin: 0 0 4px; white-space: pre-line; }
+.rc-dl { border-bottom: 1.2px dotted #9a9a9a; height: 24px; }
+.rc-sheet table { width: 100%; border-collapse: collapse; background: #fff; }
+.rc-sheet thead th { font-weight: 500; font-size: .85rem; padding: .5rem; border-bottom: 1.4px solid var(--line); color: #333; background: #fff; }
+.rc-sheet thead th + th, .rc-sheet td, .rc-sheet tbody th + td { border-inline-start: 1.4px solid var(--line); }
+.rc-sheet tbody tr + tr > * { border-top: 1.4px solid var(--line); }
+.rc-sheet tbody th { width: 20%; color: var(--pu); padding: .6rem; text-align: center; }
+.rc-sheet td { vertical-align: top; padding: .6rem .8rem; font-size: .9rem; line-height: 1.8; }
+.rc-sheet td:nth-child(2) { width: 52%; }
+.rc-sheet tbody tr { height: 26mm; break-inside: avoid; }
+.rc-tag { margin-bottom: 4px; color: #444; }
+.rc-bd { display: inline-block; padding: 0 .65rem; border-radius: 999px; font-weight: 700; font-size: .82rem; color: var(--c);
+  background: color-mix(in srgb, var(--c) 13%, #fff); border: 1px solid color-mix(in srgb, var(--c) 35%, #fff); }
+.rc-foot { margin-top: auto; padding-top: 6mm; display: flex; justify-content: center; align-items: center; gap: 1.5rem; color: var(--pu); font-size: .85rem; }
+.rc-foot img { height: 28px; width: auto; }
+@media (max-width: 600px) {
+  .rc-sheet { padding: 1rem; }
+  .rc-title h1 { font-size: 1.15rem; }
+  .rc-id { grid-template-columns: 1fr auto; }
+  .rc-id > div:nth-child(2) { grid-column: 1; grid-row: 2; border-inline-start: 0; border-top: 1.4px solid var(--line); }
+  .rc-id .rc-ph { grid-row: 1 / span 2; grid-column: 2; }
+  .rc-sheet td, .rc-sheet tbody th { padding: .45rem; font-size: .82rem; }
+}
+@media print {
+  @page { size: A4; margin: 10mm; }
+  .rc-wrap { display: block; }
+  .rc-sheet { box-shadow: none; max-width: none; padding: 0; min-height: 275mm; page-break-after: always; break-after: page; }
+  .rc-sheet:last-child { page-break-after: auto; break-after: auto; }
+}
+
+/* مستويات المعلم في كل مادة */
+.subject-levels { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .8rem; padding: .25rem 0; border-bottom: 1px dashed var(--border); }
+.lv-chips { display: inline-flex; flex-wrap: wrap; gap: .3rem; }
+.chip-check { display: inline-flex; align-items: center; gap: .2rem; font-size: .8rem; background: #f4effa; border-radius: 999px; padding: .1rem .5rem; cursor: pointer; }
+.chip-check input { margin: 0; }

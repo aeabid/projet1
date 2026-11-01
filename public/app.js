@@ -5,6 +5,9 @@ const state = { user: null, meta: null };
 const ROLE_LABELS = { admin: 'الإدارة', teacher: 'معلم', parent: 'ولي' };
 const CATEGORY_LABELS = { behavior: 'السلوك', level: 'المستوى', general: 'عامة' };
 const RATING_LABELS = { excellent: 'ممتاز', good: 'حسن', average: 'متوسط', weak: 'ضعيف' };
+// سلالم بطاقة التقييم: المستوى والسلوك
+const LEVEL_WORDS = { excellent: 'ممتاز', good: 'جيد', average: 'متوسط', weak: 'ضعيف' };
+const BEHAVIOR_WORDS = { excellent: 'ممتاز', good: 'حسن', average: 'متوسط', weak: 'يحتاج متابعة' };
 const STATUS_LABELS = { studying: 'يدرس', waiting: 'في الانتظار', left: 'خرج', stopped: 'متوقف' };
 const statusBadge = (st) => `<span class="badge status-${esc(st)}">${STATUS_LABELS[st] || esc(st)}</span>`;
 
@@ -274,6 +277,8 @@ const routes = [
     sessionStorage.setItem('levelFilter', '');
     return viewStudents(el);
   }],
+  [/^#\/report\/(\d+)$/, (el, id) => viewReport(el, Number(id))],
+  [/^#\/report-class$/, (el) => viewClassReports(el)],
   [/^#\/account$/, viewAccount],
   [/^#\/dashboard$/, viewDashboard],
 ];
@@ -282,6 +287,7 @@ function homeFor(user) {
   return user.role === 'admin' ? '#/home' : '#/students';
 }
 
+let navCount = 0;
 async function router() {
   const hash = location.hash || '#/';
   const isPublic = hash === '#/login' || hash === '#/register';
@@ -300,6 +306,7 @@ async function router() {
     location.hash = homeFor(state.user);
     return;
   }
+  const nav = ++navCount;
   for (const [re, view] of routes) {
     const m = hash.match(re);
     if (m) {
@@ -308,7 +315,8 @@ async function router() {
       try {
         await view(el, ...m.slice(1));
       } catch (err) {
-        el.innerHTML = `<div class="card"><p class="error">${esc(err.message)}</p></div>`;
+        // خطأ صفحة غادرها المستعمل قبل أن تكتمل: لا يُكتب فوق الصفحة الجديدة
+        if (nav === navCount) el.innerHTML = `<div class="card"><p class="error">${esc(err.message)}</p></div>`;
       }
       return;
     }
@@ -332,6 +340,7 @@ const NAV = {
         ['#/payroll', 'ساعات وخلاص المعلمين'],
         ['#/subjects', 'المواد'],
         ['#/import', 'استيراد قائمة'],
+        ['#/report-class', 'بطاقات التقييم'],
       ],
     },
     {
@@ -884,11 +893,13 @@ async function viewStudent(el, id) {
     <li class="note">
       <div class="note-head">
         <span class="badge ${n.category}">${CATEGORY_LABELS[n.category]}</span>
-        ${n.rating ? `<span class="badge ${n.rating}">${RATING_LABELS[n.rating]}</span>` : ''}
+        ${n.rating ? `<span class="badge ${n.rating}">${n.category === 'behavior' ? BEHAVIOR_WORDS[n.rating] : LEVEL_WORDS[n.rating]}</span>` : ''}
+        ${n.behavior ? `<span class="badge ${n.behavior}">السلوك: ${BEHAVIOR_WORDS[n.behavior]}</span>` : ''}
+        ${n.visible_to_parent === false ? '<span class="badge general">🔒 لا يراها الولي</span>' : ''}
         <span class="muted small">${fmtDate(n.date)} · ${esc(n.author_name || '')}</span>
         ${role !== 'parent' && canDelete(n.author_id) ? `<button class="link danger" data-del-note="${n.id}">حذف</button>` : ''}
       </div>
-      <p>${esc(n.content)}</p>
+      ${n.content ? `<p>${esc(n.content)}</p>` : ''}
     </li>`;
 
   el.innerHTML = `
@@ -918,7 +929,8 @@ async function viewStudent(el, id) {
       </div>
       ${
         role !== 'parent'
-          ? `<div class="actions"><button class="btn" id="add-note">+ ملاحظة</button>
+          ? `<div class="actions"><a class="btn ghost" href="#/report/${student.id}">📄 بطاقة التقييم</a>
+             <button class="btn" id="add-note">+ ملاحظة</button>
              <button class="btn warn" id="add-absence">+ غياب</button>
              ${role === 'admin' && waNumber(student.parent_phone) ? `<button class="btn wa" id="wa-parent">${WA_ICON} واتساب الولي</button>` : ''}</div>`
           : ''
@@ -1023,7 +1035,10 @@ ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضع�
   // المواد المتاحة: مواد المعلم، في مستوى التلميذ، والتي سجّل فيها التلميذ
   const enrolledIds = new Set(student.subjects.map((s) => s.id));
   const mySubjects = (role === 'teacher' ? state.user.subjects || [] : state.meta.subjects).filter(
-    (s) => (!s.levels || s.levels.includes(student.level)) && (!enrolledIds.size || enrolledIds.has(s.id))
+    (s) =>
+      (!s.levels || s.levels.includes(student.level)) &&
+      (!s.teach_levels || s.teach_levels.includes(student.level)) &&
+      (!enrolledIds.size || enrolledIds.has(s.id))
   );
 
   $('#wa-parent')?.addEventListener('click', () =>
@@ -1070,13 +1085,20 @@ ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضع�
            <option value="behavior">السلوك</option>
            <option value="general">عامة</option>
          </select></label>
-         <label>التقييم<select name="rating">
+         <label>التاريخ<input type="date" name="date" value="${today()}"></label>
+       </div>
+       <div class="row">
+         <label>المستوى<select name="rating">
            <option value="">—</option>
-           ${Object.entries(RATING_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
+           ${Object.entries(LEVEL_WORDS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
+         </select></label>
+         <label>السلوك<select name="behavior">
+           <option value="">—</option>
+           ${Object.entries(BEHAVIOR_WORDS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
          </select></label>
        </div>
-       <label>التاريخ<input type="date" name="date" value="${today()}"></label>
-       <label>الملاحظة<textarea name="content" rows="4" required></textarea></label>`,
+       <label>الملاحظة<textarea name="content" rows="4" placeholder="اختياري إن حدّدت المستوى أو السلوك"></textarea></label>
+       <label class="check"><input type="checkbox" name="visible_to_parent" checked> يراها الولي (وتظهر في بطاقة التقييم)</label>`,
       async (data) => {
         await api('POST', `/api/students/${id}/notes`, data);
         toast('تمت إضافة الملاحظة');
@@ -1318,6 +1340,7 @@ async function viewUsers(el, role) {
   const form = (user) => {
     const u = user || {};
     const ids = new Set((u.subjects || []).map((s) => s.id));
+    const teach = new Map((u.subjects || []).map((s) => [s.id, s.teach_levels || []]));
     openModal(
       user ? 'تعديل الحساب' : addLabels[role].slice(2),
       `<label>الاسم واللقب<input name="full_name" value="${esc(u.full_name)}" required></label>
@@ -1339,12 +1362,21 @@ async function viewUsers(el, role) {
          role === 'teacher'
            ? `<fieldset><legend>المواد التي يدرّسها</legend><div class="checks">${state.meta.subjects
                .map(
-                 (s) => `<label class="check"><input type="checkbox" name="subject_ids[]" value="${s.id}" ${ids.has(s.id) ? 'checked' : ''}> ${esc(s.name)}${s.levels ? ` <span class="muted small">(${esc(levelsText(s.levels))})</span>` : ''}</label>`
+                 (s) => `<div class="subject-levels"><label class="check"><input type="checkbox" name="subject_ids[]" value="${s.id}" ${ids.has(s.id) ? 'checked' : ''}> ${esc(s.name)}</label>
+                   <span class="lv-chips">${state.meta.levels
+                     .filter((l) => !s.levels || s.levels.includes(l.code))
+                     .map((l) => `<label class="chip-check"><input type="checkbox" data-lv="${s.id}" value="${l.code}" ${teach.get(s.id)?.includes(l.code) ? 'checked' : ''}> ${esc(l.code === '6-distance' ? '6 عن بعد' : l.code)}</label>`)
+                     .join('')}</span></div>`
                )
-               .join('')}</div></fieldset>`
+               .join('')}</div>
+               <p class="muted small">حدّد المستويات التي يدرّس فيها كل مادة. دون تحديد = كل مستويات المادة.</p></fieldset>`
            : ''
        }`,
       async (data) => {
+        if (role === 'teacher') {
+          data.subject_levels = {};
+          for (const i of $('#modal').querySelectorAll('[data-lv]:checked')) (data.subject_levels[i.dataset.lv] ||= []).push(i.value);
+        }
         if (user) await api('PUT', `/api/users/${user.id}`, data);
         else await api('POST', '/api/users', { ...data, role });
         toast('تم الحفظ');
@@ -1492,7 +1524,9 @@ function viewImport(el) {
       <textarea id="import-text" rows="10" dir="auto" placeholder="الصق الجدول هنا…"></textarea>
       <button class="btn" id="import-preview">معاينة</button>
     </div>
-    <div id="import-result"></div>`;
+    <div id="import-result"></div>
+    ${legacyImportSection()}`;
+  bindLegacyImport();
 
   $('#import-preview').addEventListener('click', () => {
     const rows = parseStudentList($('#import-text').value);
@@ -1586,7 +1620,10 @@ function taskItem(t, canDelete) {
 
 // المواد التي يستطيع المستخدم العمل عليها (المعلم: مواده فقط)
 const workSubjects = () => (state.user.role === 'teacher' ? state.user.subjects || [] : state.meta.subjects);
-const subjectLevels = (subject) => state.meta.levels.filter((l) => !subject?.levels || subject.levels.includes(l.code));
+const subjectLevels = (subject) =>
+  state.meta.levels.filter(
+    (l) => (!subject?.levels || subject.levels.includes(l.code)) && (!subject?.teach_levels || subject.teach_levels.includes(l.code))
+  );
 
 function bindSubjectLevel(subjectSel, levelSel, selectedLevel) {
   const sync = () => {

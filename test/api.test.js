@@ -183,18 +183,20 @@ test('enrollment, photo and monthly payments', async () => {
 
 test('prorata, free students and status', async () => {
   const admin = await login('admin', 'admin123');
+  // الشهر الماضي: كل أيامه مرّت مهما كان تاريخ اليوم (الاختبار لا يفشل يوم 1 من الشهر)
   const now = new Date();
-  const ym = now.toISOString().slice(0, 7);
-  const dim = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+  const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const ym = prev.toISOString().slice(0, 7);
+  const dim = new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth() + 1, 0)).getUTCDate();
   const create = async (extra) =>
     (await admin('POST', '/api/students', { full_name: 'Pr ' + Math.random(), level: '7', monthly_fee: 100, ...extra })).body.student;
   const fin = async (st) => (await admin('GET', `/api/students/${st.id}`)).body.finance;
 
   // دخل يوم 11 من الشهر: الشهر الأول بالـ prorata
   const p = await create({ start_date: `${ym}-11` });
-  const f = await fin(p);
-  assert.strictEqual(f.months[0].due, Math.round((100 * (dim - 10)) / dim));
-  assert.strictEqual(f.months[0].prorata, `${dim - 10}/${dim}`);
+  const f = (await fin(p)).months.find((m) => m.month === ym);
+  assert.strictEqual(f.due, Math.round((100 * (dim - 10)) / dim));
+  assert.strictEqual(f.prorata, `${dim - 10}/${dim}`);
 
   // مجاني: لا مستحقات
   assert.strictEqual((await fin(await create({ start_date: `${ym}-01`, free: true }))).balance, 0);
@@ -581,4 +583,71 @@ test('program parents, one child in both programs, sibling discounts, yearly reg
   assert.strictEqual(support.shared, Math.round(sum.shared.cost * 0.6 * 1000) / 1000);
   assert.strictEqual(support.net_after, Math.round((support.net - support.shared) * 1000) / 1000);
   assert.strictEqual(sum.shared.allocated, 100);
+});
+
+test('legacy app import (students, teachers, notes), teacher levels and the monthly evaluation card', async () => {
+  const admin = await login('admin', 'admin123');
+  // تلميذ موجود مسبقًا بنفس الاسم (مع ملاحظة بين قوسين)
+  const old = (await admin('POST', '/api/students', { full_name: 'Ali Legacy (SAUF ENG)', level: '5' })).body.student;
+  const payload = {
+    teachers: [
+      { _id: 't-safa', label: 'Safa Leg', subjects: ['fr'], grades: ['5', '6', '6o'] },
+      { _id: 't-sami', label: 'Sami Leg', subjects: ['en'], grades: [] },
+    ],
+    students: {
+      l01: { name: 'Ali Legacy', grade: 5, mode: '', subjects: ['ar', 'fr', 'sci'], parentPhone: '55 111 222', createdAt: '2026-09-15T10:00:00Z' },
+      l02: { name: 'Mariem Distance', grade: 6, mode: 'عن بعد', subjects: ['fr', 'en'], parentPhone: '55 111 222', parentName: 'Leg Parent' },
+      l03: { name: 'Omar Nine', grade: 9, mode: '', subjects: ['math', 'svt'], parentPhone: '' },
+    },
+    notes: [
+      { _id: 'l01-ar', sid: 'l01', subject: 'ar', level: 'جيد', behavior: 'حسن', text: 'قراءة جيدة', at: '2026-10-31T10:00:00Z', share: true, byLabel: 'بطاقة تقييم أكتوبر' },
+      { _id: 'l01-sci', sid: 'l01', subject: 'sci', level: 'ممتاز', behavior: '', text: '', at: '2026-10-31T10:00:00Z', share: true },
+      { _id: 'l01-hidden', sid: 'l01', subject: 'fr', level: 'ضعيف', behavior: 'يحتاج متابعة', text: 'داخلي', at: '2026-10-20T10:00:00Z', share: false },
+      { _id: 'bad', sid: 'zz', subject: 'ar', level: 'جيد', at: '2026-10-31T10:00:00Z' },
+    ],
+  };
+  const r = (await admin('POST', '/api/import/legacy', payload)).body;
+  assert.strictEqual(r.students_matched, 1);
+  assert.strictEqual(r.students_created, 2);
+  assert.strictEqual(r.notes_added, 3);
+  assert.strictEqual(r.notes_skipped, 1);
+  assert.strictEqual(r.photo_targets.l01, old.id);
+  assert.strictEqual(r.parents.length, 1); // الأختان تحت نفس الولي
+  const safa = r.teachers.find((t) => t.full_name === 'Safa Leg');
+  assert.ok(safa.username && safa.password);
+  // إعادة الاستيراد: لا تكرار
+  const again = (await admin('POST', '/api/import/legacy', payload)).body;
+  assert.deepStrictEqual([again.students_matched, again.students_created, again.notes_added], [3, 0, 0]);
+  assert.ok(again.teachers.every((t) => t.existing));
+
+  const { body: meta } = await admin('GET', '/api/meta');
+  assert.ok(meta.subjects.some((x) => x.name === 'العلوم'));
+  const mariem = (await admin('GET', '/api/students?q=Mariem')).body.students[0];
+  assert.strictEqual(mariem.level, '6-distance');
+
+  // المعلمة: الفرنسية في 5 و6 و6 عن بعد فقط
+  const t = await login(safa.username, safa.password);
+  const mine = (await t('GET', '/api/students')).body.students.map((x) => x.full_name);
+  assert.ok(mine.includes('Mariem Distance') && mine.includes('Ali Legacy (SAUF ENG)') && !mine.includes('Omar Nine'));
+  const fr = meta.subjects.find((x) => x.name === 'الفرنسية').id;
+  const omar = (await admin('GET', '/api/students?q=Omar')).body.students[0];
+  assert.strictEqual((await t('POST', `/api/students/${omar.id}/notes`, { subject_id: fr, category: 'level', content: 'x' })).status, 403);
+  // ملاحظة بالمستوى والسلوك معًا، دون نص
+  assert.strictEqual((await t('POST', `/api/students/${old.id}/notes`, { subject_id: fr, category: 'level', rating: 'good', behavior: 'excellent', date: '2026-10-25' })).status, 201);
+
+  // بطاقة أكتوبر: الترتيب كالبطاقة الورقية، والملاحظة الداخلية لا تظهر
+  const card = (await admin('GET', `/api/students/${old.id}/report?month=2026-10`)).body;
+  assert.deepStrictEqual(card.subjects.map((x) => x.subject), ['العلوم', 'العربية', 'الفرنسية']);
+  const ar = card.subjects.find((x) => x.subject === 'العربية');
+  assert.deepStrictEqual([ar.level, ar.behavior, ar.notes], ['good', 'good', ['قراءة جيدة']]);
+  const frRow = card.subjects.find((x) => x.subject === 'الفرنسية');
+  assert.deepStrictEqual([frRow.level, frRow.behavior], ['good', 'excellent']);
+  assert.ok(card.months.includes('2026-10'));
+  assert.strictEqual((await admin('GET', `/api/students/${old.id}/report?month=2026-09`)).body.subjects.every((x) => !x.level), true);
+  // الولي يرى البطاقة، دون الملاحظة الداخلية في ملف ابنه
+  const parentUser = (await admin('GET', `/api/students/${mariem.id}`)).body.student;
+  assert.ok(parentUser.parent_name);
+  const cls = (await admin('GET', '/api/reports/class?level=5&month=2026-10')).body;
+  assert.ok(cls.reports.some((x) => x.student.id === old.id));
+  assert.strictEqual((await t('GET', '/api/reports/class?level=5')).status, 403);
 });

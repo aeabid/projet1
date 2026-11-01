@@ -70,6 +70,7 @@ async function viewHome(el) {
 
   const load = async () => {
     const s = await api('GET', '/api/finance/summary?month=' + $('#home-month').value);
+    if (!$('#home-summary')) return;
     const t = s.totals;
     $('#home-summary').innerHTML = `
       <div class="stats">
@@ -101,7 +102,7 @@ async function viewHome(el) {
   };
   // نقل المعطيات إلى Supabase (يظهر فقط إن كانت قاعدة Supabase فارغة والقديمة فيها معطيات)
   api('GET', '/api/admin/db-status').then((db) => {
-    if (!db.migration_available || db.target_rows > 0 || !db.source_rows) return;
+    if (!$('#home-db') || !db.migration_available || db.target_rows > 0 || !db.source_rows) return;
     $('#home-db').innerHTML = `<div class="card alert-card">
       <b>🔄 التطبيق يعمل الآن على Supabase، وقاعدة البيانات الجديدة فارغة.</b>
       <p>المعطيات الحالية (التلاميذ، الخلاص، الحسابات…) مازالت في قاعدة Netlify. انقلها كلها بنقرة واحدة.</p>
@@ -125,6 +126,7 @@ async function viewHome(el) {
 
   // مؤشرات المركز والتنبيهات (للشهر الحالي)
   api('GET', '/api/kpis').then((k) => {
+    if (!$('#home-kpis')) return;
     $('#home-kpis').innerHTML = `<div class="kpis">
       <a class="kpi" href="#/people"><b>${k.support_active + k.program_active}</b><span>تلميذ وطفل مسجّل<small>${k.support_active} دعم · ${k.program_active} تربوي</small></span></a>
       <a class="kpi" href="#/courses"><b>${k.events_open}</b><span>دورة ونشاط مفتوح</span></a>
@@ -137,6 +139,7 @@ async function viewHome(el) {
     </div>`;
   });
   api('GET', '/api/alerts').then(({ alerts }) => {
+    if (!$('#home-alerts')) return;
     const top = alerts.filter((a) => a.level !== 'info');
     $('#home-alerts').innerHTML = top.length
       ? `<div class="card alerts-box"><div class="section-head"><h3>🔔 تنبيهات</h3><a href="#/alerts" class="small">كل التنبيهات ←</a></div>
