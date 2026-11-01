@@ -279,6 +279,11 @@ const routes = [
   }],
   [/^#\/report\/(\d+)$/, (el, id) => viewReport(el, Number(id))],
   [/^#\/report-class$/, (el) => viewClassReports(el)],
+  [/^#\/messages$/, (el) => viewMessages(el)],
+  [/^#\/messages\/(\d+)$/, (el, id) => viewThread(el, Number(id))],
+  [/^#\/evaluations$/, (el) => viewEvaluations(el)],
+  [/^#\/overview$/, (el) => viewOverview(el)],
+  [/^#\/register-teacher$/, (el) => viewRegisterTeacher(el)],
   [/^#\/account$/, viewAccount],
   [/^#\/dashboard$/, viewDashboard],
 ];
@@ -290,7 +295,7 @@ function homeFor(user) {
 let navCount = 0;
 async function router() {
   const hash = location.hash || '#/';
-  const isPublic = hash === '#/login' || hash === '#/register';
+  const isPublic = ['#/login', '#/register', '#/register-teacher'].includes(hash);
   if (!state.user && !isPublic) {
     try {
       const { user } = await api('GET', '/api/me');
@@ -340,7 +345,9 @@ const NAV = {
         ['#/payroll', 'ساعات وخلاص المعلمين'],
         ['#/subjects', 'المواد'],
         ['#/import', 'استيراد قائمة'],
-        ['#/report-class', 'بطاقات التقييم'],
+        ['#/evaluations', 'إدخال بطاقات التقييم'],
+        ['#/report-class', 'طباعة بطاقات التقييم'],
+        ['#/overview', 'نظرة حسب القسم'],
       ],
     },
     {
@@ -368,6 +375,7 @@ const NAV = {
     {
       label: 'التواصل',
       items: [
+        ['#/messages', 'رسائل الأولياء'],
         ['#/broadcast', 'رسالة جماعية'],
         ['#/whatsapp', 'مجموعات واتساب'],
       ],
@@ -387,6 +395,9 @@ const NAV = {
     ['#/timetable', 'جدولي'],
     ['#/attendance', 'الحضور'],
     ['#/tasks', 'المهام'],
+    ['#/evaluations', 'بطاقات التقييم'],
+    ['#/overview', 'نظرة القسم'],
+    ['#/messages', 'الرسائل'],
     ['#/my-pay', 'ساعاتي وخلاصي'],
     ['#/program', 'البرنامج التربوي'],
     ['#/todo', 'مهامي'],
@@ -395,6 +406,7 @@ const NAV = {
   parent: [
     ['#/students', 'أبنائي'],
     ['#/timetable', 'جدول الأوقات'],
+    ['#/messages', 'الرسائل'],
     ['#/account', 'حسابي'],
   ],
 };
@@ -443,6 +455,7 @@ function renderTopbar() {
   $('#vmenu').querySelectorAll('a').forEach((a) => a.addEventListener('click', closeVmenu));
   $('#bell').hidden = state.user.role !== 'admin';
   if (state.user.role === 'admin') refreshBell();
+  refreshMail();
   fitNav();
 }
 
@@ -555,6 +568,7 @@ function viewLogin(el) {
           <p class="error" id="login-error" hidden></p>
           <button class="btn block">دخول</button>
           <p class="muted small center">ولي جديد؟ <a href="#/register"><b>سجّل أبناءك من هنا</b></a></p>
+          <p class="muted small center">مدرّس؟ <a href="#/register-teacher">أنشئ حسابك</a></p>
         </form>
       </div>
     </div>`;
@@ -928,8 +942,15 @@ async function viewStudent(el, id) {
         </div>
       </div>
       ${
+        role === 'parent'
+          ? `<div class="actions"><a class="btn ghost" href="#/report/${student.id}">📄 بطاقة التقييم</a>
+             <button class="btn" id="new-thread">✉️ مراسلة</button></div>`
+          : ''
+      }
+      ${
         role !== 'parent'
           ? `<div class="actions"><a class="btn ghost" href="#/report/${student.id}">📄 بطاقة التقييم</a>
+             <button class="btn ghost" id="new-thread">✉️ مراسلة الولي</button>
              <button class="btn" id="add-note">+ ملاحظة</button>
              <button class="btn warn" id="add-absence">+ غياب</button>
              ${role === 'admin' && waNumber(student.parent_phone) ? `<button class="btn wa" id="wa-parent">${WA_ICON} واتساب الولي</button>` : ''}</div>`
@@ -1070,6 +1091,12 @@ ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضع�
     reload();
   });
 
+  $('#new-thread')?.addEventListener('click', () =>
+    newThreadForm(
+      student,
+      student.subjects.length ? student.subjects : state.meta.subjects.filter((x) => !x.levels || x.levels.includes(student.level))
+    )
+  );
   if (finance) bindFinance(el, finance, { kind: 'support', id }, reload);
   if (program?.finance) bindFinance(el, program.finance, { kind: 'program', id: program.child.id }, reload);
   if (program) bindChildFollowUp(el, program, reload);
@@ -1316,7 +1343,7 @@ async function viewUsers(el, role) {
             <tbody>${users
               .map(
                 (u) => `<tr>
-                  <td><b>${esc(u.full_name)}</b></td>
+                  <td><b>${esc(u.full_name)}</b>${u.approved === false ? ' <span class="badge average">ينتظر الموافقة</span>' : ''}</td>
                   <td dir="ltr">${esc(u.username)}</td>
                   <td><span class="phone-line"><span dir="ltr">${esc(u.phone || '—')}</span>${waButton(u.phone)}</span></td>${role === 'parent' ? `<td dir="ltr">${esc(u.cin || '—')}</td>` : ''}
                   ${role === 'teacher' ? `<td>${u.subjects.map((s) => `<span class="pill">${esc(s.name)}</span>`).join(' ') || '—'}</td>
@@ -1327,6 +1354,7 @@ async function viewUsers(el, role) {
                       : ''
                   }
                   <td class="row-actions">
+                    ${u.approved === false ? `<button class="btn small" data-approve="${u.id}">✔ تفعيل</button>` : ''}
                     <button class="btn ghost small" data-edit="${u.id}">تعديل</button>
                     ${u.id !== state.user.id ? `<button class="btn danger small" data-del="${u.id}">حذف</button>` : ''}
                   </td>
@@ -1386,6 +1414,14 @@ async function viewUsers(el, role) {
   };
 
   $('#add-user').addEventListener('click', () => form(null));
+  el.querySelectorAll('[data-approve]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const u = users.find((x) => x.id === Number(b.dataset.approve));
+      if (!confirmAction(`تفعيل حساب ${u.full_name}؟ (راجع موادّه ومستوياته بزر «تعديل»)`)) return;
+      await api('POST', `/api/users/${u.id}/approve`).catch((e) => toast(e.message, true));
+      reload();
+    })
+  );
   el.querySelectorAll('[data-edit]').forEach((b) =>
     b.addEventListener('click', () => form(users.find((u) => u.id === Number(b.dataset.edit))))
   );

@@ -651,3 +651,77 @@ test('legacy app import (students, teachers, notes), teacher levels and the mont
   assert.ok(cls.reports.some((x) => x.student.id === old.id));
   assert.strictEqual((await t('GET', '/api/reports/class?level=5')).status, 403);
 });
+
+test('parent messages, bulk monthly cards, class overview, teacher self-signup', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const math = meta.subjects.find((x) => x.name === 'الرياضيات').id;
+  const ar = meta.subjects.find((x) => x.name === 'العربية').id;
+
+  // ----- تسجيل المعلم بنفسه: لا دخول قبل الموافقة -----
+  const reg = await call('POST', '/api/register', { role: 'teacher', teacher: { full_name: 'Prof Signup', phone: '50 600 700', password: 'secret1', subject_ids: [math] } });
+  assert.strictEqual(reg.status, 201);
+  assert.strictEqual((await call('POST', '/api/login', { username: '50600700', password: 'secret1' })).status, 403);
+  const alerts = (await admin('GET', '/api/alerts')).body.alerts;
+  assert.ok(alerts.some((a) => a.link === '#/teachers'));
+  const pending = (await admin('GET', '/api/users?role=teacher')).body.users.find((u) => u.full_name === 'Prof Signup');
+  assert.strictEqual(pending.approved, false);
+  await admin('PUT', `/api/users/${pending.id}`, { ...pending, subject_ids: [math], subject_levels: { [math]: ['8'] } });
+  await admin('POST', `/api/users/${pending.id}/approve`);
+  const prof = await login('50600700', 'secret1');
+
+  // ----- تلميذ في الثامنة مع ولي -----
+  const parentUser = (await admin('POST', '/api/users', { role: 'parent', username: 'pmsg', full_name: 'Parent Msg', password: 'secret1' })).body.user;
+  const st = (await admin('POST', '/api/students', { full_name: 'Msg Kid', level: '8', parent_id: parentUser.id, pack: true })).body.student;
+  const other = (await admin('POST', '/api/students', { full_name: 'Other Kid', level: '8' })).body.student;
+  const parent = await login('pmsg', 'secret1');
+
+  // ----- المراسلة -----
+  const t1 = (await parent('POST', '/api/threads', { student_id: st.id, target: 'subject', subject_id: math, body: 'سؤال عن الرياضيات' })).body.thread;
+  const t2 = (await parent('POST', '/api/threads', { student_id: st.id, target: 'admin', body: 'سؤال للإدارة' })).body.thread;
+  assert.strictEqual((await parent('POST', '/api/threads', { student_id: other.id, target: 'admin', body: 'x' })).status, 404);
+  // المعلم يرى محادثة مادته فقط، والإدارة ترى الكل
+  assert.deepStrictEqual((await prof('GET', '/api/threads')).body.threads.map((t) => t.id), [t1.id]);
+  assert.strictEqual((await prof('GET', '/api/threads/unread')).body.count, 1);
+  assert.strictEqual((await prof('GET', `/api/threads/${t2.id}`)).status, 404);
+  const seen = (await prof('GET', `/api/threads/${t1.id}`)).body;
+  assert.strictEqual(seen.messages[0].from, 'Parent Msg');
+  assert.strictEqual((await prof('GET', '/api/threads/unread')).body.count, 0);
+  await prof('POST', `/api/threads/${t1.id}/messages`, { body: 'مرحبا، يحتاج تمارين إضافية' });
+  await prof('PATCH', `/api/threads/${t1.id}`, { status: 'closed' });
+  const pv = (await parent('GET', `/api/threads/${t1.id}`)).body;
+  assert.strictEqual(pv.messages[1].from, 'أستاذ(ة) الرياضيات'); // دون اسم المدرّس
+  assert.strictEqual(pv.thread.status, 'closed');
+  await parent('POST', `/api/threads/${t1.id}/messages`, { body: 'شكرًا' });
+  assert.strictEqual((await parent('GET', `/api/threads/${t1.id}`)).body.thread.status, 'open');
+  const adminList = (await admin('GET', '/api/threads')).body;
+  assert.strictEqual(adminList.threads.length >= 2, true);
+  assert.strictEqual((await parent('GET', `/api/threads/${t2.id}`)).body.messages.length, 1);
+
+  // ----- إدخال بطاقات القسم: المعلم في مادته ومستواه فقط -----
+  assert.strictEqual((await prof('GET', `/api/evaluations?level=9&subject_id=${math}&month=2026-10`)).status, 403);
+  assert.strictEqual((await prof('GET', `/api/evaluations?level=8&subject_id=${ar}&month=2026-10`)).status, 403);
+  const ev = (await prof('GET', `/api/evaluations?level=8&subject_id=${math}&month=2026-10`)).body;
+  assert.ok(ev.students.some((x) => x.id === st.id));
+  await prof('POST', '/api/evaluations', { level: '8', subject_id: math, month: '2026-10', entries: [
+    { student_id: st.id, rating: 'average', behavior: 'good', content: 'يحتاج تركيزًا' },
+    { student_id: other.id, rating: 'excellent' },
+  ] });
+  // إعادة الحفظ تعدّل نفس الملاحظة
+  await prof('POST', '/api/evaluations', { level: '8', subject_id: math, month: '2026-10', entries: [{ student_id: st.id, rating: 'good', behavior: 'good', content: 'تحسّن' }] });
+  const again = (await prof('GET', `/api/evaluations?level=8&subject_id=${math}&month=2026-10`)).body.students.find((x) => x.id === st.id);
+  assert.deepStrictEqual([again.card.rating, again.card.content], ['good', 'تحسّن']);
+  const card = (await parent('GET', `/api/students/${st.id}/report?month=2026-10`)).body;
+  const row = card.subjects.find((x) => x.subject === 'الرياضيات');
+  assert.deepStrictEqual([row.level, row.behavior, row.notes], ['good', 'good', ['تحسّن']]);
+  assert.strictEqual((await admin('GET', `/api/students/${st.id}`)).body.notes.filter((n) => n.subject_id === math).length, 1);
+
+  // ----- نظرة حسب القسم -----
+  const ov = (await admin('GET', '/api/overview?level=8')).body;
+  const mi = ov.subjects.findIndex((x) => x.id === math);
+  assert.strictEqual(ov.students.find((x) => x.id === st.id).cells[mi].level, 'good');
+  assert.ok(ov.counts.good >= 1 && ov.counts.excellent >= 1);
+  const tov = (await prof('GET', '/api/overview?level=8')).body;
+  assert.deepStrictEqual(tov.subjects.map((x) => x.id), [math]);
+  assert.strictEqual((await parent('GET', '/api/overview?level=8')).status, 403);
+});
