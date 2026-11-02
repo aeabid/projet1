@@ -804,6 +804,13 @@ test('google login for parents: link request, admin approval, then direct login;
   assert.deepStrictEqual(mine, ['Googlekid Zarrouk', 'Petit Zarrouk']);
   assert.strictEqual((await gcall('POST', '/api/auth/google', { credential: 'bad' })).status, 401);
 
+  // الإدارة: نفس البريد في حساب الإدارة = دخول مباشر كإدارة
+  const adminUser = (await admin('GET', '/api/me')).body.user;
+  await pool.query(`UPDATE users SET email = 'Boss@gmail.com' WHERE id = $1`, [adminUser.id]);
+  const boss = await gcall('POST', '/api/auth/google', { credential: 'ok-boss' });
+  assert.strictEqual(boss.body.user.role, 'admin');
+  assert.strictEqual((await gcall('POST', '/api/auth/google', { credential: 'ok-boss' })).body.user.id, adminUser.id);
+
   // الحالة السريعة وقائمة المواد
   assert.strictEqual((await admin('PATCH', `/api/students/${kid.id}/status`, { status: 'nope' })).status, 400);
   const left = (await admin('PATCH', `/api/students/${kid.id}/status`, { status: 'left', end_date: '2026-10-31' })).body.student;
