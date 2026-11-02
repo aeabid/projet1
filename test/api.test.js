@@ -824,3 +824,23 @@ test('google login for parents: link request, admin approval, then direct login;
   const row = (await admin('GET', '/api/students?q=Googlekid')).body.students[0];
   assert.deepStrictEqual(row.subject_names, ['العربية', 'الرياضيات']);
 });
+
+test('fee adjustments: whole month absent, some days absent, custom amount', async () => {
+  const admin = await login('admin', 'admin123');
+  const st = (await admin('POST', '/api/students', { full_name: 'Adj Kid', level: '7', monthly_fee: 100, start_date: '2026-09-01' })).body.student;
+  const fin = async () => (await admin('GET', `/api/students/${st.id}`)).body.finance;
+  const due = async (m) => (await fin()).months.find((x) => x.month === m).due;
+  assert.strictEqual(await due('2026-10'), 100);
+  assert.strictEqual((await admin('PUT', '/api/fee-adjustments', { student_id: st.id, month: '2026-10', kind: 'bad' })).status, 400);
+  assert.strictEqual((await admin('PUT', '/api/fee-adjustments', { student_id: st.id, month: '2026-10', kind: 'absent_days' })).status, 400);
+  await admin('PUT', '/api/fee-adjustments', { student_id: st.id, month: '2026-10', kind: 'exempt', reason: 'مرض' });
+  assert.strictEqual(await due('2026-10'), 0);
+  await admin('PUT', '/api/fee-adjustments', { student_id: st.id, month: '2026-10', kind: 'absent_days', value: 10 });
+  assert.strictEqual(await due('2026-10'), Math.round((100 * 21) / 31));
+  await admin('PUT', '/api/fee-adjustments', { student_id: st.id, month: '2026-09', kind: 'amount', value: 30 });
+  const f = await fin();
+  const sep = f.months.find((x) => x.month === '2026-09');
+  assert.deepStrictEqual([sep.due, sep.adjustment.kind, sep.adjustment.original], [30, 'amount', 100]);
+  assert.strictEqual((await admin('DELETE', `/api/fee-adjustments/${sep.adjustment.id}`)).status, 200);
+  assert.strictEqual(await due('2026-09'), 100);
+});

@@ -214,6 +214,8 @@ function formData(form) {
       if (el.checked) data[key].push(key === 'levels' ? el.value : Number(el.value));
     } else if (el.type === 'checkbox') {
       data[el.name] = el.checked;
+    } else if (el.type === 'radio') {
+      if (el.checked) data[el.name] = el.value;
     } else {
       data[el.name] = el.value;
     }
@@ -1261,7 +1263,9 @@ ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضع�
 // الوضعية المالية: الولي والإدارة (kind: support أو program — قسمان في نفس الصفحة ممكن)
 function financeSection(f, role, kind = 'support', title = '💰 الوضعية المالية') {
   const status = (m) =>
-    m.due === 0
+    m.adjustment?.kind === 'exempt' && !m.paid
+      ? '<span class="badge general">معفى</span>'
+      : m.due === 0
       ? '<span class="badge general">دفع مسبق</span>'
       : m.remaining === 0
         ? '<span class="badge good">خالص</span>'
@@ -1323,6 +1327,10 @@ function financeSection(f, role, kind = 'support', title = '💰 الوضعية 
                     <td><b>${esc(monthLabel(m.month))}</b></td>
                     <td>${fmtMoney(m.due)}${m.prorata ? `<div class="muted small">prorata ${esc(m.prorata)} يوم</div>` : ''}${
                       m.sibling_pct ? `<div class="muted small">تخفيض الإخوة ${m.sibling_pct}%</div>` : ''
+                    }${m.adjustment ? `<div class="adj-note small">✂️ ${esc(adjLabel(m.adjustment))} <s class="muted">${fmtMoney(m.adjustment.original)}</s>${
+                      m.adjustment.reason ? `<div class="muted">${esc(m.adjustment.reason)}</div>` : ''
+                    }</div>` : ''}${
+                      role === 'admin' ? `<div><button class="link small" data-adj-month="${m.month}" data-kind="${kind}">${m.adjustment ? 'تغيير التعديل' : '✂️ غياب / تعديل المبلغ'}</button></div>` : ''
                     }</td>
                     <td>${fmtMoney(m.paid)}</td>
                     <td>${m.remaining ? `<b class="owed">${fmtMoney(m.remaining)}</b>` : '—'}</td>
@@ -1348,7 +1356,51 @@ function financeSection(f, role, kind = 'support', title = '💰 الوضعية 
 
 // أزرار الوضعية المالية: دفعة شهرية، معلوم التسجيل، حذف
 // target: { kind, id } — kind = support (تلميذ دعم) أو program (طفل التربوي)
+const adjLabel = (a) =>
+  a.kind === 'exempt' ? 'معفى (غياب الشهر كاملًا)' : a.kind === 'absent_days' ? `غياب ${a.value} ${a.value >= 3 && a.value <= 10 ? 'أيام' : 'يوم'}` : `مبلغ معدّل ${fmtMoney(a.value)}`;
+
 function bindFinance(el, f, { kind, id }, reload) {
+  el.querySelectorAll(`[data-adj-month][data-kind="${kind}"]`).forEach((b) =>
+    b.addEventListener('click', () => {
+      const m = f.months.find((x) => x.month === b.dataset.adjMonth);
+      const a = m.adjustment;
+      openModal(
+        `تعديل مبلغ ${monthLabel(m.month)}`,
+        `<p class="muted small">المبلغ العادي لهذا الشهر: <b>${fmtMoney(a ? a.original : m.due)}</b></p>
+         <label class="check"><input type="radio" name="kind" value="exempt" ${!a || a.kind === 'exempt' ? 'checked' : ''}> تغيّب الشهر كاملًا (لا شيء عليه)</label>
+         <label class="check"><input type="radio" name="kind" value="absent_days" ${a?.kind === 'absent_days' ? 'checked' : ''}> تغيّب جزءًا من الشهر</label>
+         <label id="adj-days">عدد أيام الغياب<input name="days" inputmode="numeric" value="${a?.kind === 'absent_days' ? esc(a.value) : ''}" placeholder="مثال: 10"></label>
+         <label class="check"><input type="radio" name="kind" value="amount" ${a?.kind === 'amount' ? 'checked' : ''}> مبلغ آخر</label>
+         <label id="adj-amount">المبلغ المطلوب لهذا الشهر (د.ت)<input name="amount" inputmode="decimal" value="${a?.kind === 'amount' ? esc(a.value) : ''}"></label>
+         <label>السبب<input name="reason" value="${esc(a?.reason || '')}" placeholder="مثال: مرض، سفر"></label>
+         ${a ? '<p><button type="button" class="btn small danger" id="adj-del">إلغاء التعديل والرجوع للمبلغ العادي</button></p>' : ''}`,
+        async (data) => {
+          await api('PUT', '/api/fee-adjustments', {
+            [kind === 'support' ? 'student_id' : 'child_id']: id,
+            month: m.month,
+            kind: data.kind,
+            value: data.kind === 'absent_days' ? data.days : data.kind === 'amount' ? data.amount : null,
+            reason: data.reason,
+          });
+          toast('تم تعديل مبلغ الشهر');
+          reload();
+        }
+      );
+      const sync = () => {
+        const k = $('#modal input[name=kind]:checked').value;
+        $('#adj-days').hidden = k !== 'absent_days';
+        $('#adj-amount').hidden = k !== 'amount';
+      };
+      $('#modal').querySelectorAll('input[name=kind]').forEach((x) => x.addEventListener('change', sync));
+      sync();
+      $('#adj-del')?.addEventListener('click', async () => {
+        await api('DELETE', `/api/fee-adjustments/${a.id}`).catch((err) => toast(err.message, true));
+        $('#modal').close();
+        toast('رجع المبلغ العادي');
+        reload();
+      });
+    })
+  );
   const urls = {
     support: { pay: `/api/students/${id}/payments`, del: (x) => `/api/payments/${x}`, reg: { student_id: id } },
     program: { pay: `/api/program/children/${id}/payments`, del: (x) => `/api/program/payments/${x}`, reg: { child_id: id } },

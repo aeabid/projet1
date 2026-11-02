@@ -674,3 +674,5 @@ table.overview td.na { color: var(--muted); }
 .cat-row { display: grid; grid-template-columns: 8.5rem 1fr auto; align-items: center; gap: .6rem; padding: .35rem 0; }
 .cat-bar { background: var(--soft); border-radius: 999px; height: .55rem; overflow: hidden; }
 .cat-bar i { display: block; height: 100%; background: var(--feed-purple); border-radius: 999px; }
+.adj-note { margin-top: .25rem; color: var(--feed-purple); }
+.adj-note s { margin-inline-start: .3rem; }
