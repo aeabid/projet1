@@ -300,6 +300,10 @@ const routes = [
   [/^#\/program\/timetable$/, (el) => viewProgramTimetable(el)],
   [/^#\/program\/notes$/, (el) => viewProgramNotes(el)],
   [/^#\/program\/pay$/, (el) => viewProgramPay(el)],
+  [/^#\/program\/posts$/, (el) => viewProgramPosts(el)],
+  [/^#\/program\/staff$/, (el) => viewUsers(el, 'teacher', 'program')],
+  [/^#\/support\/teachers$/, (el) => viewUsers(el, 'teacher', 'support')],
+  [/^#\/group-message$/, (el) => viewGroupMessage(el)],
   [/^#\/courses$/, (el) => viewCourses(el)],
   [/^#\/courses\/(\d+)$/, (el, id) => viewCourse(el, Number(id))],
   [/^#\/ledger$/, (el) => viewLedger(el)],
@@ -380,28 +384,36 @@ const NAV = {
       label: 'دروس الدعم',
       items: [
         ['#/dashboard', 'لوحة دروس الدعم'],
-        ['#/students', 'التلاميذ'],
-        ['#/registrations', 'التسجيلات الجديدة'],
-        ['#/timetable', 'جداول الأوقات'],
+        ['', 'التلاميذ'],
+        ['#/students', 'قائمة التلاميذ'],
+        ['#/registrations', 'التلاميذ الجدد'],
         ['#/attendance', 'الحضور'],
-        ['#/tasks', 'المهام'],
-        ['#/payroll', 'ساعات وخلاص المعلمين'],
+        ['', 'التنظيم'],
+        ['#/timetable', 'جداول الأوقات'],
         ['#/subjects', 'المواد'],
-        ['#/import', 'استيراد قائمة'],
-        ['#/evaluations', 'إدخال بطاقات التقييم'],
-        ['#/report-class', 'طباعة بطاقات التقييم'],
-        ['#/overview', 'نظرة حسب القسم'],
+        ['', 'المدرّسون'],
+        ['#/support/teachers', 'قائمة المدرّسين'],
+        ['#/payroll', 'خلاص المدرّسين (الرواتب الشهرية)'],
+        ['', 'التقييم'],
+        ['#/import', 'الاستيراد'],
+        ['#/evaluations', 'إدخال الملاحظات'],
+        ['#/report-class', 'الطباعة'],
+        ['#/overview', 'الرؤية الإجمالية'],
+        ['#/tasks', 'تمارين وأنشطة القسم'],
+        ['#/group-message', 'رسالة لكامل القسم'],
       ],
     },
     {
       label: 'البرنامج التربوي',
       items: [
-        ['#/program/board', 'لوحة البرنامج التربوي'],
-        ['#/program', 'الأطفال والأقسام'],
-        ['#/program/timetable', 'جدول الأوقات'],
-        ['#/program/attendance', 'الحضور'],
-        ['#/program/notes', 'ملاحظات المنشطين'],
-        ['#/program/pay', 'خلاص المنشطين'],
+        ['#/program/board', 'لوحة التحكم'],
+        ['#/program', 'الأطفال والأقسام والحضور'],
+        ['#/program/timetable', 'جداول الأوقات'],
+        ['#/program/posts', 'أنشطة ورسائل الأقسام'],
+        ['', 'المرافقون'],
+        ['#/program/staff', 'قائمة المرافقين'],
+        ['#/program/pay', 'خلاص المرافقين'],
+        ['#/program/notes', 'ملاحظات المرافقين'],
       ],
     },
     ['#/courses', 'الدورات والأنشطة'],
@@ -446,12 +458,14 @@ const NAV = {
     ['#/students', 'تلاميذي'],
     ['#/timetable', 'جدولي'],
     ['#/attendance', 'الحضور'],
-    ['#/tasks', 'المهام'],
+    ['#/tasks', 'تمارين وأنشطة القسم'],
+    ['#/group-message', 'رسالة لكامل القسم'],
     ['#/evaluations', 'بطاقات التقييم'],
     ['#/overview', 'نظرة القسم'],
     ['#/messages', 'الرسائل'],
     ['#/my-pay', 'ساعاتي وخلاصي'],
     ['#/program', 'البرنامج التربوي'],
+    ['#/program/posts', 'أنشطة ورسائل قسمي'],
     ['#/todo', 'مهامي'],
     ['#/account', 'حسابي'],
   ],
@@ -476,7 +490,9 @@ function renderTopbar() {
   const exact = JSON.stringify(NAV[state.user.role]).includes(`"${current}"`);
   const isActive = (href) => current === href || (!exact && href !== '#/' && current.startsWith(href + '/'));
   // «البرنامج التربوي» للمعلم فقط إن كان منشّطًا لقسم
-  const nav = NAV[state.user.role].filter((e) => !(state.user.role === 'teacher' && e[0] === '#/program' && !state.user.program_classes));
+  const nav = NAV[state.user.role].filter(
+    (e) => !(state.user.role === 'teacher' && String(e[0]).startsWith('#/program') && !state.user.program_classes)
+  );
   $('#nav').innerHTML = nav
     .map((entry, i) =>
       Array.isArray(entry)
@@ -1477,10 +1493,13 @@ function bindFinance(el, f, { kind, id }, reload) {
 }
 
 // ---------- المستخدمون ----------
-async function viewUsers(el, role) {
-  const titles = { teacher: 'المعلمون', parent: 'الأولياء', admin: 'حسابات الإدارة' };
-  const addLabels = { teacher: '+ معلم جديد', parent: '+ ولي جديد', admin: '+ حساب إدارة' };
-  const { users } = await api('GET', `/api/users?role=${role}`);
+async function viewUsers(el, role, scope = null) {
+  const titles = { teacher: scope === 'program' ? 'المرافقون (البرنامج التربوي)' : scope === 'support' ? 'مدرّسو دروس الدعم' : 'المعلمون', parent: 'الأولياء', admin: 'حسابات الإدارة' };
+  const addLabels = { teacher: scope === 'program' ? '+ مرافق جديد' : '+ مدرّس جديد', parent: '+ ولي جديد', admin: '+ حساب إدارة' };
+  let { users } = await api('GET', `/api/users?role=${role}`);
+  // المدرّسون: من عنده مواد (دروس الدعم) / المرافقون: من عنده قسم في التربوي. الحساب الجديد بلا شيء يظهر في الاثنين
+  if (scope === 'support') users = users.filter((u) => u.subjects?.length || !u.program_classes);
+  if (scope === 'program') users = users.filter((u) => u.program_classes || !u.subjects?.length);
   el.innerHTML = `
     <div class="page-head">
       <h2>${titles[role]}</h2>
@@ -1515,7 +1534,7 @@ async function viewUsers(el, role) {
         : '<div class="card muted">لا توجد حسابات.</div>'
     }`;
 
-  const reload = () => viewUsers(el, role);
+  const reload = () => viewUsers(el, role, scope);
   const form = (user) => {
     const u = user || {};
     const ids = new Set((u.subjects || []).map((s) => s.id));

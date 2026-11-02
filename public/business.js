@@ -547,6 +547,18 @@ function childForm(c, { classes, parents, students, children }, onDone) {
 const PROGRAM_NOTE_LABELS = { level: 'المستوى', content: 'متابعة المحتوى', behavior: 'السلوك', general: 'عامة' };
 
 // متابعة طفل البرنامج التربوي: الملاحظات والغيابات (مع أزرار الإضافة للإدارة والمنشط)
+// أنشطة وتمارين ورسائل القسم (البرنامج التربوي)
+function classPostsSection(posts) {
+  if (!posts?.length) return '';
+  return `<section class="card"><h3>📌 أنشطة وتمارين ورسائل القسم</h3><ul class="tasks">${posts
+    .map(
+      (p) => `<li class="task"><div><b>${p.kind === 'message' ? '✉️' : '🧩'} ${esc(p.title)}</b>
+        <span class="muted small">${fmtDate(String(p.created_at).slice(0, 10))}${p.author_name ? ' · ' + esc(p.author_name) : ''}${p.due_date ? ` · آخر أجل ${fmtDate(p.due_date)}` : ''}</span></div>
+        ${p.body ? `<p>${esc(p.body)}</p>` : ''}</li>`
+    )
+    .join('')}</ul></section>`;
+}
+
 function childFollowUpSection(file, role) {
   const { child: c, absences, notes } = file;
   const canWrite = role !== 'parent';
@@ -593,7 +605,7 @@ function childFollowUpSection(file, role) {
 
 // قسم البرنامج التربوي في ملف تلميذ الدعم (نفس الطفل في البرنامجين)
 function childProgramSections(file, role) {
-  return childFollowUpSection(file, role) +
+  return classPostsSection(file.posts) + childFollowUpSection(file, role) +
     (file.finance ? financeSection(file.finance, role, 'program', '💰 الوضعية المالية — البرنامج التربوي') : '');
 }
 
@@ -666,6 +678,7 @@ async function viewProgramChild(el, id) {
         ${c.notes && role === 'admin' ? `<p class="remarks">📝 ${esc(c.notes)}</p>` : ''}
       </div>
     </div>
+    ${classPostsSection(file.posts)}
     ${childFollowUpSection(file, role)}
     ${finance ? financeSection(finance, role, 'program') : ''}
     ${c.student_id && finance ? '<p class="muted small">معلوم التسجيل السنوي في ملف دروس الدعم (يُدفع مرة واحدة).</p>' : ''}`;

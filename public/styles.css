@@ -709,3 +709,4 @@ table.overview td.na { color: var(--muted); }
   .fb-kpi span { font-size: .78rem; }
   .fb-kpi small { font-size: .68rem; }
 }
+.seg { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .8rem; }

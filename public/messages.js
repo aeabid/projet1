@@ -411,3 +411,129 @@ async function viewBulkPhotos(el) {
     render();
   });
 }
+
+// ---------- رسالة لكامل القسم بضغطة زر ----------
+async function viewGroupMessage(el) {
+  const role = state.user.role;
+  const subjects = workSubjects();
+  const programClasses = role === 'admin' || state.user.program_classes ? (await api('GET', '/api/program').catch(() => ({ classes: [] }))).classes : [];
+  const canSupport = role === 'admin' || subjects.length;
+  el.innerHTML = `
+    <div class="page-head"><div><h2>✉️ رسالة لكامل القسم</h2>
+      <p class="muted">تصل الرسالة لكل أولياء القسم في نفس الوقت.</p></div></div>
+    <div class="seg" id="gm-tabs">
+      ${canSupport ? '<button class="chip on" data-tab="support">📚 دروس الدعم</button>' : ''}
+      ${programClasses.length ? `<button class="chip ${canSupport ? '' : 'on'}" data-tab="program">🎨 البرنامج التربوي</button>` : ''}
+    </div>
+    <form id="gm-form" class="card">
+      <div class="row" id="gm-support">
+        <label>المادة<select name="subject_id" id="gm-subject">${role === 'admin' ? '<option value="">— الإدارة (كل المواد) —</option>' : ''}${subjectOptions(role === 'admin' ? state.meta.subjects : subjects)}</select></label>
+        <label>المستوى<select name="level" id="gm-level"></select></label>
+      </div>
+      <label id="gm-program" hidden>القسم<select name="class_id">${programClasses.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('')}</select></label>
+      <label>الموضوع<input name="title" placeholder="مثال: تذكير بالامتحان" required></label>
+      <label>الرسالة<textarea name="body" rows="5" required></textarea></label>
+      <p class="muted small" id="gm-hint"></p>
+      <button class="btn">إرسال لكل أولياء القسم</button>
+    </form>`;
+  if (!canSupport && !programClasses.length) {
+    el.querySelector('#gm-form').outerHTML = '<div class="card muted">لا يوجد قسم مسند إليك بعد.</div>';
+    return;
+  }
+  let tab = canSupport ? 'support' : 'program';
+  const levelSel = $('#gm-level');
+  const fillLevels = () => {
+    const sub = (role === 'admin' ? state.meta.subjects : subjects).find((s) => s.id === Number($('#gm-subject').value));
+    const levels = state.meta.levels.filter((l) => {
+      if (!sub) return true;
+      const subjectLevels = sub.teach_levels?.length ? sub.teach_levels : sub.levels;
+      return !subjectLevels || subjectLevels.includes(l.code);
+    });
+    levelSel.innerHTML = levels.map((l) => `<option value="${esc(l.code)}">${esc(l.label)}</option>`).join('');
+  };
+  $('#gm-subject').addEventListener('change', fillLevels);
+  fillLevels();
+  const syncTab = () => {
+    $('#gm-support').hidden = tab !== 'support';
+    $('#gm-program').hidden = tab !== 'program';
+    $('#gm-hint').textContent =
+      tab === 'support'
+        ? 'تُفتح محادثة مع ولي كل تلميذ في المستوى والمادة، ويمكن لكل ولي أن يردّ عليك في «الرسائل».'
+        : 'تظهر الرسالة في ملف كل طفل من أطفال القسم (أنشطة ورسائل القسم).';
+    el.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+  };
+  el.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => ((tab = b.dataset.tab), syncTab())));
+  syncTab();
+  $('#gm-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const d = formData(e.target);
+    const btn = e.target.querySelector('button.btn');
+    btn.disabled = true;
+    try {
+      if (tab === 'support') {
+        const r = await api('POST', '/api/threads/group', { level: d.level, subject_id: d.subject_id || null, title: d.title, body: d.body });
+        toast(`تم الإرسال إلى ${r.sent} ولي`);
+      } else {
+        const r = await api('POST', '/api/program/posts', { class_id: d.class_id, kind: 'message', title: d.title, body: d.body });
+        toast(`تم الإرسال لأولياء القسم (${r.parents})`);
+      }
+      e.target.reset();
+      fillLevels();
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+// ---------- أنشطة وتمارين ورسائل أقسام البرنامج التربوي ----------
+async function viewProgramPosts(el) {
+  const [{ classes }, { posts }] = await Promise.all([api('GET', '/api/program'), api('GET', '/api/program/posts')]);
+  el.innerHTML = `
+    <div class="page-head"><div><h2>🧩 أنشطة وتمارين ورسائل الأقسام</h2>
+      <p class="muted">ما تنشره هنا يظهر لأولياء كل أطفال القسم في ملف أبنائهم.</p></div></div>
+    ${
+      classes.length
+        ? `<form id="pp-form" class="card">
+            <div class="row">
+              <label>القسم<select name="class_id">${classes.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('')}</select></label>
+              <label>النوع<select name="kind"><option value="activity">🧩 نشاط / تمرين</option><option value="message">✉️ رسالة</option></select></label>
+            </div>
+            <label>العنوان<input name="title" required placeholder="مثال: حفظ سورة الملك"></label>
+            <label>التفاصيل<textarea name="body" rows="4"></textarea></label>
+            <label>آخر أجل (اختياري)<input type="date" name="due_date"></label>
+            <button class="btn">نشر لكامل القسم</button>
+          </form>`
+        : '<div class="card muted">لا يوجد قسم مسند إليك.</div>'
+    }
+    <section class="card"><h3>المنشورات</h3>${
+      posts.length
+        ? `<ul class="tasks">${posts
+            .map(
+              (p) => `<li class="task"><div><b>${p.kind === 'message' ? '✉️' : '🧩'} ${esc(p.title)}</b>
+                <span class="muted small">${esc(p.class_name)} · ${fmtDate(String(p.created_at).slice(0, 10))}${p.author_name ? ' · ' + esc(p.author_name) : ''}${p.due_date ? ` · آخر أجل ${fmtDate(p.due_date)}` : ''}</span>
+                ${state.user.role === 'admin' || p.author_id === state.user.id ? `<button class="link danger small" data-del="${p.id}">حذف</button>` : ''}</div>
+                ${p.body ? `<p>${esc(p.body)}</p>` : ''}</li>`
+            )
+            .join('')}</ul>`
+        : '<p class="muted">لا توجد منشورات بعد.</p>'
+    }</section>`;
+  $('#pp-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api('POST', '/api/program/posts', formData(e.target));
+      toast(`تم النشر لأولياء القسم (${r.parents})`);
+      viewProgramPosts(el);
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+  el.querySelectorAll('[data-del]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirmAction('حذف هذا المنشور؟')) return;
+      await api('DELETE', `/api/program/posts/${b.dataset.del}`).catch((err) => toast(err.message, true));
+      viewProgramPosts(el);
+    })
+  );
+}

@@ -858,3 +858,31 @@ test('program timetable and notes list', async () => {
   assert.strictEqual((await admin('DELETE', `/api/program/slots/${s.body.id}`)).status, 200);
   assert.strictEqual((await admin('GET', '/api/program/notes')).status, 200);
 });
+
+test('group message to a whole class and program class posts', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const math = meta.subjects.find((s) => s.name === 'الرياضيات').id;
+  const par = (await admin('POST', '/api/users', { role: 'parent', username: 'gm-p', full_name: 'GM P', password: 'secret1' })).body.user;
+  await admin('POST', '/api/students', { full_name: 'GM A', level: '8', parent_id: par.id, pack: true, status: 'studying' });
+  await admin('POST', '/api/students', { full_name: 'GM B', level: '8', parent_id: par.id, subject_ids: [1], status: 'studying' });
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'gm-t', full_name: 'GM T', password: 'secret1', subject_ids: [math] })).body.user;
+  const teacher = await login('gm-t', 'secret1');
+  assert.strictEqual((await teacher('POST', '/api/threads/group', { level: '8', subject_id: 1, body: 'x' })).status, 403);
+  const sent = await teacher('POST', '/api/threads/group', { level: '8', subject_id: math, title: 'Exam', body: 'Révisez' });
+  assert.strictEqual(sent.status, 201);
+  const parent = await login('gm-p', 'secret1');
+  const threads = (await parent('GET', '/api/threads')).body.threads.filter((x) => x.title === 'Exam');
+  assert.strictEqual(threads.length, 1); // GM B لا يدرس الرياضيات
+
+  const k = (await admin('POST', '/api/program/classes', { name: 'Posts class', teacher_id: t.id })).body.class;
+  const child = (await admin('POST', '/api/program/children', { full_name: 'Post kid', class_id: k.id, parent_id: par.id })).body.child;
+  const other = (await admin('POST', '/api/program/classes', { name: 'Other class' })).body.class;
+  assert.strictEqual((await teacher('POST', '/api/program/posts', { class_id: other.id, title: 'x' })).status, 403);
+  const post = await teacher('POST', '/api/program/posts', { class_id: k.id, kind: 'activity', title: 'Hifdh', body: 'Sourate' });
+  assert.strictEqual(post.status, 201);
+  assert.strictEqual(post.body.parents, 1);
+  const file = (await parent('GET', `/api/program/children/${child.id}`)).body;
+  assert.ok(file.posts.some((p) => p.title === 'Hifdh'));
+  assert.strictEqual((await teacher('GET', '/api/program/posts')).body.posts.length, 1);
+});
