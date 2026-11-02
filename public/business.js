@@ -1517,7 +1517,8 @@ async function viewPartners(el) {
     <div class="fb-kpis">${d.summary
       .map(
         (s) => `<div class="fb-kpi net"><span>${esc(s.name)} — ${s.share}% منذ ${esc(monthLabel(s.from))}</span>
-          <b>${fmtMoney(s.balance)}</b><small>نصيبه ${fmtMoney(s.due)} · قبض ${fmtMoney(s.paid)}${s.paid_before ? ` · قبل ${esc(monthLabel(s.from))}: ${fmtMoney(s.paid_before)}` : ''}</small></div>`
+          <b>${fmtMoney(s.balance)}</b><small>${s.balance >= 0 ? `بذمّة ${esc(d.owner)} لـ ${esc(s.name)}` : `رصيد لفائدة ${esc(d.owner)}`}<br>
+            باقي الحساب القديم ${fmtMoney(s.opening)} + نصيبه منذ ${esc(monthLabel(s.from))} ${fmtMoney(s.due)} − ما قبضه ${fmtMoney(s.paid)}</small></div>`
       )
       .join('')}</div>
     <section class="card"><h3>📆 المرابيح شهرًا بشهر</h3>
@@ -1534,6 +1535,21 @@ async function viewPartners(el) {
             .map((n) => `<th>${fmtMoney(round2(d.months.reduce((t, m) => t + (m.shares[n] || 0), 0)))}</th>`)
             .join('')}</tr></tfoot>
       </table></div></section>
+    ${
+      d.history.length
+        ? `<details class="card"><summary><b>🗂 السجلّ القديم (قبل ${esc(monthLabel(d.partners[0]?.from || ''))})</b></summary>
+            <div class="table-wrap"><table class="fin">
+              <thead><tr><th>الشهر</th><th>الربح الصافي</th><th>نصيب ${esc(d.partners[0]?.name || '')}</th><th>المسلّم</th><th>المتخلّد</th><th>ملاحظات</th></tr></thead>
+              <tbody>${[...d.history]
+                .reverse()
+                .map(
+                  (h) => `<tr><td><b>${esc(monthLabel(h.month))}</b></td><td class="${h.net < 0 ? 'out' : ''}">${h.net === null ? '—' : fmtMoney(h.net)}</td>
+                    <td>${h.share === null ? '—' : fmtMoney(h.share)}</td><td>${h.paid ? fmtMoney(h.paid) : '—'}</td><td><b>${h.balance ? fmtMoney(h.balance) : '—'}</b></td>
+                    <td class="muted small">${esc(h.note || '')}</td></tr>`
+                )
+                .join('')}</tbody></table></div></details>`
+        : ''
+    }
     <section class="card"><h3>💵 ما دُفع للشركاء</h3>${
       d.payments.length
         ? `<ul class="levels">${d.payments
@@ -1566,11 +1582,12 @@ async function viewPartners(el) {
          .map(
            (p, i) => `<div class="row"><label>الشريك<input name="name_${i}" value="${esc(p.name)}"></label>
              <label>النسبة %<input name="share_${i}" inputmode="decimal" value="${esc(p.share)}"></label>
-             <label>ابتداءً من<input type="month" name="from_${i}" value="${esc(p.from)}"></label></div>`
+             <label>ابتداءً من<input type="month" name="from_${i}" value="${esc(p.from)}"></label>
+             <label>الباقي له قبل هذا الشهر<input name="opening_${i}" inputmode="decimal" value="${esc(p.opening ?? 0)}"></label></div>`
          )
          .join('')}`,
       async (data) => {
-        const partners = d.partners.map((_, i) => ({ name: data[`name_${i}`], share: data[`share_${i}`], from: data[`from_${i}`] }));
+        const partners = d.partners.map((_, i) => ({ name: data[`name_${i}`], share: data[`share_${i}`], from: data[`from_${i}`], opening: data[`opening_${i}`] }));
         await api('PUT', '/api/partners/settings', { owner: data.owner, partners });
         toast('تم الحفظ');
         viewPartners(el);
@@ -1582,6 +1599,88 @@ async function viewPartners(el) {
       if (!confirmAction('حذف هذه الدفعة؟')) return;
       await api('DELETE', `/api/partners/payments/${b.dataset.del}`).catch((err) => toast(err.message, true));
       viewPartners(el);
+    })
+  );
+}
+
+
+// ---------- ديون المركز (Crédits) ----------
+async function viewCenterDebts(el) {
+  const d = await api('GET', '/api/center-debts');
+  el.innerHTML = `
+    <div class="page-head"><div><a href="#/home" class="muted small">→ الرئيسية</a><h2>📕 ديون المركز</h2>
+      <p class="muted">كل تسديد ينقص من الباقي، ويُسجَّل مصروفًا عامًا في شهر الدفع (فيدخل في حساب المرابيح).</p></div>
+      <div class="actions"><button class="btn" id="cd-add">+ دين</button></div></div>
+    <div class="fb-kpis">
+      <div class="fb-kpi out"><span>الباقي</span><b>${fmtMoney(d.remaining)}</b><small>من أصل ${fmtMoney(d.total)}</small></div>
+      <div class="fb-kpi in"><span>المسدَّد</span><b>${fmtMoney(d.paid)}</b><small>${d.total ? Math.round((d.paid / d.total) * 100) : 0}%</small></div>
+      <div class="fb-kpi net"><span>الجهات</span><b>${d.debts.filter((x) => x.remaining > 0).length}</b><small>لم تُسدَّد كاملة</small></div>
+    </div>
+    <section class="card">${
+      d.debts.length
+        ? d.debts
+            .map(
+              (x) => `<div class="debt ${x.remaining <= 0 ? 'done' : ''}">
+                <div class="debt-head"><div><b>${esc(x.creditor)}</b>${x.description ? ` <span class="muted small">${esc(x.description)}</span>` : ''}</div>
+                  <div class="debt-amt">${x.remaining > 0 ? `<b class="out">${fmtMoney(x.remaining)}</b>` : '<span class="badge good">مسدَّد ✓</span>'}
+                    <span class="muted small">من ${fmtMoney(x.amount)}</span></div></div>
+                <div class="fb-progress"><i style="width:${Math.min(100, (x.paid / x.amount) * 100)}%"></i></div>
+                ${x.payments
+                  .map((p) => `<div class="muted small">✓ ${fmtMoney(p.amount)} · ${fmtDate(p.paid_on)}${p.note ? ' · ' + esc(p.note) : ''} <button class="link danger small" data-del-pay="${p.id}">إلغاء</button></div>`)
+                  .join('')}
+                <div class="debt-actions">${x.remaining > 0 ? `<button class="btn small" data-pay="${x.id}">تسديد</button>` : ''}
+                  <button class="link small" data-edit="${x.id}">تعديل</button> <button class="link danger small" data-del="${x.id}">حذف</button></div>
+              </div>`
+            )
+            .join('')
+        : '<p class="muted">لا ديون مسجّلة.</p>'
+    }</section>`;
+  const reload = () => viewCenterDebts(el);
+  const form = (x) =>
+    openModal(
+      x ? 'تعديل الدين' : 'دين جديد',
+      `<label>الجهة الدائنة<input name="creditor" value="${esc(x?.creditor || '')}" required></label>
+       <label>البيان<input name="description" value="${esc(x?.description || '')}"></label>
+       <div class="row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(x?.amount ?? '')}" required></label>
+         <label>منذ<input type="date" name="since" value="${esc(x?.since || '')}"></label></div>`,
+      async (data) => {
+        if (x) await api('PUT', `/api/center-debts/${x.id}`, data);
+        else await api('POST', '/api/center-debts', data);
+        toast('تم الحفظ');
+        reload();
+      }
+    );
+  $('#cd-add').addEventListener('click', () => form(null));
+  el.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => form(d.debts.find((x) => x.id === Number(b.dataset.edit)))));
+  el.querySelectorAll('[data-pay]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const x = d.debts.find((y) => y.id === Number(b.dataset.pay));
+      openModal(
+        `تسديد — ${x.creditor}`,
+        `<div class="row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(x.remaining)}" required></label>
+           <label>تاريخ الدفع<input type="date" name="paid_on" value="${today()}"></label></div>
+         <label>ملاحظة<input name="note"></label>
+         <label class="check"><input type="checkbox" name="as_expense" checked> تسجيله مصروفًا عامًا (ينقص من مرابيح الشهر)</label>`,
+        async (data) => {
+          await api('POST', `/api/center-debts/${x.id}/payments`, data);
+          toast('تم التسديد');
+          reload();
+        }
+      );
+    })
+  );
+  el.querySelectorAll('[data-del-pay]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirmAction('إلغاء هذا التسديد؟')) return;
+      await api('DELETE', `/api/center-debts/payments/${b.dataset.delPay}`).catch((err) => toast(err.message, true));
+      reload();
+    })
+  );
+  el.querySelectorAll('[data-del]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirmAction('حذف هذا الدين وكل تسديداته؟')) return;
+      await api('DELETE', `/api/center-debts/${b.dataset.del}`).catch((err) => toast(err.message, true));
+      reload();
     })
   );
 }

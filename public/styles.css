@@ -710,3 +710,10 @@ table.overview td.na { color: var(--muted); }
   .fb-kpi small { font-size: .68rem; }
 }
 .seg { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .8rem; }
+.debt { padding: .8rem 0; border-bottom: 1px solid var(--border); }
+.debt:last-child { border-bottom: 0; }
+.debt.done { opacity: .65; }
+.debt-head { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+.debt-amt { text-align: left; white-space: nowrap; }
+.debt-amt b { font-size: 1.1rem; margin-inline-end: .3rem; }
+.debt-actions { margin-top: .3rem; display: flex; gap: .6rem; align-items: center; }

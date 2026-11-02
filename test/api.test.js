@@ -915,3 +915,20 @@ test('program facilitators paid monthly, class formulas, partners share (super a
   assert.strictEqual(s.paid_before, 100);
   await pool.query(`UPDATE users SET super_admin = false WHERE username = 'admin'`);
 });
+
+test('center debts: payments reduce the remaining and are recorded as general expenses', async () => {
+  const admin = await login('admin', 'admin123');
+  const d = (await admin('POST', '/api/center-debts', { creditor: 'facebook', description: 'Sponsorisation', amount: 4000 })).body;
+  assert.strictEqual((await admin('POST', `/api/center-debts/${d.id}/payments`, { amount: 5000 })).status, 400);
+  const p = (await admin('POST', `/api/center-debts/${d.id}/payments`, { amount: 1000, paid_on: '2026-10-05', as_expense: true })).body;
+  await admin('POST', `/api/center-debts/${d.id}/payments`, { amount: 500, paid_on: '2026-10-06', as_expense: false });
+  let list = (await admin('GET', '/api/center-debts')).body;
+  const fb = list.debts.find((x) => x.id === d.id);
+  assert.deepStrictEqual([fb.paid, fb.remaining], [1500, 2500]);
+  const ledger = (await admin('GET', '/api/ledger?month=2026-10&activity=general')).body.entries;
+  assert.strictEqual(ledger.filter((e) => e.description?.includes('facebook')).length, 1);
+  await admin('DELETE', `/api/center-debts/payments/${p.id}`);
+  list = (await admin('GET', '/api/center-debts')).body;
+  assert.strictEqual(list.debts.find((x) => x.id === d.id).remaining, 3500);
+  assert.strictEqual((await admin('GET', '/api/ledger?month=2026-10&activity=general')).body.entries.filter((e) => e.description?.includes('facebook')).length, 0);
+});
