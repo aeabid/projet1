@@ -154,7 +154,7 @@ function drawSquare(src, size) {
       canvas.width = canvas.height = size;
       canvas
         .getContext('2d')
-        .drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+        .drawImage(img, (img.width - side) / 2, (img.height - side) * (img.height > img.width ? 0.3 : 0.5), side, side, 0, 0, size, size);
       URL.revokeObjectURL(img.src);
       resolve(canvas.toDataURL('image/jpeg', 0.85));
     };
@@ -277,6 +277,7 @@ const routes = [
   [/^#\/admins$/, (el) => viewUsers(el, 'admin')],
   [/^#\/subjects$/, viewSubjects],
   [/^#\/import$/, viewImport],
+  [/^#\/photos$/, (el) => viewBulkPhotos(el)],
   [/^#\/register$/, viewRegister],
   [/^#\/attendance$/, viewAttendance],
   [/^#\/tasks$/, viewTasks],
@@ -723,6 +724,7 @@ async function viewStudents(el) {
       ${
         role === 'admin'
           ? `<div class="actions"><a class="btn ghost" href="#/import">⇪ استيراد قائمة</a>
+             <a class="btn ghost" href="#/photos">📷 صور بالجملة</a>
              <button class="btn" id="add-student">+ تلميذ جديد</button></div>`
           : ''
       }

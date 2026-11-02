@@ -294,3 +294,120 @@ async function viewRegisterTeacher(el) {
     }
   });
 }
+
+// ---------- رفع صور بالجملة (مثلًا صور قسم كامل) ----------
+// اسم الملف يُستعمل للتعرّف على التلميذ: رقمه في البداية (57-...) أو جزء من اسمه
+const normName = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ًͯ-ْ]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي');
+
+function guessStudent(fileName, students) {
+  const base = fileName.replace(/\.[^.]+$/, '');
+  const idMatch = base.match(/^(\d{1,5})(?:\D|$)/);
+  if (idMatch) {
+    const s = students.find((x) => x.id === Number(idMatch[1]));
+    if (s) return s.id;
+  }
+  const words = normName(base).split(/[^a-z0-9ء-ي]+/).filter((w) => w.length > 1);
+  if (!words.length) return '';
+  let best = null;
+  let bestScore = 0;
+  for (const s of students) {
+    const name = normName(s.full_name).split(/\s+/);
+    const score = words.filter((w) => name.includes(w)).length;
+    if (score > bestScore) [best, bestScore] = [s, score];
+    else if (score === bestScore && score > 0) best = null; // التباس: نترك الاختيار للمستعمل
+  }
+  return best && bestScore ? best.id : '';
+}
+
+async function viewBulkPhotos(el) {
+  const { students: all } = await api('GET', '/api/students');
+  const students = all.filter((s) => s.status !== 'left');
+  const options = (sel) =>
+    `<option value="">— اختر التلميذ —</option>` +
+    students
+      .slice()
+      .sort((a, b) => String(a.level).localeCompare(String(b.level)) || a.full_name.localeCompare(b.full_name))
+      .map((s) => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${esc(levelLabel(s.level))} · ${esc(s.full_name)}${s.has_photo ? ' 📷' : ''}</option>`)
+      .join('');
+  el.innerHTML = `
+    <div class="page-head"><div><h2>📷 رفع صور بالجملة</h2>
+      <p class="muted">اختر عدة صور مرة واحدة، ثم حدّد لكل صورة تلميذها (يُقترح تلقائيًا حسب اسم الملف)، ثم «رفع الكل».</p></div>
+      <a class="btn ghost small" href="#/students">← التلاميذ</a></div>
+    <section class="card">
+      <label class="btn">اختيار الصور<input id="bp-files" type="file" accept="image/*,.heic,.heif" multiple hidden></label>
+      <div id="bp-list" class="bp-list"></div>
+      <p><button class="btn" id="bp-go" hidden>رفع الكل</button> <span id="bp-status" class="muted small"></span></p>
+    </section>`;
+  let items = [];
+  $('#bp-files').addEventListener('change', async (e) => {
+    const files = [...e.target.files];
+    e.target.value = '';
+    $('#bp-status').textContent = 'جاري تجهيز الصور…';
+    for (const file of files) {
+      const item = { file, photo: null, error: null, studentId: guessStudent(file.name, students), done: false };
+      try {
+        item.photo = await resizeImage(file);
+      } catch (err) {
+        item.error = err.message;
+      }
+      items.push(item);
+    }
+    $('#bp-status').textContent = '';
+    render();
+  });
+  const render = () => {
+    $('#bp-list').innerHTML = items
+      .map(
+        (it, i) => `<div class="bp-item ${it.done ? 'done' : ''}" data-i="${i}">
+          ${it.photo ? `<img class="avatar lg" src="${it.photo}" alt="">` : '<span class="avatar lg">!</span>'}
+          <div class="bp-body">
+            <bdi class="muted small" dir="ltr">${esc(it.file.name)}</bdi>
+            ${it.error ? `<span class="out small">${esc(it.error)}</span>` : it.done ? '<span class="badge good">✓ تم الرفع</span>' : `<select class="bp-sel">${options(it.studentId)}</select>`}
+          </div>
+          ${it.done ? '' : '<button class="btn small ghost bp-del" title="إزالة">✕</button>'}
+        </div>`
+      )
+      .join('');
+    $('#bp-go').hidden = !items.some((it) => !it.done && it.photo);
+    el.querySelectorAll('.bp-sel').forEach((s) =>
+      s.addEventListener('change', () => (items[Number(s.closest('.bp-item').dataset.i)].studentId = Number(s.value) || ''))
+    );
+    el.querySelectorAll('.bp-del').forEach((b) =>
+      b.addEventListener('click', () => {
+        items.splice(Number(b.closest('.bp-item').dataset.i), 1);
+        render();
+      })
+    );
+  };
+  $('#bp-go').addEventListener('click', async () => {
+    const todo = items.filter((it) => !it.done && it.photo);
+    const ids = todo.map((it) => it.studentId).filter(Boolean);
+    if (todo.some((it) => !it.studentId)) return toast('حدّد التلميذ لكل صورة أو أزل الصورة', true);
+    if (new Set(ids).size !== ids.length) return toast('نفس التلميذ مختار لأكثر من صورة', true);
+    const replacing = todo.filter((it) => students.find((s) => s.id === it.studentId)?.has_photo).length;
+    if (replacing && !confirmAction(`${replacing} تلميذ عنده صورة من قبل، تعويضها؟`)) return;
+    $('#bp-go').disabled = true;
+    let ok = 0;
+    for (const it of todo) {
+      $('#bp-status').textContent = `جاري الرفع… ${ok + 1}/${todo.length}`;
+      try {
+        await api('PUT', `/api/students/${it.studentId}/photo`, { photo: it.photo });
+        it.done = true;
+        ok++;
+      } catch (err) {
+        it.error = err.message;
+      }
+    }
+    $('#bp-go').disabled = false;
+    $('#bp-status').textContent = '';
+    toast(`تم رفع ${ok} صورة`);
+    render();
+  });
+}
