@@ -92,7 +92,7 @@ h3 { font-size: 1.1rem; }
 }
 .card.narrow { max-width: 480px; }
 .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
-.page-head .actions { display: flex; gap: .5rem; }
+.page-head .actions { display: flex; gap: .5rem; flex-wrap: wrap; }
 .meta { display: flex; gap: .8rem; flex-wrap: wrap; align-items: center; color: var(--muted); }
 
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: .8rem; margin-bottom: 1rem; }
@@ -634,3 +634,11 @@ table.overview th, table.overview td { text-align: center; vertical-align: top; 
 table.overview tbody th { text-align: start; white-space: nowrap; background: var(--card); color: var(--text); }
 table.overview td.na { color: var(--muted); }
 .tiny { font-size: .7rem; }
+
+/* رفع صورة التلميذ */
+.photo-wrap.uploading { position: relative; }
+.photo-wrap.uploading::after {
+  content: 'جاري الرفع…'; position: absolute; inset: auto 0 -1.4rem; text-align: center;
+  font-size: .75rem; color: var(--feed-purple); font-weight: 700;
+}
+.photo-wrap.uploading .avatar { opacity: .6; }

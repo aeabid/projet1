@@ -142,7 +142,14 @@ function resizeImage(file, size = 320) {
       URL.revokeObjectURL(img.src);
       resolve(canvas.toDataURL('image/jpeg', 0.85));
     };
-    img.onerror = () => reject(new Error('تعذّرت قراءة الصورة'));
+    img.onerror = () =>
+      reject(
+        new Error(
+          /heic|heif/i.test(file.type || file.name)
+            ? 'صيغة HEIC غير مدعومة في هذا المتصفح. اختر الصورة بصيغة JPG أو التقطها من الكاميرا مباشرة.'
+            : 'تعذّرت قراءة الصورة، جرّب صورة أخرى (JPG أو PNG).'
+        )
+      );
     img.src = URL.createObjectURL(file);
   });
 }
@@ -1080,13 +1087,23 @@ ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضع�
   $('#photo-input')?.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    // الرفع قد يأخذ بضع ثوانٍ: الصورة تظهر حالًا مع «جاري الرفع» حتى لا يُعاد الرفع
+    const wrap = el.querySelector('.photo-wrap');
+    const btn = el.querySelector('.photo-btn');
+    btn.hidden = true;
+    wrap.classList.add('uploading');
     try {
-      await api('PUT', `/api/students/${id}/photo`, { photo: await resizeImage(file) });
+      const photo = await resizeImage(file);
+      wrap.querySelector('.avatar').outerHTML = `<img class="avatar lg" src="${photo}" alt="">`;
+      await api('PUT', `/api/students/${id}/photo`, { photo });
       toast('تم تحديث الصورة');
       reload();
     } catch (err) {
+      wrap.classList.remove('uploading');
+      btn.hidden = false;
       toast(err.message, true);
     }
+    e.target.value = '';
   });
   $('#photo-del')?.addEventListener('click', async () => {
     if (!confirmAction('حذف صورة التلميذ؟')) return;
