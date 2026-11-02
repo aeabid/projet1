@@ -886,3 +886,32 @@ test('group message to a whole class and program class posts', async () => {
   assert.ok(file.posts.some((p) => p.title === 'Hifdh'));
   assert.strictEqual((await teacher('GET', '/api/program/posts')).body.posts.length, 1);
 });
+
+test('program facilitators paid monthly, class formulas, partners share (super admin only)', async () => {
+  const admin = await login('admin', 'admin123');
+  const f = (await admin('POST', '/api/users', { role: 'teacher', username: 'fac1', full_name: 'Fac One', password: 'secret1', program_staff: true, monthly_salary: 600, subject_ids: [1] })).body.user;
+  assert.deepStrictEqual([f.program_staff, f.monthly_salary, f.subjects.length], [true, 600, 0]);
+  const k = (await admin('POST', '/api/program/classes', { name: 'Athar T', teacher_id: f.id, formulas: [{ name: 'A', fee: 80 }, { name: 'A+L', fee: 120 }] })).body.class;
+  const child = (await admin('POST', '/api/program/children', { full_name: 'Form kid', class_id: k.id, formula: 'A+L', start_date: '2026-09-01' })).body.child;
+  const file = (await admin('GET', `/api/program/children/${child.id}`)).body;
+  assert.deepStrictEqual([file.child.formula, file.child.monthly_fee], ['A+L', 120]);
+  const month = new Date().toISOString().slice(0, 7);
+  const pay = await admin('POST', `/api/program/staff/${f.id}/pay`, { month });
+  assert.strictEqual(pay.status, 201);
+  assert.strictEqual((await admin('POST', `/api/program/staff/${f.id}/pay`, { month })).status, 409);
+  const sp = (await admin('GET', `/api/program/staff-pay?month=${month}`)).body;
+  assert.strictEqual(sp.staff.find((s) => s.id === f.id).payment.amount, 600);
+  const fac = await login('fac1', 'secret1');
+  assert.strictEqual((await fac('GET', '/api/program/staff-pay')).body.staff.length, 1);
+
+  // الشركاء: للمشرف العام فقط
+  assert.strictEqual((await admin('GET', '/api/partners')).status, 403);
+  await pool.query(`UPDATE users SET super_admin = true WHERE username = 'admin'`);
+  const p = (await admin('GET', '/api/partners')).body;
+  const m = p.months.find((x) => x.month === month);
+  assert.strictEqual(m.shares.Aymen, Math.round(m.net * 0.25 * 1000) / 1000);
+  assert.strictEqual((await admin('POST', '/api/partners/payments', { partner: 'Aymen', amount: 100, paid_on: '2026-06-10', note: 'avant' })).status, 201);
+  const s = (await admin('GET', '/api/partners')).body.summary.find((x) => x.name === 'Aymen');
+  assert.strictEqual(s.paid_before, 100);
+  await pool.query(`UPDATE users SET super_admin = false WHERE username = 'admin'`);
+});

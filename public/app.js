@@ -291,7 +291,7 @@ const routes = [
   [/^#\/broadcast$/, viewBroadcast],
   [/^#\/payroll$/, viewPayroll],
   [/^#\/home$/, (el) =>
-    state.user.role === 'teacher' ? viewTeacherHome(el) : state.user.role === 'parent' ? viewParentHome(el) : viewHome(el)],
+    state.user.role === 'teacher' ? (state.user.program_staff ? viewProgram(el) : viewTeacherHome(el)) : state.user.role === 'parent' ? viewParentHome(el) : viewHome(el)],
   [/^#\/program$/, (el) => viewProgram(el)],
   [/^#\/program\/child\/(\d+)$/, (el, id) => viewProgramChild(el, Number(id))],
   [/^#\/kid\/(\d+)$/, (el, id) => viewProgramChild(el, Number(id))],
@@ -304,6 +304,7 @@ const routes = [
   [/^#\/program\/staff$/, (el) => viewUsers(el, 'teacher', 'program')],
   [/^#\/support\/teachers$/, (el) => viewUsers(el, 'teacher', 'support')],
   [/^#\/group-message$/, (el) => viewGroupMessage(el)],
+  [/^#\/partners$/, (el) => viewPartners(el)],
   [/^#\/courses$/, (el) => viewCourses(el)],
   [/^#\/courses\/(\d+)$/, (el, id) => viewCourse(el, Number(id))],
   [/^#\/ledger$/, (el) => viewLedger(el)],
@@ -432,6 +433,7 @@ const NAV = {
         ['#/ledger', 'المداخيل والمصاريف'],
         ['#/fees', 'التعريفات والتخفيضات'],
         ['#/staff', 'الإطار والأجور'],
+        ['#/partners', 'الشركاء والمرابيح'],
       ],
     },
     {
@@ -469,6 +471,15 @@ const NAV = {
     ['#/todo', 'مهامي'],
     ['#/account', 'حسابي'],
   ],
+  // مرافق البرنامج التربوي: لا علاقة له بدروس الدعم
+  program_staff: [
+    ['#/home', 'الرئيسية'],
+    ['#/program/posts', 'أنشطة ورسائل قسمي'],
+    ['#/program/attendance', 'الحضور'],
+    ['#/program/timetable', 'جدول الأوقات'],
+    ['#/program/pay', 'أجرتي'],
+    ['#/account', 'حسابي'],
+  ],
   parent: [
     ['#/home', 'الرئيسية'],
     ['#/students', 'أبنائي'],
@@ -487,12 +498,13 @@ function renderTopbar() {
   }
   bar.hidden = false;
   const current = location.hash.split('?')[0];
-  const exact = JSON.stringify(NAV[state.user.role]).includes(`"${current}"`);
+  const navKey = state.user.role === 'teacher' && state.user.program_staff ? 'program_staff' : state.user.role;
+  const exact = JSON.stringify(NAV[navKey]).includes(`"${current}"`);
   const isActive = (href) => current === href || (!exact && href !== '#/' && current.startsWith(href + '/'));
   // «البرنامج التربوي» للمعلم فقط إن كان منشّطًا لقسم
-  const nav = NAV[state.user.role].filter(
-    (e) => !(state.user.role === 'teacher' && String(e[0]).startsWith('#/program') && !state.user.program_classes)
-  );
+  const nav = NAV[navKey]
+    .filter((e) => !(navKey === 'teacher' && String(e[0]).startsWith('#/program') && !state.user.program_classes))
+    .map((e) => (Array.isArray(e) || state.user.super_admin ? e : { ...e, items: e.items.filter(([h]) => h !== '#/partners') }));
   $('#nav').innerHTML = nav
     .map((entry, i) =>
       Array.isArray(entry)
@@ -1498,8 +1510,10 @@ async function viewUsers(el, role, scope = null) {
   const addLabels = { teacher: scope === 'program' ? '+ مرافق جديد' : '+ مدرّس جديد', parent: '+ ولي جديد', admin: '+ حساب إدارة' };
   let { users } = await api('GET', `/api/users?role=${role}`);
   // المدرّسون: من عنده مواد (دروس الدعم) / المرافقون: من عنده قسم في التربوي. الحساب الجديد بلا شيء يظهر في الاثنين
-  if (scope === 'support') users = users.filter((u) => u.subjects?.length || !u.program_classes);
-  if (scope === 'program') users = users.filter((u) => u.program_classes || !u.subjects?.length);
+  const isProgram = (u) => u.program_staff || u.program_classes > 0;
+  if (scope === 'support') users = users.filter((u) => !isProgram(u));
+  if (scope === 'program') users = users.filter(isProgram);
+  const prog = scope === 'program';
   el.innerHTML = `
     <div class="page-head">
       <h2>${titles[role]}</h2>
@@ -1509,14 +1523,16 @@ async function viewUsers(el, role, scope = null) {
       users.length
         ? `<div class="table-wrap"><table>
             <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الهاتف</th>${role === 'parent' ? '<th>ب.ت.و</th>' : ''}
-              ${role === 'teacher' ? '<th>المواد</th><th>معلوم الساعة</th>' : ''}${role === 'parent' ? '<th>الأبناء</th>' : ''}<th></th></tr></thead>
+              ${role === 'teacher' ? (prog ? '<th>الأقسام</th><th>الأجرة الشهرية</th>' : '<th>المواد</th><th>معلوم الساعة</th>') : ''}${role === 'parent' ? '<th>الأبناء</th>' : ''}<th></th></tr></thead>
             <tbody>${users
               .map(
                 (u) => `<tr>
                   <td><b>${esc(u.full_name)}</b>${u.approved === false ? ' <span class="badge average">ينتظر الموافقة</span>' : ''}</td>
                   <td dir="ltr">${esc(u.username)}</td>
                   <td><span class="phone-line"><span dir="ltr">${esc(u.phone || '—')}</span>${waButton(u.phone)}</span></td>${role === 'parent' ? `<td dir="ltr">${esc(u.cin || '—')}</td>` : ''}
-                  ${role === 'teacher' ? `<td>${u.subjects.map((s) => `<span class="pill">${esc(s.name)}</span>`).join(' ') || '—'}</td>
+                  ${role === 'teacher' && prog ? `<td>${u.program_classes ? `${u.program_classes} قسم` : '<span class="muted">—</span>'}</td>
+                    <td>${u.monthly_salary ? fmtMoney(u.monthly_salary) : '<span class="muted">—</span>'}</td>` : ''}
+                  ${role === 'teacher' && !prog ? `<td>${u.subjects.map((s) => `<span class="pill">${esc(s.name)}</span>`).join(' ') || '—'}</td>
                     <td>${u.hourly_rate ? fmtMoney(u.hourly_rate) : '<span class="muted">—</span>'} <a class="small" href="#/payroll/${u.id}">الساعات ←</a></td>` : ''}
                   ${
                     role === 'parent'
@@ -1546,7 +1562,9 @@ async function viewUsers(el, role, scope = null) {
          <label>اسم المستخدم<input name="username" value="${esc(u.username)}" dir="ltr" required></label>
          <label>الهاتف<input name="phone" value="${esc(u.phone)}" dir="ltr"></label>
        </div>
-       ${role === 'teacher' ? `<label>معلوم الساعة (د.ت)<input name="hourly_rate" inputmode="decimal" value="${esc(u.hourly_rate ?? '')}" placeholder="مثال: 20"></label>` : ''}
+       ${role === 'teacher' && !prog ? `<label>معلوم الساعة (د.ت)<input name="hourly_rate" inputmode="decimal" value="${esc(u.hourly_rate ?? '')}" placeholder="مثال: 20"></label>` : ''}
+       ${prog ? `<label>الأجرة الشهرية (د.ت)<input name="monthly_salary" inputmode="decimal" value="${esc(u.monthly_salary ?? '')}" placeholder="مثال: 600"></label>
+         <p class="muted small">القسم الذي يرافقه يُحدَّد من «الأطفال والأقسام» (تعديل القسم ← المرافق).</p>` : ''}
        <div class="row">
          <label>رقم بطاقة التعريف<input name="cin" value="${esc(u.cin)}" dir="ltr" inputmode="numeric"></label>
          <label>البريد الإلكتروني<input name="email" type="email" value="${esc(u.email)}" dir="ltr"></label>
@@ -1557,7 +1575,7 @@ async function viewUsers(el, role, scope = null) {
        <label>${user ? 'كلمة سر جديدة (اتركها فارغة للإبقاء على القديمة)' : 'كلمة السر'}
          <input name="password" type="text" dir="ltr" ${user ? '' : 'required'} minlength="6"></label>
        ${
-         role === 'teacher'
+         role === 'teacher' && !prog
            ? `<fieldset><legend>المواد التي يدرّسها</legend><div class="checks">${state.meta.subjects
                .map(
                  (s) => `<div class="subject-levels"><label class="check"><input type="checkbox" name="subject_ids[]" value="${s.id}" ${ids.has(s.id) ? 'checked' : ''}> ${esc(s.name)}</label>
@@ -1571,7 +1589,8 @@ async function viewUsers(el, role, scope = null) {
            : ''
        }`,
       async (data) => {
-        if (role === 'teacher') {
+        if (prog) data.program_staff = true;
+        else if (role === 'teacher') {
           data.subject_levels = {};
           for (const i of $('#modal').querySelectorAll('[data-lv]:checked')) (data.subject_levels[i.dataset.lv] ||= []).push(i.value);
         }
