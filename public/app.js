@@ -395,11 +395,7 @@ const NAV = {
         ['#/todo', 'المهام والمشاكل'],
         ['#/meetings', 'الاجتماعات والقرارات'],
         ['#/people', 'كل تلاميذ المركز'],
-      ],
-    },
-    {
-      label: 'المالية',
-      items: [
+        ['', 'المالية'],
         ['#/finance', 'المردودية المالية'],
         ['#/debts', 'المتخلّد بذمتهم'],
         ['#/receipts', 'الوصولات'],
@@ -487,7 +483,7 @@ function renderTopbar() {
         Array.isArray(entry)
           ? `<a href="${entry[0]}" class="top ${isActive(entry[0]) ? 'active' : ''}">${entry[1]}</a>`
           : `<details ${entry.items.some(([h]) => isActive(h)) ? 'open' : ''}><summary>${entry.label}</summary>${entry.items
-              .map(([h, l]) => `<a href="${h}" class="${isActive(h) ? 'active' : ''}">${l}</a>`)
+              .map(([h, l]) => navItem(h, l, isActive))
               .join('')}</details>`
       )
       .join('') + `<div class="vmenu-user">${esc(state.user.full_name)} · ${ROLE_LABELS[state.user.role]}</div>`;
@@ -549,13 +545,17 @@ window.addEventListener('resize', () => {
 });
 document.fonts?.ready.then(fitNav);
 
+// عنصر قائمة فرعية؛ href فارغ = عنوان فرعي داخل المجموعة (مثل «المالية» تحت «إدارة المركز»)
+const navItem = (href, label, isActive) =>
+  href ? `<a href="${href}" class="${isActive(href) ? 'active' : ''}">${label}</a>` : `<div class="nav-sub">${label}</div>`;
+
 function openSubnav(btn, group, isActive) {
   closeSubnav();
   const panel = $('#subnav');
   const bar = $('#topbar').getBoundingClientRect();
   const rect = btn.getBoundingClientRect();
   panel.innerHTML = group.items
-    .map(([href, label]) => `<a href="${href}" class="${isActive(href) ? 'active' : ''}">${label}</a>`)
+    .map(([href, label]) => navItem(href, label, isActive))
     .join('');
   panel.dataset.group = btn.dataset.group;
   panel.style.top = `${rect.bottom - bar.top + 6}px`;

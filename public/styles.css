@@ -667,3 +667,5 @@ table.overview td.na { color: var(--muted); }
 .gl-result .add { float: left; color: var(--primary, #4C2786); font-weight: 600; }
 .gl-new summary { cursor: pointer; color: var(--primary, #4C2786); margin: .4rem 0; }
 .vmenu a.top { font-weight: 700; }
+.nav-sub { font-weight: 700; color: var(--feed-purple); padding: .7rem .9rem .3rem; margin-top: .3rem; border-top: 1px solid var(--border); font-size: .95rem; }
+.vmenu details .nav-sub { padding-inline-start: .9rem; }
