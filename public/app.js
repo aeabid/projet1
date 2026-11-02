@@ -129,7 +129,23 @@ function waComposer(phone, vars, initial = 'general') {
 }
 
 // تصغير الصورة في المتصفح قبل رفعها (JPEG مربّعة 320px)
-function resizeImage(file, size = 320) {
+// صور HEIC (كاميرا أغلب هواتف Android وiPhone): المتصفح لا يقرأها، فتُحوَّل إلى JPEG أولًا
+const isHeic = (file) => /heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name || '');
+let heicLib = null;
+function loadHeic() {
+  return (heicLib ??= new Promise((resolve, reject) => {
+    const sc = document.createElement('script');
+    sc.src = 'vendor/heic2any.min.js';
+    sc.onload = () => resolve(window.heic2any);
+    sc.onerror = () => {
+      heicLib = null;
+      reject(new Error('تعذّر تحميل قارئ صور HEIC، تحقّق من الاتصال'));
+    };
+    document.head.appendChild(sc);
+  }));
+}
+
+function drawSquare(src, size) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -142,16 +158,25 @@ function resizeImage(file, size = 320) {
       URL.revokeObjectURL(img.src);
       resolve(canvas.toDataURL('image/jpeg', 0.85));
     };
-    img.onerror = () =>
-      reject(
-        new Error(
-          /heic|heif/i.test(file.type || file.name)
-            ? 'صيغة HEIC غير مدعومة في هذا المتصفح. اختر الصورة بصيغة JPG أو التقطها من الكاميرا مباشرة.'
-            : 'تعذّرت قراءة الصورة، جرّب صورة أخرى (JPG أو PNG).'
-        )
-      );
-    img.src = URL.createObjectURL(file);
+    img.onerror = () => reject(new Error('unreadable'));
+    img.src = URL.createObjectURL(src);
   });
+}
+
+async function resizeImage(file, size = 320) {
+  // نجرّب القراءة مباشرة (Safari يقرأ HEIC)، وإلا نحوّلها
+  try {
+    return await drawSquare(file, size);
+  } catch {
+    if (!isHeic(file)) throw new Error('تعذّرت قراءة الصورة، جرّب صورة أخرى (JPG أو PNG).');
+  }
+  try {
+    const heic2any = await loadHeic();
+    const out = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+    return await drawSquare(Array.isArray(out) ? out[0] : out, size);
+  } catch (err) {
+    throw new Error(err.message?.includes('HEIC') ? err.message : 'تعذّر تحويل صورة HEIC، جرّب صورة أخرى.');
+  }
 }
 
 async function api(method, url, body) {
