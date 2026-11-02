@@ -278,6 +278,8 @@ const routes = [
   [/^#\/subjects$/, viewSubjects],
   [/^#\/import$/, viewImport],
   [/^#\/photos$/, (el) => viewBulkPhotos(el)],
+  [/^#\/google-link$/, (el) => viewGoogleLink(el)],
+  [/^#\/parent-requests$/, (el) => viewParentRequests(el)],
   [/^#\/register$/, viewRegister],
   [/^#\/attendance$/, viewAttendance],
   [/^#\/tasks$/, viewTasks],
@@ -329,7 +331,7 @@ function homeFor(user) {
 let navCount = 0;
 async function router() {
   const hash = location.hash || '#/';
-  const isPublic = ['#/login', '#/register', '#/register-teacher'].includes(hash);
+  const isPublic = ['#/login', '#/register', '#/register-teacher', '#/google-link'].includes(hash);
   if (!state.user && !isPublic) {
     try {
       const { user } = await api('GET', '/api/me');
@@ -419,6 +421,7 @@ const NAV = {
       items: [
         ['#/teachers', 'المعلمون'],
         ['#/parents', 'الأولياء'],
+        ['#/parent-requests', 'طلبات أولياء Google'],
         ['#/admins', 'الإدارة'],
         ['#/account', 'حسابي'],
       ],
@@ -603,11 +606,14 @@ function viewLogin(el) {
           <label>كلمة السر<input name="password" type="password" autocomplete="current-password" required></label>
           <p class="error" id="login-error" hidden></p>
           <button class="btn block">دخول</button>
+          <div id="google-box" class="google-box" hidden><div class="or"><span>أو</span></div><div id="google-btn"></div>
+            <p class="muted small center">للأولياء: ادخل بحساب Google واختر أبناءك.</p></div>
           <p class="muted small center">ولي جديد؟ <a href="#/register"><b>سجّل أبناءك من هنا</b></a></p>
           <p class="muted small center">مدرّس؟ <a href="#/register-teacher">أنشئ حسابك</a></p>
         </form>
       </div>
     </div>`;
+  setupGoogleLogin();
   $('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
@@ -713,6 +719,14 @@ async function viewDashboard(el) {
 }
 
 // ---------- قائمة التلاميذ ----------
+// المواد في القائمة: «باقة كاملة» أو أسماء المواد المسجّل فيها
+const SUBJECT_SHORT = { 'العربية': 'عربية', 'الفرنسية': 'فرنسية', 'الإنجليزية': 'إنجليزية', 'الرياضيات': 'رياضيات' };
+function subjectsCell(s) {
+  if (s.pack) return '<span class="badge pack">باقة كاملة</span>';
+  if (!s.subject_names?.length) return '<span class="muted small">—</span>';
+  return s.subject_names.map((n) => `<span class="pill small">${esc(SUBJECT_SHORT[n] || n)}</span>`).join(' ');
+}
+
 async function viewStudents(el) {
   const role = state.user.role;
   if (role === 'parent') return viewMyChildren(el);
@@ -754,7 +768,7 @@ async function viewStudents(el) {
     const { students } = await api('GET', '/api/students?' + params);
     $('#students-list').innerHTML = students.length
       ? `<div class="table-wrap"><table>
-          <thead><tr><th>الاسم</th><th>المستوى</th><th>الفوج</th><th>الولي</th><th>الغيابات</th><th>الملاحظات</th>${
+          <thead><tr><th>الاسم</th><th>المستوى</th><th>المواد</th><th>الولي</th><th>الغيابات</th><th>الملاحظات</th>${
             role === 'admin' ? '<th>الباقي</th><th></th>' : ''
           }</tr></thead>
           <tbody>${students
@@ -763,7 +777,7 @@ async function viewStudents(el) {
                 <td><a class="who-cell" href="#/students/${s.id}">${avatar(s, 'sm')}<b>${esc(s.full_name)}</b></a>
                   ${s.status !== 'studying' ? statusBadge(s.status) : ''}${s.free ? ' <span class="badge free">مجاني</span>' : ''}</td>
                 <td><span class="pill">${esc(levelLabel(s.level))}</span></td>
-                <td>${esc(s.group_name || '—')}</td>
+                <td>${subjectsCell(s)}</td>
                 <td>${esc(s.parent_name || '—')}${
                   s.parent_phone
                     ? `<div class="muted small phone-line"><span dir="ltr">${esc(s.parent_phone)}</span>${role === 'admin' ? waButton(s.parent_phone) : ''}</div>`
@@ -816,7 +830,7 @@ async function studentForm(student, onDone) {
     `<label>الاسم واللقب<input name="full_name" value="${esc(s.full_name)}" required></label>
      <div class="row">
        <label>المستوى<select name="level">${levelOptions(s.level || sessionStorage.getItem('levelFilter') || '5')}</select></label>
-       <label>الفوج<input name="group_name" value="${esc(s.group_name)}" placeholder="مثال: أ"></label>
+       ${s.group_name ? `<label>الفوج<input name="group_name" value="${esc(s.group_name)}"></label>` : ''}
      </div>
      <div class="row">
        <label>تاريخ الولادة<input name="birth_date" type="date" value="${esc(s.birth_date)}"></label>
@@ -970,7 +984,13 @@ async function viewStudent(el, id) {
         <h2>${esc(student.full_name)}</h2>
         <div class="meta">
           <span class="pill">${esc(levelLabel(student.level))}</span>
-          ${statusBadge(student.status)}${student.free ? ' <span class="badge free">مجاني</span>' : ''}
+          ${
+            role === 'admin'
+              ? `<select id="status-quick" class="status-quick status-${esc(student.status)}" title="تغيير الحالة">${Object.entries(STATUS_LABELS)
+                  .map(([k, v]) => `<option value="${k}" ${student.status === k ? 'selected' : ''}>${v}</option>`)
+                  .join('')}</select>`
+              : statusBadge(student.status)
+          }${student.free ? ' <span class="badge free">مجاني</span>' : ''}
           ${student.group_name ? `<span>الفوج: ${esc(student.group_name)}</span>` : ''}
           ${student.parent_name ? `<span>الولي: ${esc(student.parent_name)}</span>` : ''}
           ${student.parent_phone ? `<span dir="ltr">${esc(student.parent_phone)}</span>` : ''}
@@ -990,6 +1010,7 @@ async function viewStudent(el, id) {
              <button class="btn ghost" id="new-thread">✉️ مراسلة الولي</button>
              <button class="btn" id="add-note">+ ملاحظة</button>
              <button class="btn warn" id="add-absence">+ غياب</button>
+             ${role === 'admin' ? '<button class="btn ghost" id="edit-student">✏️ تعديل</button>' : ''}
              ${role === 'admin' && waNumber(student.parent_phone) ? `<button class="btn wa" id="wa-parent">${WA_ICON} واتساب الولي</button>` : ''}</div>`
           : ''
       }
@@ -1011,7 +1032,7 @@ async function viewStudent(el, id) {
         }</dd>
         <dt>العنوان</dt><dd>${esc([student.address, student.city].filter(Boolean).join('، ') || '—')}</dd>
         <dt>المواد المسجّل فيها</dt><dd>${
-          student.pack ? '<span class="badge pack">Pack — كل المواد</span> ' : ''
+          student.pack ? '<span class="badge pack">باقة كاملة (Pack)</span> ' : ''
         }${student.subjects.map((x) => `<span class="pill">${esc(x.name)}</span>`).join(' ') || '—'}</dd>
         ${finance ? `<dt>المبلغ الشهري</dt><dd><b>${fmtMoney(finance.monthly_fee)}</b></dd>` : ''}
       </dl>
@@ -1110,6 +1131,24 @@ ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضع�
       finance && finance.balance > 0 ? 'payment' : 'general'
     )
   );
+
+  $('#status-quick')?.addEventListener('change', async (e) => {
+    const status = e.target.value;
+    let end_date;
+    if (['left', 'stopped'].includes(status)) {
+      end_date = prompt('تاريخ الخروج / التوقف (YYYY-MM-DD):', today());
+      if (end_date === null) return (e.target.value = student.status);
+    }
+    try {
+      await api('PATCH', `/api/students/${id}/status`, { status, end_date });
+      toast(`الحالة: ${STATUS_LABELS[status]}`);
+      reload();
+    } catch (err) {
+      e.target.value = student.status;
+      toast(err.message, true);
+    }
+  });
+  $('#edit-student')?.addEventListener('click', () => studentForm(student, reload));
 
   $('#photo-input')?.addEventListener('change', async (e) => {
     const file = e.target.files[0];

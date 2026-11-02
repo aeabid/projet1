@@ -756,3 +756,60 @@ test('home pages: teacher sees students, notes, absences and pay; parent sees no
   assert.strictEqual((await parent('GET', '/api/home/teacher')).status, 403);
   assert.strictEqual((await teacher('GET', '/api/home/parent')).status, 403);
 });
+
+test('google login for parents: link request, admin approval, then direct login; quick status and subjects list', async () => {
+  const gHandle = createHandler(pool, {
+    adminPassword: 'admin123',
+    googleClientId: 'cid',
+    verifyGoogle: async (cred) => {
+      if (!cred.startsWith('ok-')) throw Object.assign(new Error('bad'), { status: 401 });
+      return { sub: cred.slice(3), email: `${cred.slice(3)}@gmail.com`, name: 'Mama ' + cred.slice(3) };
+    },
+  });
+  const gcall = async (method, url, body, cookie) => {
+    const res = await gHandle(new Request('http://localhost' + url, {
+      method, headers: { ...(cookie ? { cookie } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    }));
+    return { status: res.status, body: await res.json(), headers: res.headers };
+  };
+  const admin = await login('admin', 'admin123');
+  assert.strictEqual((await gcall('GET', '/api/auth/config')).body.google_client_id, 'cid');
+  assert.strictEqual((await call('GET', '/api/auth/config')).body.google_client_id, null);
+
+  const kid = (await admin('POST', '/api/students', { full_name: 'Googlekid Zarrouk', level: '7', subject_ids: [1, 4] })).body.student;
+  const first = await gcall('POST', '/api/auth/google', { credential: 'ok-u1' });
+  assert.strictEqual(first.body.link_required, true);
+  const ticket = first.body.ticket;
+  assert.strictEqual((await gcall('GET', `/api/auth/google/children?ticket=bad&q=googlekid`)).status, 401);
+  assert.strictEqual((await gcall('GET', `/api/auth/google/children?ticket=${ticket}&q=go`)).body.children.length, 0);
+  const found = (await gcall('GET', `/api/auth/google/children?ticket=${ticket}&q=googlekid`)).body.children;
+  assert.deepStrictEqual(found.map((c) => [c.type, c.id]), [['student', kid.id]]);
+  assert.strictEqual(Object.keys(found[0]).includes('parent_id'), false);
+  const sent = await gcall('POST', '/api/auth/google/request', {
+    ticket, full_name: 'Mama Zarrouk', phone: '22 333 444',
+    children: [{ type: 'student', id: kid.id }, { type: 'new', full_name: 'Petit Zarrouk', level: '5' }],
+  });
+  assert.strictEqual(sent.status, 200);
+  // ما زال في الانتظار
+  assert.strictEqual((await gcall('POST', '/api/auth/google', { credential: 'ok-u1' })).body.status, 'pending');
+  const { body: list } = await admin('GET', '/api/parent-requests');
+  const req = list.requests.find((r) => r.google_email === 'u1@gmail.com');
+  assert.strictEqual(req.children.length, 2);
+  assert.strictEqual((await admin('POST', `/api/parent-requests/${req.id}/approve`, {})).status, 200);
+  const logged = await gcall('POST', '/api/auth/google', { credential: 'ok-u1' });
+  assert.strictEqual(logged.body.user.role, 'parent');
+  const cookie = logged.headers.get('set-cookie').split(';')[0];
+  const mine = (await gcall('GET', '/api/students', null, cookie)).body.students.map((s) => s.full_name).sort();
+  assert.deepStrictEqual(mine, ['Googlekid Zarrouk', 'Petit Zarrouk']);
+  assert.strictEqual((await gcall('POST', '/api/auth/google', { credential: 'bad' })).status, 401);
+
+  // الحالة السريعة وقائمة المواد
+  assert.strictEqual((await admin('PATCH', `/api/students/${kid.id}/status`, { status: 'nope' })).status, 400);
+  const left = (await admin('PATCH', `/api/students/${kid.id}/status`, { status: 'left', end_date: '2026-10-31' })).body.student;
+  assert.deepStrictEqual([left.status, left.end_date], ['left', '2026-10-31']);
+  const back = (await admin('PATCH', `/api/students/${kid.id}/status`, { status: 'waiting' })).body.student;
+  assert.deepStrictEqual([back.status, back.end_date], ['waiting', null]);
+  const row = (await admin('GET', '/api/students?q=Googlekid')).body.students[0];
+  assert.deepStrictEqual(row.subject_names, ['العربية', 'الرياضيات']);
+});
