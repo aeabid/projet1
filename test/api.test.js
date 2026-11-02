@@ -844,3 +844,17 @@ test('fee adjustments: whole month absent, some days absent, custom amount', asy
   assert.strictEqual((await admin('DELETE', `/api/fee-adjustments/${sep.adjustment.id}`)).status, 200);
   assert.strictEqual(await due('2026-09'), 100);
 });
+
+test('program timetable and notes list', async () => {
+  const admin = await login('admin', 'admin123');
+  const k = (await admin('POST', '/api/program/classes', { name: 'TT class' })).body;
+  const classId = k.class?.id ?? k.id;
+  assert.ok(classId);
+  assert.strictEqual((await admin('POST', '/api/program/slots', { class_id: classId, day: 3, start_time: '10:00', end_time: '09:00' })).status, 400);
+  const s = await admin('POST', '/api/program/slots', { class_id: classId, day: 3, start_time: '09:00', end_time: '10:30', title: 'Coran' });
+  assert.strictEqual(s.status, 201);
+  const { slots } = (await admin('GET', '/api/program/slots')).body;
+  assert.ok(slots.some((x) => x.id === s.body.id && x.class_name === 'TT class' && x.title === 'Coran'));
+  assert.strictEqual((await admin('DELETE', `/api/program/slots/${s.body.id}`)).status, 200);
+  assert.strictEqual((await admin('GET', '/api/program/notes')).status, 200);
+});

@@ -296,6 +296,10 @@ const routes = [
   [/^#\/program\/child\/(\d+)$/, (el, id) => viewProgramChild(el, Number(id))],
   [/^#\/kid\/(\d+)$/, (el, id) => viewProgramChild(el, Number(id))],
   [/^#\/program\/attendance$/, (el) => viewProgramAttendance(el)],
+  [/^#\/program\/board$/, (el) => viewProgramBoard(el)],
+  [/^#\/program\/timetable$/, (el) => viewProgramTimetable(el)],
+  [/^#\/program\/notes$/, (el) => viewProgramNotes(el)],
+  [/^#\/program\/pay$/, (el) => viewProgramPay(el)],
   [/^#\/courses$/, (el) => viewCourses(el)],
   [/^#\/courses\/(\d+)$/, (el, id) => viewCourse(el, Number(id))],
   [/^#\/ledger$/, (el) => viewLedger(el)],
@@ -389,7 +393,17 @@ const NAV = {
         ['#/overview', 'نظرة حسب القسم'],
       ],
     },
-    ['#/program', 'البرنامج التربوي'],
+    {
+      label: 'البرنامج التربوي',
+      items: [
+        ['#/program/board', 'لوحة البرنامج التربوي'],
+        ['#/program', 'الأطفال والأقسام'],
+        ['#/program/timetable', 'جدول الأوقات'],
+        ['#/program/attendance', 'الحضور'],
+        ['#/program/notes', 'ملاحظات المنشطين'],
+        ['#/program/pay', 'خلاص المنشطين'],
+      ],
+    },
     ['#/courses', 'الدورات والأنشطة'],
     {
       label: 'إدارة المركز',
@@ -459,7 +473,8 @@ function renderTopbar() {
   }
   bar.hidden = false;
   const current = location.hash.split('?')[0];
-  const isActive = (href) => current === href || (href !== '#/' && current.startsWith(href + '/'));
+  const exact = JSON.stringify(NAV[state.user.role]).includes(`"${current}"`);
+  const isActive = (href) => current === href || (!exact && href !== '#/' && current.startsWith(href + '/'));
   // «البرنامج التربوي» للمعلم فقط إن كان منشّطًا لقسم
   const nav = NAV[state.user.role].filter((e) => !(state.user.role === 'teacher' && e[0] === '#/program' && !state.user.program_classes));
   $('#nav').innerHTML = nav

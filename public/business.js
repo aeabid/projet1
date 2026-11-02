@@ -385,7 +385,6 @@ async function viewProgram(el) {
       <div class="stat good"><b>${fmtMoney(monthlyExpected)}</b><span>المنتظر شهريًا</span></div>
       <div class="stat warn"><b>${fmtMoney(owed)}</b><span>مبالغ غير مدفوعة</span></div>
     </div>
-    <div id="program-board"></div>
     <div class="class-chips">
       <button class="chip ${filter ? '' : 'on'}" data-class="">كل الأقسام</button>
       ${classes
@@ -400,7 +399,6 @@ async function viewProgram(el) {
     <section class="card"><h3>المصاريف والأجور</h3>
       <p class="muted">أجور المربّين تُسجَّل من <a href="#/staff">الإطار والأجور</a>، والمصاريف الأخرى من <a href="#/ledger">المداخيل والمصاريف</a> (النشاط: البرنامج التربوي).</p>
     </section>`;
-  activityBoard($('#program-board'), 'program').catch((err) => toast(err.message, true));
 
   const render = () => {
     const f = sessionStorage.getItem('progClass') || '';
@@ -1266,4 +1264,136 @@ async function viewGeneralExpenses(el) {
   bindMonth('ge-month', load);
   $('#ge-add').addEventListener('click', () => ledgerForm(null, 'expense', load, { activity: 'general' }));
   await load();
+}
+
+// ---------- البرنامج التربوي: اللوحة، الجدول، الملاحظات، خلاص المنشطين ----------
+async function viewProgramBoard(el) {
+  const { classes, children } = await api('GET', '/api/program');
+  const active = children.filter((c) => c.status === 'active');
+  const owed = children.reduce((t, c) => t + Math.max(c.balance || 0, 0), 0);
+  el.innerHTML = `
+    <div class="page-head"><div><a href="#/home" class="muted small">→ الرئيسية</a><h2>🎨 لوحة البرنامج التربوي</h2></div></div>
+    <div class="stats compact">
+      <div class="stat"><b>${active.length}</b><span>طفل مسجّل</span></div>
+      <div class="stat"><b>${classes.length}</b><span>أقسام</span></div>
+      <div class="stat"><b>${new Set(active.map((c) => c.family_parent_id || c.parent_id).filter(Boolean)).size}</b><span>ولي</span></div>
+      <div class="stat warn"><b>${fmtMoney(owed)}</b><span>مبالغ غير مدفوعة</span></div>
+    </div>
+    <div id="program-board"></div>
+    <section class="card"><h3>الأقسام</h3><ul class="levels">${classes
+      .map((k) => `<li><a href="#/program" data-class="${k.id}">${esc(k.name)}${k.age_range ? ` <span class="muted small">${esc(k.age_range)}</span>` : ''}</a>
+        <b>${active.filter((c) => c.class_id === k.id).length}</b></li>`)
+      .join('')}</ul></section>
+    ${
+      children.some((c) => c.balance > 0)
+        ? `<section class="card"><h3>أطفال عليهم مبالغ</h3><ul class="levels">${children
+            .filter((c) => c.balance > 0)
+            .sort((a, b) => b.balance - a.balance)
+            .map((c) => `<li><a href="#/program/child/${c.id}">${esc(c.full_name)} <span class="muted small">${esc(c.class_name || '')}</span></a><b class="owed">${fmtMoney(c.balance)}</b></li>`)
+            .join('')}</ul></section>`
+        : ''
+    }`;
+  el.querySelectorAll('[data-class]').forEach((a) => a.addEventListener('click', () => sessionStorage.setItem('progClass', a.dataset.class)));
+  await activityBoard($('#program-board'), 'program');
+}
+
+async function viewProgramTimetable(el) {
+  const [{ slots }, { classes }, { users: teachers }] = await Promise.all([
+    api('GET', '/api/program/slots'),
+    api('GET', '/api/program'),
+    api('GET', '/api/users?role=teacher'),
+  ]);
+  const admin = state.user.role === 'admin';
+  const filter = sessionStorage.getItem('progTtClass') || '';
+  const shown = slots.filter((s) => !filter || String(s.class_id) === filter);
+  el.innerHTML = `
+    <div class="page-head"><div><a href="#/home" class="muted small">→ الرئيسية</a><h2>🗓 جدول أوقات البرنامج التربوي</h2></div>
+      ${admin ? '<div class="actions"><button class="btn" id="slot-add">+ حصة</button></div>' : ''}</div>
+    <div class="filters"><select id="tt-class"><option value="">كل الأقسام</option>${classes
+      .map((k) => `<option value="${k.id}" ${filter === String(k.id) ? 'selected' : ''}>${esc(k.name)}</option>`)
+      .join('')}</select></div>
+    ${
+      shown.length
+        ? DAYS_AR.map((d, i) => {
+            const day = shown.filter((s) => s.day === i + 1);
+            return day.length
+              ? `<section class="card"><h3>${d}</h3><ul class="levels">${day
+                  .map(
+                    (s) => `<li><span><b>${esc(s.start_time)} – ${esc(s.end_time)}</b> ${esc(s.title || '')}
+                      <span class="muted small">${esc(s.class_name)}${s.teacher_name ? ' · ' + esc(s.teacher_name) : ''}${s.room ? ' · ' + esc(s.room) : ''}</span></span>
+                      ${admin ? `<span><button class="link" data-edit="${s.id}">تعديل</button> <button class="link danger" data-del="${s.id}">حذف</button></span>` : ''}</li>`
+                  )
+                  .join('')}</ul></section>`
+              : '';
+          }).join('')
+        : '<div class="card muted">لا توجد حصص بعد.</div>'
+    }`;
+  const form = (s) =>
+    openModal(
+      s ? 'تعديل حصة' : 'حصة جديدة',
+      `<label>القسم<select name="class_id">${classes.map((k) => `<option value="${k.id}" ${(s?.class_id ?? Number(filter)) === k.id ? 'selected' : ''}>${esc(k.name)}</option>`).join('')}</select></label>
+       <label>اليوم<select name="day">${DAYS_AR.map((d, i) => `<option value="${i + 1}" ${s?.day === i + 1 ? 'selected' : ''}>${d}</option>`).join('')}</select></label>
+       <div class="row"><label>من<input type="time" name="start_time" value="${esc(s?.start_time || '')}" required></label>
+         <label>إلى<input type="time" name="end_time" value="${esc(s?.end_time || '')}" required></label></div>
+       <label>النشاط / المحتوى<input name="title" value="${esc(s?.title || '')}" placeholder="مثال: أفلا ينظرون"></label>
+       <label>المنشط<select name="teacher_id"><option value="">—</option>${teachers.map((t) => `<option value="${t.id}" ${s?.teacher_id === t.id ? 'selected' : ''}>${esc(t.full_name)}</option>`).join('')}</select></label>
+       <label>القاعة<input name="room" value="${esc(s?.room || '')}"></label>`,
+      async (data) => {
+        if (s) await api('PUT', `/api/program/slots/${s.id}`, data);
+        else await api('POST', '/api/program/slots', data);
+        toast('تم الحفظ');
+        viewProgramTimetable(el);
+      }
+    );
+  $('#tt-class').addEventListener('change', (e) => {
+    sessionStorage.setItem('progTtClass', e.target.value);
+    viewProgramTimetable(el);
+  });
+  $('#slot-add')?.addEventListener('click', () => form(null));
+  el.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => form(slots.find((s) => s.id === Number(b.dataset.edit)))));
+  el.querySelectorAll('[data-del]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirmAction('حذف الحصة؟')) return;
+      await api('DELETE', `/api/program/slots/${b.dataset.del}`).catch((err) => toast(err.message, true));
+      viewProgramTimetable(el);
+    })
+  );
+}
+
+async function viewProgramNotes(el) {
+  const { classes } = await api('GET', '/api/program');
+  const filter = sessionStorage.getItem('progNotesClass') || '';
+  const { notes } = await api('GET', '/api/program/notes' + (filter ? `?class_id=${filter}` : ''));
+  el.innerHTML = `
+    <div class="page-head"><div><a href="#/home" class="muted small">→ الرئيسية</a><h2>📝 ملاحظات المنشطين</h2>
+      <p class="muted">لإضافة ملاحظة: افتح ملف الطفل من «الأطفال والأقسام».</p></div></div>
+    <div class="filters"><select id="pn-class"><option value="">كل الأقسام</option>${classes
+      .map((k) => `<option value="${k.id}" ${filter === String(k.id) ? 'selected' : ''}>${esc(k.name)}</option>`)
+      .join('')}</select></div>
+    ${
+      notes.length
+        ? `<ul class="notes">${notes
+            .map(
+              (n) => `<li class="note"><div class="note-head"><span class="badge ${n.category}">${PROGRAM_NOTE_LABELS[n.category] || ''}</span>
+                ${n.rating ? `<span class="badge ${n.rating}">${LEVEL_WORDS[n.rating] || n.rating}</span>` : ''}
+                <span class="muted small">${fmtDate(n.date)} · <a href="#/program/child/${n.child_id}">${esc(n.child_name)}</a> · ${esc(n.class_name || '')} · ${esc(n.author_name || '')}</span></div>
+                ${n.content ? `<p>${esc(n.content)}</p>` : ''}</li>`
+            )
+            .join('')}</ul>`
+        : '<div class="card muted">لا توجد ملاحظات بعد.</div>'
+    }`;
+  $('#pn-class').addEventListener('change', (e) => {
+    sessionStorage.setItem('progNotesClass', e.target.value);
+    viewProgramNotes(el);
+  });
+}
+
+// خلاص المنشطين = مصاريف «البرنامج التربوي» في المداخيل والمصاريف
+async function viewProgramPay(el) {
+  await viewLedger(el);
+  const h = el.querySelector('h2');
+  if (h) h.textContent = '💸 خلاص المنشطين ومصاريف البرنامج التربوي';
+  const sel = $('#lg-activity');
+  sel.value = 'program';
+  sel.dispatchEvent(new Event('change'));
 }
