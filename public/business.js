@@ -1450,7 +1450,11 @@ async function viewProgramPay(el) {
           ? `<ul class="levels">${r.staff
               .map(
                 (s) => `<li><span><b>${esc(s.full_name)}</b> <span class="muted small">${esc(s.classes || 'دون قسم')}</span>
-                    <div class="muted small">الأجرة: ${s.monthly_salary ? fmtMoney(s.monthly_salary) : 'غير محدّدة'}</div></span>
+                    <div class="muted small">${
+                      s.pay_per_child
+                        ? `${fmtMoney(s.pay_per_child)} عن كل طفل × ${s.children_count}${s.monthly_salary ? ` + ${fmtMoney(s.monthly_salary)}` : ''} = <b>${fmtMoney(s.expected)}</b>`
+                        : `الأجرة: ${s.monthly_salary ? fmtMoney(s.monthly_salary) : 'غير محدّدة'}`
+                    }</div></span>
                   <span>${
                     s.payment
                       ? `<span class="badge good">✓ ${fmtMoney(s.payment.amount)} · ${fmtDate(s.payment.date)}</span> <button class="link danger small" data-undo="${s.payment.id}">إلغاء</button>`
@@ -1465,7 +1469,7 @@ async function viewProgramPay(el) {
         const s = r.staff.find((x) => x.id === Number(b.dataset.pay));
         openModal(
           `خلاص ${s.full_name} — ${monthLabel(month)}`,
-          `<div class="row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(s.monthly_salary ?? '')}" required></label>
+          `<div class="row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(s.expected || s.monthly_salary || '')}" required></label>
              <label>تاريخ الدفع<input type="date" name="date" value="${today()}"></label></div>`,
           async (data) => {
             await api('POST', `/api/program/staff/${s.id}/pay`, { ...data, month });
@@ -1495,7 +1499,7 @@ async function viewMyProgramPay(el) {
     <div class="page-head"><h2>💸 أجرتي</h2></div>
     ${
       me
-        ? `<div class="stats compact"><div class="stat"><b>${me.monthly_salary ? fmtMoney(me.monthly_salary) : '—'}</b><span>الأجرة الشهرية</span></div>
+        ? `<div class="stats compact"><div class="stat"><b>${me.expected ? fmtMoney(me.expected) : '—'}</b><span>أجرة ${esc(monthLabel(r.month))}${me.pay_per_child ? ` (${fmtMoney(me.pay_per_child)} × ${me.children_count} طفل)` : ''}</span></div>
             <div class="stat ${me.payment ? 'good' : 'warn'}"><b>${me.payment ? fmtMoney(me.payment.amount) : '—'}</b><span>${esc(monthLabel(r.month))}</span></div></div>
           <section class="card"><h3>ما قبضته</h3>${
             me.history.length

@@ -1533,7 +1533,7 @@ async function viewUsers(el, role, scope = null) {
                   <td dir="ltr">${esc(u.username)}</td>
                   <td><span class="phone-line"><span dir="ltr">${esc(u.phone || '—')}</span>${waButton(u.phone)}</span></td>${role === 'parent' ? `<td dir="ltr">${esc(u.cin || '—')}</td>` : ''}
                   ${role === 'teacher' && prog ? `<td>${u.program_classes ? `${u.program_classes} قسم` : '<span class="muted">—</span>'}</td>
-                    <td>${u.monthly_salary ? fmtMoney(u.monthly_salary) : '<span class="muted">—</span>'}</td>` : ''}
+                    <td>${u.monthly_salary ? fmtMoney(u.monthly_salary) : ''}${u.pay_per_child ? ` ${fmtMoney(u.pay_per_child)} / طفل` : ''}${!u.monthly_salary && !u.pay_per_child ? '<span class="muted">—</span>' : ''}</td>` : ''}
                   ${role === 'teacher' && !prog ? `<td>${u.subjects.map((s) => `<span class="pill">${esc(s.name)}</span>`).join(' ') || '—'}</td>
                     <td>${u.hourly_rate ? fmtMoney(u.hourly_rate) : '<span class="muted">—</span>'} <a class="small" href="#/payroll/${u.id}">الساعات ←</a></td>` : ''}
                   ${
@@ -1565,7 +1565,8 @@ async function viewUsers(el, role, scope = null) {
          <label>الهاتف<input name="phone" value="${esc(u.phone)}" dir="ltr"></label>
        </div>
        ${role === 'teacher' && !prog ? `<label>معلوم الساعة (د.ت)<input name="hourly_rate" inputmode="decimal" value="${esc(u.hourly_rate ?? '')}" placeholder="مثال: 20"></label>` : ''}
-       ${prog ? `<label>الأجرة الشهرية (د.ت)<input name="monthly_salary" inputmode="decimal" value="${esc(u.monthly_salary ?? '')}" placeholder="مثال: 600"></label>
+       ${prog ? `<div class="row"><label>الأجرة الشهرية الثابتة (د.ت)<input name="monthly_salary" inputmode="decimal" value="${esc(u.monthly_salary ?? '')}" placeholder="مثال: 500"></label>
+         <label>أو مبلغ عن كل طفل يدفع (د.ت)<input name="pay_per_child" inputmode="decimal" value="${esc(u.pay_per_child ?? '')}" placeholder="مثال: 40"></label></div>
          <p class="muted small">القسم الذي يرافقه يُحدَّد من «الأطفال والأقسام» (تعديل القسم ← المرافق).</p>` : ''}
        <div class="row">
          <label>رقم بطاقة التعريف<input name="cin" value="${esc(u.cin)}" dir="ltr" inputmode="numeric"></label>

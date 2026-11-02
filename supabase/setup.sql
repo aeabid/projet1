@@ -667,3 +667,7 @@ CREATE TABLE center_debt_payments (
 );
 ALTER TABLE center_debts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE center_debt_payments ENABLE ROW LEVEL SECURITY;
+
+-- 20261109090000_pay_per_child.sql
+-- أجرة المرافق حسب عدد الأطفال: مبلغ عن كل طفل يدفع في أقسامه (مثلًا أمال: 40 = نصف 80 في أثر)
+ALTER TABLE users ADD COLUMN pay_per_child NUMERIC(10, 3);

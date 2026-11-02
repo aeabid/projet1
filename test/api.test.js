@@ -932,3 +932,16 @@ test('center debts: payments reduce the remaining and are recorded as general ex
   assert.strictEqual(list.debts.find((x) => x.id === d.id).remaining, 3500);
   assert.strictEqual((await admin('GET', '/api/ledger?month=2026-10&activity=general')).body.entries.filter((e) => e.description?.includes('facebook')).length, 0);
 });
+
+test('facilitator paid per child: 40 for each paying child in her classes', async () => {
+  const admin = await login('admin', 'admin123');
+  const amel = (await admin('POST', '/api/users', { role: 'teacher', username: 'amel-pc', full_name: 'Amel PC', password: 'secret1', program_staff: true, pay_per_child: 40 })).body.user;
+  assert.strictEqual(amel.pay_per_child, 40);
+  const k = (await admin('POST', '/api/program/classes', { name: 'Athar PC', teacher_id: amel.id })).body.class;
+  await admin('POST', '/api/program/children', { full_name: 'PC1', class_id: k.id, monthly_fee: 80, start_date: '2026-09-01' });
+  await admin('POST', '/api/program/children', { full_name: 'PC2', class_id: k.id, monthly_fee: 120, start_date: '2026-09-01' });
+  await admin('POST', '/api/program/children', { full_name: 'PC free', class_id: k.id, free: true, start_date: '2026-09-01' });
+  const sp = (await admin('GET', '/api/program/staff-pay?month=2026-10')).body;
+  const me = sp.staff.find((s) => s.id === amel.id);
+  assert.deepStrictEqual([me.children_count, me.expected], [2, 80]);
+});
