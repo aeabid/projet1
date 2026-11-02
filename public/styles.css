@@ -669,10 +669,43 @@ table.overview td.na { color: var(--muted); }
 .vmenu a.top { font-weight: 700; }
 .nav-sub { font-weight: 700; color: var(--feed-purple); padding: .7rem .9rem .3rem; margin-top: .3rem; border-top: 1px solid var(--border); font-size: .95rem; }
 .vmenu details .nav-sub { padding-inline-start: .9rem; }
-.board .section-head input[type=month] { width: auto; }
-.ab-year summary { cursor: pointer; color: var(--feed-purple); font-weight: 600; margin-top: .6rem; }
 .cat-row { display: grid; grid-template-columns: 8.5rem 1fr auto; align-items: center; gap: .6rem; padding: .35rem 0; }
 .cat-bar { background: var(--soft); border-radius: 999px; height: .55rem; overflow: hidden; }
 .cat-bar i { display: block; height: 100%; background: var(--feed-purple); border-radius: 999px; }
 .adj-note { margin-top: .25rem; color: var(--feed-purple); }
 .adj-note s { margin-inline-start: .3rem; }
+
+/* لوحة مالية نشاط */
+.fin-board { display: block; }
+.fb-head { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.fb-head h3 { margin: 0; }
+.fb-head input[type=month] { width: auto; min-width: 11rem; }
+.fb-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; margin-bottom: 1rem; }
+.fb-kpi { border: 1px solid var(--border); border-radius: 14px; padding: .9rem 1rem; display: flex; flex-direction: column; gap: .15rem; background: var(--card); border-inline-start: 5px solid var(--border); }
+.fb-kpi span { color: var(--muted); font-size: .85rem; font-weight: 600; }
+.fb-kpi b { font-size: 1.55rem; font-weight: 800; white-space: nowrap; }
+.fb-kpi small { color: var(--muted); font-size: .78rem; }
+.fb-kpi.in { border-inline-start-color: #1f9d55; } .fb-kpi.in b { color: #1f9d55; }
+.fb-kpi.out { border-inline-start-color: #e11d74; } .fb-kpi.out b { color: #e11d74; }
+.fb-kpi.net { border-inline-start-color: var(--feed-purple); background: var(--soft); } .fb-kpi.net b { color: var(--feed-purple); }
+.fb-kpi.net.neg { border-inline-start-color: #dc2626; } .fb-kpi.net.neg b { color: #dc2626; }
+.fb-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
+.fb-panel { border: 1px solid var(--border); border-radius: 14px; padding: .9rem 1rem; }
+.fb-panel h4 { margin: 0 0 .6rem; font-size: .95rem; color: var(--feed-purple); }
+.fb-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .45rem 0; border-bottom: 1px dashed var(--border); font-size: .92rem; }
+.fb-row:last-child { border-bottom: 0; }
+.fb-row b { white-space: nowrap; font-weight: 700; }
+.fb-row.in b { color: #1f9d55; } .fb-row.out b { color: #e11d74; } .fb-row.muted { color: var(--muted); }
+.fb-row.total { border-top: 2px solid var(--border); border-bottom: 0; margin-top: .3rem; padding-top: .6rem; font-weight: 700; }
+.fb-progress { height: .45rem; background: var(--soft); border-radius: 999px; overflow: hidden; margin: .1rem 0 .2rem; }
+.fb-progress i { display: block; height: 100%; background: #1f9d55; border-radius: 999px; }
+.fb-year { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: .7rem; }
+.fb-year summary { cursor: pointer; color: var(--feed-purple); font-weight: 700; }
+@media (max-width: 700px) {
+  .fb-kpis { gap: .4rem; }
+  .fb-cols { grid-template-columns: 1fr; }
+  .fb-kpi { padding: .6rem .5rem; border-inline-start-width: 4px; text-align: center; align-items: center; }
+  .fb-kpi b { font-size: 1.05rem; }
+  .fb-kpi span { font-size: .78rem; }
+  .fb-kpi small { font-size: .68rem; }
+}

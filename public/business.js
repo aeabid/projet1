@@ -1133,48 +1133,51 @@ async function splitForm(onDone) {
 
 // ---------- لوحة نشاط واحد: مداخيله ومصاريفه فقط (الدعم / التربوي) ----------
 async function activityBoard(box, key) {
+  const who = key === 'support' ? 'المعلمين' : 'المنشطين';
   box.innerHTML = `
-    <section class="card board">
-      <div class="section-head"><h3>💰 مداخيل ومصاريف ${esc(key === 'support' ? 'دروس الدعم' : 'البرنامج التربوي')}</h3>${monthPicker(`ab-${key}`)}</div>
-      <div id="ab-${key}-body"><p class="muted">جاري التحميل…</p></div>
-      <details class="ab-year"><summary>📆 السنة الدراسية شهرًا بشهر</summary><div id="ab-${key}-year"></div></details>
+    <section class="card fin-board">
+      <header class="fb-head">
+        <h3>💰 ${key === 'support' ? 'مالية دروس الدعم' : 'مالية البرنامج التربوي'}</h3>
+        ${monthPicker(`ab-${key}`)}
+      </header>
+      <div id="ab-${key}-body" class="fb-body"><p class="muted">جاري التحميل…</p></div>
+      <details class="fb-year"><summary>📆 السنة الدراسية شهرًا بشهر</summary><div id="ab-${key}-year"></div></details>
     </section>`;
-  const lines = (arr) => arr.map((l) => `<div class="line"><span>${esc(l.label)}</span><b>${fmtMoney(l.amount)}</b></div>`).join('');
+  const row = (label, value, cls = '') => `<div class="fb-row ${cls}"><span>${label}</span><b>${value}</b></div>`;
   const load = async () => {
     const s = await api('GET', '/api/finance/summary?month=' + $(`#ab-${key}`).value);
     const x = s.activities.find((a) => a.key === key);
     const acc = s.accrual[key];
-    const accHtml =
-      key === 'support'
-        ? `<div class="line"><span>المستحق على التلاميذ هذا الشهر</span><b>${fmtMoney(acc.billed)}</b></div>
-           <div class="line"><span>منه مقبوض</span><span>${fmtMoney(acc.collected)}</span></div>
-           <div class="line"><span>باقي على الأولياء</span><b class="${acc.unpaid > 0 ? 'out' : ''}">${fmtMoney(acc.unpaid)}</b></div>
-           <div class="line"><span>رواتب المعلمين المستحقة (الساعات المنجزة)</span><b>${fmtMoney(acc.teachers_due)}</b></div>
-           <div class="line"><span>منها مدفوع</span><span>${fmtMoney(acc.teachers_paid)}</span></div>
-           <div class="line total"><span>هامش الربح</span>${netBadge(acc.margin)}</div>`
-        : `<div class="line"><span>المستحق على الأطفال هذا الشهر</span><b>${fmtMoney(acc.billed)}</b></div>
-           <div class="line"><span>منه مقبوض</span><span>${fmtMoney(acc.collected)}</span></div>
-           <div class="line"><span>باقي على الأولياء</span><b class="${acc.unpaid > 0 ? 'out' : ''}">${fmtMoney(acc.unpaid)}</b></div>
-           <div class="line"><span>رواتب المنشطين والمصاريف</span><b>${fmtMoney(acc.expenses)}</b></div>
-           <div class="line total"><span>هامش الربح</span>${netBadge(acc.margin)}</div>`;
+    const cost = key === 'support' ? acc.teachers_due : acc.expenses;
+    const pct = acc.billed ? Math.round((acc.collected / acc.billed) * 100) : null;
     $(`#ab-${key}-body`).innerHTML = `
-      <div class="stats compact">
-        <div class="stat good"><b>${fmtMoney(x.income)}</b><span>المداخيل (دفوعات الأولياء)</span></div>
-        <div class="stat warn"><b>${fmtMoney(x.expense)}</b><span>المصاريف (رواتب ${key === 'support' ? 'المعلمين' : 'المنشطين'})</span></div>
-        <div class="stat"><b>${netBadge(x.net)}</b><span>الصافي</span></div>
+      <div class="fb-kpis">
+        <div class="fb-kpi in"><span>المداخيل</span><b>${fmtMoney(x.income)}</b><small>دفوعات الأولياء</small></div>
+        <div class="fb-kpi out"><span>المصاريف</span><b>${fmtMoney(x.expense)}</b><small>رواتب ${who}</small></div>
+        <div class="fb-kpi net ${x.net < 0 ? 'neg' : ''}"><span>الصافي</span><b>${x.net < 0 ? '−' : ''}${fmtMoney(Math.abs(x.net))}</b><small>${x.net < 0 ? 'خسارة' : x.net > 0 ? 'ربح' : 'متوازن'}</small></div>
       </div>
-      <div class="grid2 even">
-        <div><h4>💵 ما دخل وما خرج فعليًا</h4>
-          ${lines(x.income_lines) || '<p class="muted small">لا مداخيل.</p>'}
-          ${x.expense_lines.length ? `<hr>${lines(x.expense_lines)}` : '<p class="muted small">لا مصاريف مدفوعة.</p>'}
-          ${x.shared ? `<div class="line muted"><span>نصيبه من المصاريف العامة (${x.shared_pct}%)</span><span>${fmtMoney(x.shared)}</span></div>
-            <div class="line total"><span>الصافي بعد التوزيع</span>${netBadge(x.net_after)}</div>` : ''}
+      <div class="fb-cols">
+        <div class="fb-panel">
+          <h4>💵 ما دخل وما خرج فعليًا</h4>
+          ${x.income_lines.map((l) => row(esc(l.label), fmtMoney(l.amount), 'in')).join('') || '<p class="muted small">لا مداخيل هذا الشهر.</p>'}
+          ${x.expense_lines.map((l) => row(esc(l.label), (l.amount ? '− ' : '') + fmtMoney(l.amount), 'out')).join('') || row(`رواتب ${who}`, '—', 'muted')}
+          ${x.shared ? row(`نصيبه من المصاريف العامة (${x.shared_pct}%)`, '− ' + fmtMoney(x.shared), 'out') + row('الصافي بعد التوزيع', netBadge(x.net_after), 'total') : ''}
         </div>
-        <div><h4>📋 حسب الاستحقاق</h4>${accHtml}</div>
+        <div class="fb-panel">
+          <h4>📋 ما يجب أن يدخل ويخرج عن الشهر</h4>
+          ${row(key === 'support' ? 'المستحق على التلاميذ' : 'المستحق على الأطفال', fmtMoney(acc.billed))}
+          <div class="fb-progress" title="نسبة الاستخلاص"><i style="width:${pct ?? 0}%"></i></div>
+          ${row(`مقبوض${pct !== null ? ` (${pct}%)` : ''}`, fmtMoney(acc.collected), 'in')}
+          ${row('باقي على الأولياء', fmtMoney(acc.unpaid), acc.unpaid > 0 ? 'out' : '')}
+          ${row(key === 'support' ? 'رواتب المعلمين المستحقة' : 'رواتب المنشطين والمصاريف', (cost ? '− ' : '') + fmtMoney(cost))}
+          ${key === 'support' ? row('منها مدفوع', fmtMoney(acc.teachers_paid), 'muted') : ''}
+          ${row('هامش الربح', netBadge(acc.margin), 'total')}
+        </div>
       </div>`;
   };
   const loadYear = async () => {
     const y = await api('GET', '/api/finance/year');
+    const tot = (k) => round2(y.months.reduce((t, m) => t + m.activities[key][k], 0));
     $(`#ab-${key}-year`).innerHTML = `<div class="table-wrap"><table class="fin">
       <thead><tr><th>الشهر</th><th>المداخيل</th><th>المصاريف</th><th>الصافي</th></tr></thead>
       <tbody>${[...y.months]
@@ -1184,15 +1187,10 @@ async function activityBoard(box, key) {
           return `<tr><td><b>${esc(monthLabel(m.month))}</b></td><td class="in">${fmtMoney(a.income)}</td><td class="out">${fmtMoney(a.expense)}</td><td>${netBadge(a.net)}</td></tr>`;
         })
         .join('')}</tbody>
-      <tfoot><tr><th>المجموع</th>${['income', 'expense', 'net']
-        .map((k) => {
-          const v = round2(y.months.reduce((t, m) => t + m.activities[key][k], 0));
-          return `<th>${k === 'net' ? netBadge(v) : fmtMoney(v)}</th>`;
-        })
-        .join('')}</tr></tfoot></table></div>`;
+      <tfoot><tr><th>المجموع</th><th>${fmtMoney(tot('income'))}</th><th>${fmtMoney(tot('expense'))}</th><th>${netBadge(tot('net'))}</th></tr></tfoot></table></div>`;
   };
   bindMonth(`ab-${key}`, load);
-  box.querySelector('.ab-year').addEventListener('toggle', (e) => e.target.open && !e.target.dataset.loaded && ((e.target.dataset.loaded = 1), loadYear()));
+  box.querySelector('.fb-year').addEventListener('toggle', (e) => e.target.open && !e.target.dataset.loaded && ((e.target.dataset.loaded = 1), loadYear()));
   await load();
 }
 const round2 = (n) => Math.round(n * 1000) / 1000;
