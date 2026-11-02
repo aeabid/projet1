@@ -61,6 +61,7 @@
 - الجداول: `netlify/database/migrations/`. Netlify يطبّقها وحده على قاعدته؛ على Supabase تُطبَّق يدويًا بدور `feed_app` (وتُضاف إلى `supabase/setup.sql`). كل الجداول مغلقة بـ RLS.
 - عند أول تشغيل على Supabase فارغة، تُنقل كل المعطيات تلقائيًا من قاعدة Netlify القديمة (`lib/db.js`).
 - حساب الإدارة `admin` يُنشأ أول مرة بكلمة السر الموجودة في المتغير `ADMIN_PASSWORD` (في إعدادات المشروع على Netlify).
+- الدخول بـ Google للأولياء: المتغير `GOOGLE_CLIENT_ID` (OAuth client من Google Cloud، المصدر المسموح: `https://taupe-gumption-4c4e97.netlify.app`). بدونه لا يظهر زر Google. الأولياء الجدد يرسلون طلب ربط أبنائهم، والإدارة توافق من «الحسابات ← طلبات أولياء Google».
 - بيانات تجريبية (اختياري): `node scripts/seed-demo.js https://<الموقع> <كلمة سر الإدارة>`
 
 ## التشغيل محليًا
