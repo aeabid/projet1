@@ -666,3 +666,4 @@ table.overview td.na { color: var(--muted); }
 .gl-result { text-align: start; background: var(--card, #fff); border: 1px solid var(--border); border-radius: 10px; padding: .5rem .7rem; cursor: pointer; font: inherit; color: inherit; }
 .gl-result .add { float: left; color: var(--primary, #4C2786); font-weight: 600; }
 .gl-new summary { cursor: pointer; color: var(--primary, #4C2786); margin: .4rem 0; }
+.vmenu a.top { font-weight: 700; }

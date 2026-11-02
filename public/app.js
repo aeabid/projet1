@@ -386,6 +386,8 @@ const NAV = {
         ['#/overview', 'نظرة حسب القسم'],
       ],
     },
+    ['#/program', 'البرنامج التربوي'],
+    ['#/courses', 'الدورات والأنشطة'],
     {
       label: 'إدارة المركز',
       items: [
@@ -395,8 +397,6 @@ const NAV = {
         ['#/people', 'كل تلاميذ المركز'],
       ],
     },
-    ['#/program', 'البرنامج التربوي'],
-    ['#/courses', 'الدورات والأنشطة'],
     {
       label: 'المالية',
       items: [
@@ -485,7 +485,7 @@ function renderTopbar() {
     nav
       .map((entry) =>
         Array.isArray(entry)
-          ? `<a href="${entry[0]}" class="${isActive(entry[0]) ? 'active' : ''}">${entry[1]}</a>`
+          ? `<a href="${entry[0]}" class="top ${isActive(entry[0]) ? 'active' : ''}">${entry[1]}</a>`
           : `<details ${entry.items.some(([h]) => isActive(h)) ? 'open' : ''}><summary>${entry.label}</summary>${entry.items
               .map(([h, l]) => `<a href="${h}" class="${isActive(h) ? 'active' : ''}">${l}</a>`)
               .join('')}</details>`
