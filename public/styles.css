@@ -669,3 +669,8 @@ table.overview td.na { color: var(--muted); }
 .vmenu a.top { font-weight: 700; }
 .nav-sub { font-weight: 700; color: var(--feed-purple); padding: .7rem .9rem .3rem; margin-top: .3rem; border-top: 1px solid var(--border); font-size: .95rem; }
 .vmenu details .nav-sub { padding-inline-start: .9rem; }
+.board .section-head input[type=month] { width: auto; }
+.ab-year summary { cursor: pointer; color: var(--feed-purple); font-weight: 600; margin-top: .6rem; }
+.cat-row { display: grid; grid-template-columns: 8.5rem 1fr auto; align-items: center; gap: .6rem; padding: .35rem 0; }
+.cat-bar { background: var(--soft); border-radius: 999px; height: .55rem; overflow: hidden; }
+.cat-bar i { display: block; height: 100%; background: var(--feed-purple); border-radius: 999px; }

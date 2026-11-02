@@ -578,7 +578,11 @@ test('program parents, one child in both programs, sibling discounts, yearly reg
   const sum = (await admin('GET', `/api/finance/summary?month=${month}`)).body;
   const support = sum.activities.find((x) => x.key === 'support');
   const general = sum.activities.find((x) => x.key === 'general');
-  assert.strictEqual(general.label, 'مصاريف مشتركة');
+  assert.strictEqual(general.label, 'المصاريف العامة للمركز');
+  await admin('POST', '/api/ledger', { direction: 'expense', activity: 'general', category: 'cleaning', amount: 50, date: `${month}-03` });
+  const gen = (await admin('GET', `/api/finance/general?month=${month}`)).body;
+  assert.ok(gen.categories.some((c) => c.label === 'نظافة' && c.total === 50));
+  assert.ok(gen.expense >= 1050);
   assert.ok(sum.shared.cost >= 1000);
   assert.strictEqual(support.shared, Math.round(sum.shared.cost * 0.6 * 1000) / 1000);
   assert.strictEqual(support.net_after, Math.round((support.net - support.shared) * 1000) / 1000);

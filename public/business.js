@@ -385,6 +385,7 @@ async function viewProgram(el) {
       <div class="stat good"><b>${fmtMoney(monthlyExpected)}</b><span>المنتظر شهريًا</span></div>
       <div class="stat warn"><b>${fmtMoney(owed)}</b><span>مبالغ غير مدفوعة</span></div>
     </div>
+    <div id="program-board"></div>
     <div class="class-chips">
       <button class="chip ${filter ? '' : 'on'}" data-class="">كل الأقسام</button>
       ${classes
@@ -399,6 +400,7 @@ async function viewProgram(el) {
     <section class="card"><h3>المصاريف والأجور</h3>
       <p class="muted">أجور المربّين تُسجَّل من <a href="#/staff">الإطار والأجور</a>، والمصاريف الأخرى من <a href="#/ledger">المداخيل والمصاريف</a> (النشاط: البرنامج التربوي).</p>
     </section>`;
+  activityBoard($('#program-board'), 'program').catch((err) => toast(err.message, true));
 
   const render = () => {
     const f = sessionStorage.getItem('progClass') || '';
@@ -1129,4 +1131,139 @@ async function splitForm(onDone) {
       onDone();
     }
   );
+}
+
+// ---------- لوحة نشاط واحد: مداخيله ومصاريفه فقط (الدعم / التربوي) ----------
+async function activityBoard(box, key) {
+  box.innerHTML = `
+    <section class="card board">
+      <div class="section-head"><h3>💰 مداخيل ومصاريف ${esc(key === 'support' ? 'دروس الدعم' : 'البرنامج التربوي')}</h3>${monthPicker(`ab-${key}`)}</div>
+      <div id="ab-${key}-body"><p class="muted">جاري التحميل…</p></div>
+      <details class="ab-year"><summary>📆 السنة الدراسية شهرًا بشهر</summary><div id="ab-${key}-year"></div></details>
+    </section>`;
+  const lines = (arr) => arr.map((l) => `<div class="line"><span>${esc(l.label)}</span><b>${fmtMoney(l.amount)}</b></div>`).join('');
+  const load = async () => {
+    const s = await api('GET', '/api/finance/summary?month=' + $(`#ab-${key}`).value);
+    const x = s.activities.find((a) => a.key === key);
+    const acc = s.accrual[key];
+    const accHtml =
+      key === 'support'
+        ? `<div class="line"><span>المستحق على التلاميذ هذا الشهر</span><b>${fmtMoney(acc.billed)}</b></div>
+           <div class="line"><span>منه مقبوض</span><span>${fmtMoney(acc.collected)}</span></div>
+           <div class="line"><span>باقي على الأولياء</span><b class="${acc.unpaid > 0 ? 'out' : ''}">${fmtMoney(acc.unpaid)}</b></div>
+           <div class="line"><span>رواتب المعلمين المستحقة (الساعات المنجزة)</span><b>${fmtMoney(acc.teachers_due)}</b></div>
+           <div class="line"><span>منها مدفوع</span><span>${fmtMoney(acc.teachers_paid)}</span></div>
+           <div class="line total"><span>هامش الربح</span>${netBadge(acc.margin)}</div>`
+        : `<div class="line"><span>المستحق على الأطفال هذا الشهر</span><b>${fmtMoney(acc.billed)}</b></div>
+           <div class="line"><span>منه مقبوض</span><span>${fmtMoney(acc.collected)}</span></div>
+           <div class="line"><span>باقي على الأولياء</span><b class="${acc.unpaid > 0 ? 'out' : ''}">${fmtMoney(acc.unpaid)}</b></div>
+           <div class="line"><span>رواتب المنشطين والمصاريف</span><b>${fmtMoney(acc.expenses)}</b></div>
+           <div class="line total"><span>هامش الربح</span>${netBadge(acc.margin)}</div>`;
+    $(`#ab-${key}-body`).innerHTML = `
+      <div class="stats compact">
+        <div class="stat good"><b>${fmtMoney(x.income)}</b><span>المداخيل (دفوعات الأولياء)</span></div>
+        <div class="stat warn"><b>${fmtMoney(x.expense)}</b><span>المصاريف (رواتب ${key === 'support' ? 'المعلمين' : 'المنشطين'})</span></div>
+        <div class="stat"><b>${netBadge(x.net)}</b><span>الصافي</span></div>
+      </div>
+      <div class="grid2 even">
+        <div><h4>💵 ما دخل وما خرج فعليًا</h4>
+          ${lines(x.income_lines) || '<p class="muted small">لا مداخيل.</p>'}
+          ${x.expense_lines.length ? `<hr>${lines(x.expense_lines)}` : '<p class="muted small">لا مصاريف مدفوعة.</p>'}
+          ${x.shared ? `<div class="line muted"><span>نصيبه من المصاريف العامة (${x.shared_pct}%)</span><span>${fmtMoney(x.shared)}</span></div>
+            <div class="line total"><span>الصافي بعد التوزيع</span>${netBadge(x.net_after)}</div>` : ''}
+        </div>
+        <div><h4>📋 حسب الاستحقاق</h4>${accHtml}</div>
+      </div>`;
+  };
+  const loadYear = async () => {
+    const y = await api('GET', '/api/finance/year');
+    $(`#ab-${key}-year`).innerHTML = `<div class="table-wrap"><table class="fin">
+      <thead><tr><th>الشهر</th><th>المداخيل</th><th>المصاريف</th><th>الصافي</th></tr></thead>
+      <tbody>${[...y.months]
+        .reverse()
+        .map((m) => {
+          const a = m.activities[key];
+          return `<tr><td><b>${esc(monthLabel(m.month))}</b></td><td class="in">${fmtMoney(a.income)}</td><td class="out">${fmtMoney(a.expense)}</td><td>${netBadge(a.net)}</td></tr>`;
+        })
+        .join('')}</tbody>
+      <tfoot><tr><th>المجموع</th>${['income', 'expense', 'net']
+        .map((k) => {
+          const v = round2(y.months.reduce((t, m) => t + m.activities[key][k], 0));
+          return `<th>${k === 'net' ? netBadge(v) : fmtMoney(v)}</th>`;
+        })
+        .join('')}</tr></tfoot></table></div>`;
+  };
+  bindMonth(`ab-${key}`, load);
+  box.querySelector('.ab-year').addEventListener('toggle', (e) => e.target.open && !e.target.dataset.loaded && ((e.target.dataset.loaded = 1), loadYear()));
+  await load();
+}
+const round2 = (n) => Math.round(n * 1000) / 1000;
+
+// ---------- المصاريف العامة للمركز ----------
+async function viewGeneralExpenses(el) {
+  el.innerHTML = `
+    <div class="page-head">
+      <div><a href="#/home" class="muted small">→ الرئيسية</a><h2>🏢 المصاريف العامة للمركز</h2>
+        <p class="muted">كراء، نظافة، معدات، صيانة، طباعة، ماء وكهرباء… المصاريف التي تخصّ المركز كاملًا.</p></div>
+      <div class="actions"><button class="btn warn" id="ge-add">+ مصروف</button></div>
+    </div>
+    <div class="filters">${monthPicker('ge-month')}</div>
+    <div id="ge-body"></div>
+    <section class="card"><h3>📆 السنة الدراسية</h3><div id="ge-year"></div></section>`;
+  const meta = await financeMeta();
+  const load = async () => {
+    const month = $('#ge-month').value;
+    const [g, { entries }] = await Promise.all([
+      api('GET', '/api/finance/general?month=' + month),
+      api('GET', `/api/ledger?month=${month}&activity=general`),
+    ]);
+    const exp = g.categories.filter((c) => c.direction === 'expense');
+    const max = Math.max(1, ...exp.map((c) => c.total));
+    $('#ge-body').innerHTML = `
+      <div class="stats compact"><div class="stat warn"><b>${fmtMoney(g.expense)}</b><span>مصاريف ${esc(monthLabel(month))}</span></div>
+        <div class="stat"><b>${fmtMoney(g.year.expense)}</b><span>منذ بداية السنة الدراسية</span></div></div>
+      <section class="card"><h3>حسب الصنف</h3>
+        ${
+          exp.length
+            ? exp.map((c) => `<div class="cat-row"><span>${esc(c.label)}</span><div class="cat-bar"><i style="width:${(c.total / max) * 100}%"></i></div><b>${fmtMoney(c.total)}</b></div>`).join('')
+            : '<p class="muted">لا مصاريف عامة في هذا الشهر.</p>'
+        }
+      </section>
+      <section class="card"><h3>العمليات</h3>
+        ${
+          entries.length
+            ? `<ul class="levels">${entries
+                .map(
+                  (e) => `<li><span>${fmtDate(e.date)} — <b>${esc(meta.categories[e.direction][e.category] || e.category)}</b>
+                    ${e.description ? `<span class="muted small">${esc(e.description)}</span>` : ''}</span>
+                    <span><b class="${e.direction === 'income' ? 'in' : 'out'}">${fmtMoney(e.amount)}</b>
+                    <button class="link" data-edit="${e.id}">تعديل</button> <button class="link danger" data-del="${e.id}">حذف</button></span></li>`
+                )
+                .join('')}</ul>`
+            : '<p class="muted">لا عمليات.</p>'
+        }
+      </section>`;
+    $('#ge-body').querySelectorAll('[data-edit]').forEach((b) =>
+      b.addEventListener('click', () => ledgerForm(entries.find((e) => e.id === Number(b.dataset.edit)), null, load))
+    );
+    $('#ge-body').querySelectorAll('[data-del]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirmAction('حذف هذه العملية؟')) return;
+        await api('DELETE', `/api/ledger/${b.dataset.del}`).catch((err) => toast(err.message, true));
+        load();
+      })
+    );
+    const yExp = g.year.categories.filter((c) => c.direction === 'expense');
+    $('#ge-year').innerHTML = `<div class="grid2 even"><div><h4>حسب الصنف</h4>${
+      yExp.map((c) => `<div class="line"><span>${esc(c.label)}</span><b>${fmtMoney(c.total)}</b></div>`).join('') || '<p class="muted small">—</p>'
+    }<div class="line total"><span>المجموع</span><b>${fmtMoney(g.year.expense)}</b></div></div>
+      <div><h4>حسب الشهر</h4>${g.year.months
+        .filter((m) => m.month <= today().slice(0, 7))
+        .reverse()
+        .map((m) => `<div class="line"><span>${esc(monthLabel(m.month))}</span><b>${fmtMoney(m.expense)}</b></div>`)
+        .join('')}</div></div>`;
+  };
+  bindMonth('ge-month', load);
+  $('#ge-add').addEventListener('click', () => ledgerForm(null, 'expense', load, { activity: 'general' }));
+  await load();
 }

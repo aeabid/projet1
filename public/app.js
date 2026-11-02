@@ -278,6 +278,7 @@ const routes = [
   [/^#\/subjects$/, viewSubjects],
   [/^#\/import$/, viewImport],
   [/^#\/photos$/, (el) => viewBulkPhotos(el)],
+  [/^#\/general$/, (el) => viewGeneralExpenses(el)],
   [/^#\/google-link$/, (el) => viewGoogleLink(el)],
   [/^#\/parent-requests$/, (el) => viewParentRequests(el)],
   [/^#\/register$/, viewRegister],
@@ -396,6 +397,7 @@ const NAV = {
         ['#/meetings', 'الاجتماعات والقرارات'],
         ['#/people', 'كل تلاميذ المركز'],
         ['', 'المالية'],
+        ['#/general', 'المصاريف العامة للمركز'],
         ['#/finance', 'المردودية المالية'],
         ['#/debts', 'المتخلّد بذمتهم'],
         ['#/receipts', 'الوصولات'],
@@ -638,9 +640,9 @@ async function viewDashboard(el) {
     <a href="#/home" class="muted small">→ الرئيسية</a>
     <h2>لوحة دروس الدعم</h2>
     <div class="stats">
-      <div class="stat"><b>${s.students}</b><span>تلميذ</span></div>
+      <div class="stat"><b>${s.students}</b><span>تلميذ يدرس</span></div>
       <div class="stat"><b>${s.teachers}</b><span>معلم</span></div>
-      <div class="stat"><b>${s.parents}</b><span>ولي</span></div>
+      <div class="stat"><b>${s.parents}</b><span>ولي (دروس الدعم)</span></div>
       <div class="stat warn"><b>${s.absences_month}</b><span>غياب (30 يومًا)</span></div>
     </div>
     ${
@@ -653,12 +655,7 @@ async function viewDashboard(el) {
       <code dir="ltr" id="reg-link">${esc(location.origin)}/#/register</code>
       <button class="btn small ghost" id="copy-reg">نسخ</button>
     </div>
-    <h3>💰 الخلاص — ${esc(monthLabel(s.finance.month))}</h3>
-    <div class="stats">
-      <div class="stat"><b>${fmtMoney(s.finance.expected)}</b><span>المنتظر هذا الشهر</span></div>
-      <div class="stat good"><b>${fmtMoney(s.finance.collected)}</b><span>المقبوض هذا الشهر</span></div>
-      <div class="stat warn"><b>${fmtMoney(s.finance.outstanding)}</b><span>مجموع غير المدفوع (${s.finance.unpaid_count} تلميذ)</span></div>
-    </div>
+    <div id="support-board"></div>
     ${
       s.finance.unpaid.length
         ? `<section class="card"><h3>تلاميذ عليهم مبالغ</h3><ul class="levels">${s.finance.unpaid
@@ -708,6 +705,7 @@ async function viewDashboard(el) {
     sessionStorage.setItem('statusFilter', 'waiting');
     sessionStorage.setItem('levelFilter', '');
   });
+  activityBoard($('#support-board'), 'support').catch((err) => toast(err.message, true));
   $('#copy-reg').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText($('#reg-link').textContent);
