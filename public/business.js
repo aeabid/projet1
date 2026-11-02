@@ -443,7 +443,7 @@ async function viewProgram(el) {
          <label>المعلوم الشهري (د.ت)<input name="default_fee" inputmode="decimal" value="${esc(k?.default_fee ?? '')}"></label>
        </div>
        <label>المرافق (يسجّل الحضور والملاحظات والأنشطة)<select name="teacher_id"><option value="">—</option>${teachers
-         .filter((t) => t.program_staff || t.program_classes || !t.subjects?.length || t.id === k?.teacher_id)
+         .filter((t) => t.program_staff || t.id === k?.teacher_id)
          .map((t) => `<option value="${t.id}" ${k?.teacher_id === t.id ? 'selected' : ''}>${esc(t.full_name)}</option>`)
          .join('')}</select></label>
        <label>الصيغ والمعاليم (اختياري، صيغة في كل سطر: الاسم = المبلغ)
@@ -1376,7 +1376,7 @@ async function viewProgramTimetable(el) {
        <div class="row"><label>من<input type="time" name="start_time" value="${esc(s?.start_time || '')}" required></label>
          <label>إلى<input type="time" name="end_time" value="${esc(s?.end_time || '')}" required></label></div>
        <label>النشاط / المحتوى<input name="title" value="${esc(s?.title || '')}" placeholder="مثال: أفلا ينظرون"></label>
-       <label>المنشط<select name="teacher_id"><option value="">—</option>${teachers.map((t) => `<option value="${t.id}" ${s?.teacher_id === t.id ? 'selected' : ''}>${esc(t.full_name)}</option>`).join('')}</select></label>
+       <label>المرافق<select name="teacher_id"><option value="">—</option>${teachers.filter((t) => t.program_staff || t.program_classes).map((t) => `<option value="${t.id}" ${s?.teacher_id === t.id ? 'selected' : ''}>${esc(t.full_name)}</option>`).join('')}</select></label>
        <label>القاعة<input name="room" value="${esc(s?.room || '')}"></label>`,
       async (data) => {
         if (s) await api('PUT', `/api/program/slots/${s.id}`, data);

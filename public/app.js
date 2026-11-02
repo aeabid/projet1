@@ -274,7 +274,7 @@ const routes = [
   [/^#\/login$/, viewLogin],
   [/^#\/students$/, viewStudents],
   [/^#\/students\/(\d+)$/, viewStudent],
-  [/^#\/teachers$/, (el) => viewUsers(el, 'teacher')],
+  [/^#\/teachers$/, (el) => viewUsers(el, 'teacher', 'support')],
   [/^#\/parents$/, (el) => viewUsers(el, 'parent')],
   [/^#\/admins$/, (el) => viewUsers(el, 'admin')],
   [/^#\/subjects$/, viewSubjects],
@@ -449,7 +449,8 @@ const NAV = {
     {
       label: 'الحسابات',
       items: [
-        ['#/teachers', 'المعلمون'],
+        ['#/support/teachers', 'مدرّسو دروس الدعم'],
+        ['#/program/staff', 'مرافقو البرنامج التربوي'],
         ['#/parents', 'الأولياء'],
         ['#/parent-requests', 'طلبات أولياء Google'],
         ['#/admins', 'الإدارة'],
@@ -1512,7 +1513,7 @@ async function viewUsers(el, role, scope = null) {
   const addLabels = { teacher: scope === 'program' ? '+ مرافق جديد' : '+ مدرّس جديد', parent: '+ ولي جديد', admin: '+ حساب إدارة' };
   let { users } = await api('GET', `/api/users?role=${role}`);
   // المدرّسون: من عنده مواد (دروس الدعم) / المرافقون: من عنده قسم في التربوي. الحساب الجديد بلا شيء يظهر في الاثنين
-  const isProgram = (u) => u.program_staff || u.program_classes > 0;
+  const isProgram = (u) => !!u.program_staff;
   if (scope === 'support') users = users.filter((u) => !isProgram(u));
   if (scope === 'program') users = users.filter(isProgram);
   const prog = scope === 'program';
@@ -2041,7 +2042,7 @@ async function viewTimetable(el) {
 
   // الإدارة: جدول كل مستوى
   const level = sessionStorage.getItem('ttLevel') || state.meta.levels[0].code;
-  const { users: teachers } = await api('GET', '/api/users?role=teacher');
+  const teachers = (await api('GET', '/api/users?role=teacher')).users.filter((u) => !u.program_staff);
   el.innerHTML = `
     <div class="page-head">
       <h2>جداول الأوقات</h2>
