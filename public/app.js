@@ -492,14 +492,68 @@ const NAV = {
   ],
 };
 
+// لافتة الترحيب في الصفحات الرئيسية
+function heroBanner({ sub = '', art = '🎓', actions = '' } = {}) {
+  const h = new Date().getHours();
+  const hello = h < 12 ? 'صباح الخير' : 'مساء الخير';
+  const first = esc(String(state.user?.full_name || '').split(' ')[0]);
+  const day = new Date().toLocaleDateString('ar-TN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return `<section class="hero"><div>
+      <small>${esc(day)}</small>
+      <h2>${hello}${first ? `، ${first}` : ''} 👋</h2>
+      ${sub ? `<p>${sub}</p>` : ''}
+      ${actions ? `<div class="hero-actions">${actions}</div>` : ''}
+    </div><div class="hero-art" aria-hidden="true">${art}</div></section>`;
+}
+
+// ---------- أيقونات القائمة (خطوط بسيطة) ----------
+const ICON_PATHS = {
+  home: '<path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/>',
+  book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
+  spark: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/>',
+  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
+  building: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/>',
+  chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  check: '<path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  wallet: '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>',
+  chart: '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+  clipboard: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M9 12h6M9 16h4"/>',
+  star: '<path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/>',
+  grid: '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>',
+  smile: '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>',
+};
+const icon = (name) =>
+  `<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name] || ICON_PATHS.grid}</svg>`;
+const GROUP_ICONS = { 'دروس الدعم': 'book', 'البرنامج التربوي': 'spark', 'إدارة المركز': 'building', 'التواصل': 'chat', 'الحسابات': 'users' };
+const LINK_ICONS = {
+  '#/home': 'home', '#/courses': 'flag', '#/students': 'users', '#/timetable': 'calendar', '#/program/timetable': 'calendar',
+  '#/attendance': 'check', '#/program/attendance': 'check', '#/messages': 'chat', '#/my-pay': 'wallet', '#/program/pay': 'wallet',
+  '#/account': 'user', '#/tasks': 'clipboard', '#/evaluations': 'clipboard', '#/overview': 'chart', '#/program/posts': 'star',
+  '#/todo': 'clipboard', '#/program': 'spark', '#/group-message': 'chat',
+};
+// شريط التنقل السفلي في الهاتف: 4 وجهات حسب الدور + «المزيد»
+const TABS = {
+  admin: [['#/home', 'الرئيسية', 'home'], ['#/students', 'التلاميذ', 'users'], ['#/program', 'التربوي', 'spark'], ['#/messages', 'الرسائل', 'chat']],
+  teacher: [['#/home', 'الرئيسية', 'home'], ['#/students', 'تلاميذي', 'users'], ['#/attendance', 'الحضور', 'check'], ['#/messages', 'الرسائل', 'chat']],
+  program_staff: [['#/home', 'الرئيسية', 'home'], ['#/program/posts', 'الأنشطة', 'star'], ['#/program/attendance', 'الحضور', 'check'], ['#/program/pay', 'أجرتي', 'wallet']],
+  parent: [['#/home', 'الرئيسية', 'home'], ['#/students', 'أبنائي', 'smile'], ['#/timetable', 'الجدول', 'calendar'], ['#/messages', 'الرسائل', 'chat']],
+};
+
 function renderTopbar() {
   const bar = $('#topbar');
   closeSubnav();
   if (!state.user) {
     bar.hidden = true;
+    $('#tabbar').hidden = true;
+    document.body.classList.remove('shell');
     return;
   }
   bar.hidden = false;
+  document.body.classList.add('shell');
   const current = location.hash.split('?')[0];
   const navKey = state.user.role === 'teacher' && state.user.program_staff ? 'program_staff' : state.user.role;
   const exact = JSON.stringify(NAV[navKey]).includes(`"${current}"`);
@@ -527,16 +581,35 @@ function renderTopbar() {
   $('#who-name').textContent = `${state.user.full_name} · ${ROLE_LABELS[state.user.role]}`;
 
   // نسخة عمودية من نفس القائمة: المجموعة التي فيها الصفحة الحالية مفتوحة
+  const initial = esc((state.user.full_name || '?').trim().charAt(0).toUpperCase());
   $('#vmenu').innerHTML =
+    `<a class="side-brand" href="#/home"><img src="feed-logo.png" alt="فيد"></a>
+     <div class="side-links">` +
     nav
       .map((entry) =>
         Array.isArray(entry)
-          ? `<a href="${entry[0]}" class="top ${isActive(entry[0]) ? 'active' : ''}">${entry[1]}</a>`
-          : `<details ${entry.items.some(([h]) => isActive(h)) ? 'open' : ''}><summary>${entry.label}</summary>${entry.items
+          ? `<a href="${entry[0]}" class="top ${isActive(entry[0]) ? 'active' : ''}">${icon(LINK_ICONS[entry[0]])}<span>${entry[1]}</span></a>`
+          : `<details ${entry.items.some(([h]) => isActive(h)) ? 'open' : ''}><summary>${icon(GROUP_ICONS[entry.label])}<span>${entry.label}</span></summary>${entry.items
               .map(([h, l]) => navItem(h, l, isActive))
               .join('')}</details>`
       )
-      .join('') + `<div class="vmenu-user">${esc(state.user.full_name)} · ${ROLE_LABELS[state.user.role]}</div>`;
+      .join('') +
+    `</div>
+     <div class="vmenu-user"><span class="avatar sm">${initial}</span><div><b>${esc(state.user.full_name)}</b><small>${ROLE_LABELS[state.user.role]}</small></div>
+       <button class="side-out" id="side-logout" title="خروج">${icon('logout')}</button></div>`;
+  $('#side-logout').addEventListener('click', () => $('#logout').click());
+  // شريط التنقل السفلي (الهاتف)
+  const tabs = TABS[navKey] || TABS.parent;
+  $('#tabbar').hidden = false;
+  $('#tabbar').innerHTML =
+    tabs.map(([h, l, ic]) => `<a href="${h}" class="${isActive(h) ? 'on' : ''}">${icon(ic)}<span>${l}</span></a>`).join('') +
+    `<button type="button" id="tab-more" class="${tabs.some(([h]) => isActive(h)) ? '' : 'on'}">${icon('grid')}<span>المزيد</span></button>`;
+  $('#tab-more').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = $('#vmenu').hidden;
+    $('#vmenu').hidden = !open;
+    document.body.classList.toggle('sheet-open', open);
+  });
   $('#vmenu').querySelectorAll('a').forEach((a) => a.addEventListener('click', closeVmenu));
   $('#bell').hidden = state.user.role !== 'admin';
   if (state.user.role === 'admin') refreshBell();
@@ -575,6 +648,7 @@ function fitNav() {
 
 function closeVmenu() {
   $('#vmenu').hidden = true;
+  document.body.classList.remove('sheet-open');
   $('#menu-toggle').setAttribute('aria-expanded', 'false');
 }
 

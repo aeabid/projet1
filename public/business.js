@@ -42,10 +42,7 @@ function bindMonth(id, load) {
 // ---------- الرئيسية: حوصلة الشهر ثم أيقونات الدخول ----------
 async function viewHome(el) {
   el.innerHTML = `
-    <div class="page-head">
-      <h2>حوصلة الشهر</h2>
-      ${monthPicker('home-month')}
-    </div>
+    ${heroBanner({ sub: 'حوصلة مالية وإدارية لمركز فيد: دروس الدعم، البرنامج التربوي، الدورات والمصاريف.', art: '📊', actions: monthPicker('home-month') })}
     <div id="home-db"></div>
     <div id="home-kpis"></div>
     <div id="home-alerts"></div>

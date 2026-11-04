@@ -7,20 +7,19 @@
   <meta name="theme-color" content="#61038d">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Tajawal:wght@500;700;800&display=swap" rel="stylesheet">
   <link rel="icon" href="feed-icon.png">
   <link rel="apple-touch-icon" href="feed-icon.png">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="topbar" id="topbar" hidden>
-    <a class="brand" href="#/"><img src="feed-logo-white.png" alt="فيد"><span>متابعة التلاميذ</span></a>
+    <a class="brand" href="#/"><img class="logo-light" src="feed-logo-white.png" alt="فيد"><img class="logo-dark" src="feed-logo.png" alt="فيد"><span>متابعة التلاميذ</span></a>
     <nav id="nav"></nav>
     <div id="subnav" class="subnav" hidden></div>
     <button type="button" class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="vmenu" hidden>
       <span class="burger" aria-hidden="true"></span><span>القائمة</span>
     </button>
-    <div id="vmenu" class="vmenu" hidden></div>
     <div class="who">
       <a href="#/messages" class="bell" id="mail" title="الرسائل">✉️<span id="mail-count" hidden></span></a>
       <a href="#/alerts" class="bell" id="bell" title="التنبيهات" hidden>🔔<span id="bell-count" hidden></span></a>
@@ -28,8 +27,10 @@
       <button class="btn ghost small" id="logout">خروج</button>
     </div>
   </header>
+  <aside id="vmenu" class="vmenu" hidden></aside>
 
   <main id="view" class="container"></main>
+  <nav id="tabbar" class="tabbar" hidden></nav>
 
   <dialog id="modal">
     <form method="dialog" id="modal-form" novalidate>

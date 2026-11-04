@@ -14,7 +14,8 @@ async function viewTeacherHome(el) {
   const h = await api('GET', '/api/home/teacher');
   const p = h.pay;
   el.innerHTML = `
-    <div class="page-head"><div><h2>مرحبًا ${esc(state.user.full_name)} 👋</h2><p class="muted">${esc(monthLabel(h.month))}</p></div></div>
+    ${heroBanner({ sub: `لوحة متابعة تلاميذك لشهر ${esc(monthLabel(h.month))}: الحصص، الملاحظات، الغيابات وأجرتك.`, art: '👩‍🏫',
+      actions: '<a class="btn" href="#/attendance">تسجيل الحضور</a><a class="btn ghost" href="#/evaluations">بطاقات التقييم</a>' })}
     <div class="kpis">
       <a class="kpi" href="#/students"><b>${h.students}</b><span>تلميذ أدرّسه</span></a>
       <a class="kpi" href="#/my-pay"><b>${fmtHours(p.hours_done)}</b><span>ساعات منجزة${p.hours_planned ? `<small>+ ${fmtHours(p.hours_planned)} مبرمجة</small>` : ''}</span></a>
@@ -89,8 +90,11 @@ async function viewParentHome(el) {
       </div>
     </a>`;
   el.innerHTML = `
-    <div class="page-head"><div><h2>مرحبًا ${esc(state.user.full_name)} 👋</h2></div>
-      ${h.balance > 0 ? `<div class="stat warn"><b>${fmtMoney(h.balance)}</b><span>الباقي للخلاص</span></div>` : ''}</div>
+    ${heroBanner({
+      sub: h.balance > 0 ? `الباقي للخلاص: <b>${fmtMoney(h.balance)}</b>. تابع ملاحظات المعلمين وغيابات أبنائك ودفوعاتك من هنا.` : 'كل الحسابات خالصة ✓ تابع ملاحظات المعلمين وغيابات أبنائك من هنا.',
+      art: '👨‍👩‍👧',
+      actions: '<a class="btn" href="#/messages">مراسلة المعلمين</a>',
+    })}
     ${h.kids.length ? `<div class="cards">${h.kids.map(kidCard).join('')}</div>` : '<div class="card muted">لم يتم ربط أي ابن بحسابك بعد. اتصل بالإدارة.</div>'}
     <section class="card">
       <h3>📝 آخر ملاحظات المعلمين</h3>
