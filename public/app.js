@@ -44,7 +44,7 @@ function monthLabel(m) {
 
 function fmtMoney(n) {
   if (n === null || n === undefined) return '—';
-  return `${Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 3 })} د.ت`;
+  return `${Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 3 })}\u00A0د.ت`;
 }
 
 function avatar(st, cls = '') {
@@ -1426,58 +1426,75 @@ function financeSection(f, role, kind = 'support', title = '💰 الوضعية 
       ${
         f.registration.length
           ? `<h4>🪪 معلوم التسجيل السنوي</h4>
-            <div class="table-wrap"><table>
-              <thead><tr><th>السنة الدراسية</th><th>المعلوم</th><th>المدفوع</th><th>الباقي</th><th>الدفع</th></tr></thead>
-              <tbody>${f.registration
-                .map(
-                  (r) => `<tr><td><b>${esc(r.school_year)}</b></td><td>${fmtMoney(r.due)}</td><td>${fmtMoney(r.paid)}</td>
-                    <td>${r.remaining ? `<b class="owed">${fmtMoney(r.remaining)}</b>` : '<span class="badge good">خالص</span>'}</td>
-                    <td class="small">${
-                      r.payments
-                        .map(
-                          (p) => `<div>${fmtMoney(p.amount)} · ${fmtDate(p.paid_on)} <a class="receipt-link" href="#/receipt/registration/${p.id}">🧾 وصل ${p.receipt_no ?? ''}</a>${
-                            role === 'admin' ? ` <button class="link danger" data-del-reg="${p.id}">حذف</button>` : ''
-                          }</div>`
-                        )
-                        .join('') || '<span class="muted">—</span>'
-                    }</td></tr>`
-                )
-                .join('')}</tbody></table></div>
+            <div class="mcards">${f.registration
+              .map(
+                (r) => `<article class="mcard ${r.remaining ? 'due' : 'ok'}">
+                  <header><b>${esc(r.school_year)}</b>${r.remaining ? '<span class="badge weak">غير خالص</span>' : '<span class="badge good">خالص</span>'}</header>
+                  <div class="mc-nums">
+                    <div><small>المعلوم</small><b>${fmtMoney(r.due)}</b></div>
+                    <div><small>المدفوع</small><b class="${r.paid ? 'in' : ''}">${fmtMoney(r.paid)}</b></div>
+                    <div><small>الباقي</small><b class="${r.remaining ? 'owed' : ''}">${r.remaining ? fmtMoney(r.remaining) : '—'}</b></div>
+                  </div>
+                  ${
+                    r.payments.length
+                      ? `<ul class="mc-pays">${r.payments
+                          .map(
+                            (p) => `<li><span>✓ <b>${fmtMoney(p.amount)}</b> · ${fmtDate(p.paid_on)}</span><span class="mc-acts"><a class="receipt-link" href="#/receipt/registration/${p.id}">🧾 ${p.receipt_no ?? ''}</a>${
+                              role === 'admin' ? `<button class="link danger" data-del-reg="${p.id}" aria-label="حذف">✕</button>` : ''
+                            }</span></li>`
+                          )
+                          .join('')}</ul>`
+                      : ''
+                  }
+                </article>`
+              )
+              .join('')}</div>
             <h4>📆 المعلوم الشهري</h4>`
           : ''
       }
       ${
         f.months.length
-          ? `<div class="table-wrap"><table>
-              <thead><tr><th>الشهر</th><th>المستحق</th><th>المدفوع</th><th>الباقي</th><th>الحالة</th><th>تفاصيل الدفع</th></tr></thead>
-              <tbody>${f.months
-                .map(
-                  (m) => `<tr>
-                    <td><b>${esc(monthLabel(m.month))}</b></td>
-                    <td>${fmtMoney(m.due)}${m.prorata ? `<div class="muted small">prorata ${esc(m.prorata)} يوم</div>` : ''}${
-                      m.sibling_pct ? `<div class="muted small">تخفيض الإخوة ${m.sibling_pct}%</div>` : ''
-                    }${m.adjustment ? `<div class="adj-note small">✂️ ${esc(adjLabel(m.adjustment))} <s class="muted">${fmtMoney(m.adjustment.original)}</s>${
-                      m.adjustment.reason ? `<div class="muted">${esc(m.adjustment.reason)}</div>` : ''
-                    }</div>` : ''}${
-                      role === 'admin' ? `<div><button class="link small" data-adj-month="${m.month}" data-kind="${kind}">${m.adjustment ? 'تغيير التعديل' : '✂️ غياب / تعديل المبلغ'}</button></div>` : ''
-                    }</td>
-                    <td>${fmtMoney(m.paid)}</td>
-                    <td>${m.remaining ? `<b class="owed">${fmtMoney(m.remaining)}</b>` : '—'}</td>
-                    <td>${status(m)}</td>
-                    <td class="small">${
-                      m.payments
-                        .map(
-                          (p) => `<div>${fmtMoney(p.amount)} · ${fmtDate(p.paid_on)}${p.method ? ' · ' + esc(PAYMENT_LABELS[p.method] || p.method) : ''}${
-                            p.note ? ` · <span class="muted">${esc(p.note)}</span>` : ''
-                          } <a class="receipt-link" href="#/receipt/${kind}/${p.id}">🧾 وصل ${p.receipt_no ?? ''}</a>${
-                            role === 'admin' ? ` <button class="link danger" data-del-pay="${p.id}" data-kind="${kind}">حذف</button>` : ''
-                          }</div>`
-                        )
-                        .join('') || '<span class="muted">—</span>'
-                    }</td>
-                  </tr>`
-                )
-                .join('')}</tbody></table></div>`
+          ? `<div class="mcards">${f.months
+              .map((m) => {
+                const notes = [
+                  m.prorata ? `جزء من الشهر (${esc(m.prorata)} يوم)` : '',
+                  m.sibling_pct ? `تخفيض الإخوة ${m.sibling_pct}%` : '',
+                ].filter(Boolean);
+                const a = m.adjustment;
+                return `<article class="mcard ${m.remaining > 0 ? (m.paid > 0 ? 'part' : 'due') : 'ok'}">
+                  <header>
+                    <b>${esc(monthLabel(m.month))}</b>
+                    ${status(m)}
+                    ${role === 'admin' ? `<button type="button" class="mc-edit" data-adj-month="${m.month}" data-kind="${kind}" title="غياب أو تعديل مبلغ الشهر" aria-label="تعديل مبلغ ${esc(monthLabel(m.month))}">✂️ <span>تعديل</span></button>` : ''}
+                  </header>
+                  <div class="mc-nums">
+                    <div><small>المستحق</small><b>${fmtMoney(m.due)}</b></div>
+                    <div><small>المدفوع</small><b class="${m.paid ? 'in' : ''}">${fmtMoney(m.paid)}</b></div>
+                    <div><small>الباقي</small><b class="${m.remaining ? 'owed' : ''}">${m.remaining ? fmtMoney(m.remaining) : '—'}</b></div>
+                  </div>
+                  ${
+                    a || notes.length
+                      ? `<div class="mc-tags">${a ? `<span class="mc-tag adj">✂️ ${esc(adjLabel(a))}${a.reason ? ` · ${esc(a.reason)}` : ''} <s>${fmtMoney(a.original)}</s></span>` : ''}${notes
+                          .map((n) => `<span class="mc-tag">${n}</span>`)
+                          .join('')}</div>`
+                      : ''
+                  }
+                  ${
+                    m.payments.length
+                      ? `<ul class="mc-pays">${m.payments
+                          .map(
+                            (p) => `<li><span>✓ <b>${fmtMoney(p.amount)}</b> · ${fmtDate(p.paid_on)}${p.method ? ` · ${esc(PAYMENT_LABELS[p.method] || p.method)}` : ''}${
+                              p.note ? ` · <span class="muted">${esc(p.note)}</span>` : ''
+                            }</span><span class="mc-acts"><a class="receipt-link" href="#/receipt/${kind}/${p.id}">🧾 ${p.receipt_no ?? ''}</a>${
+                              role === 'admin' ? `<button class="link danger" data-del-pay="${p.id}" data-kind="${kind}" aria-label="حذف الدفعة">✕</button>` : ''
+                            }</span></li>`
+                          )
+                          .join('')}</ul>`
+                      : ''
+                  }
+                </article>`;
+              })
+              .join('')}</div>`
           : `<p class="muted">${f.monthly_fee ? 'لا توجد أشهر مستحقة بعد.' : 'لم يُحدَّد المبلغ الشهري بعد.'}</p>`
       }
     </section>`;
@@ -2846,6 +2863,25 @@ function enhanceMonthInput(input) {
 }
 document.addEventListener('click', () => document.querySelectorAll('.mp-pop').forEach((p) => (p.hidden = true)));
 new MutationObserver(() => document.querySelectorAll('input[type=month]').forEach(enhanceMonthInput)).observe(document.body, {
+  childList: true,
+  subtree: true,
+});
+
+// ---------- الجداول في الهاتف: كل سطر يصبح بطاقة، وكل خانة تحمل اسم عمودها ----------
+function labelTable(table) {
+  if (table.dataset.labeled) return;
+  const heads = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+  if (!heads.length) return;
+  table.dataset.labeled = '1';
+  table.querySelectorAll('tbody tr, tfoot tr').forEach((tr) => {
+    let col = 0;
+    [...tr.children].forEach((td) => {
+      if (!td.hasAttribute('data-label')) td.setAttribute('data-label', heads[col] || '');
+      col += Number(td.getAttribute('colspan')) || 1;
+    });
+  });
+}
+new MutationObserver(() => document.querySelectorAll('.table-wrap table:not([data-labeled])').forEach(labelTable)).observe(document.body, {
   childList: true,
   subtree: true,
 });
