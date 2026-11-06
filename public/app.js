@@ -538,7 +538,7 @@ const LINK_ICONS = {
 };
 // شريط التنقل السفلي في الهاتف: 4 وجهات حسب الدور + «المزيد»
 const TABS = {
-  admin: [['#/home', 'الرئيسية', 'home'], ['#/students', 'التلاميذ', 'users'], ['#/program', 'التربوي', 'spark'], ['#/messages', 'الرسائل', 'chat']],
+  admin: [['#/home', 'الرئيسية', 'home'], ['#/students', 'الدعم', 'book'], ['#/program', 'التربوي', 'spark'], ['#/messages', 'الرسائل', 'chat']],
   teacher: [['#/home', 'الرئيسية', 'home'], ['#/students', 'تلاميذي', 'users'], ['#/attendance', 'الغيابات', 'check'], ['#/messages', 'الرسائل', 'chat']],
   program_staff: [['#/home', 'الرئيسية', 'home'], ['#/program/posts', 'الأنشطة', 'star'], ['#/program/attendance', 'الغيابات', 'check'], ['#/program/pay', 'أجرتي', 'wallet']],
   parent: [['#/home', 'الرئيسية', 'home'], ['#/students', 'أبنائي', 'smile'], ['#/timetable', 'الجدول', 'calendar'], ['#/messages', 'الرسائل', 'chat']],

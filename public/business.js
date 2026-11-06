@@ -382,24 +382,35 @@ async function viewProgram(el) {
       <div class="stat good"><b>${fmtMoney(monthlyExpected)}</b><span>المنتظر شهريًا</span></div>
       <div class="stat warn"><b>${fmtMoney(owed)}</b><span>مبالغ غير مدفوعة</span></div>
     </div>
-    <div class="class-chips">
-      <button class="chip ${filter ? '' : 'on'}" data-class="">كل الأقسام</button>
-      ${classes
-        .map(
-          (k) => `<span class="chip-wrap"><button class="chip ${filter === String(k.id) ? 'on' : ''}" data-class="${k.id}">
-            ${esc(k.name)}${k.age_range ? ` <small>(${esc(k.age_range)})</small>` : ''} <b>${k.children}</b>${k.teacher_name ? ` <small>· ${esc(k.teacher_name)}</small>` : ''}</button>
-            <button class="link small" data-edit-class="${k.id}" title="تعديل القسم">✎</button></span>`
-        )
-        .join('')}
+    <div class="filters">
+      <select id="pf-class"><option value="">كل الأقسام (${children.length})</option>${classes
+        .map((k) => `<option value="${k.id}" ${filter === String(k.id) ? 'selected' : ''}>${esc(k.name)}${k.age_range ? ` — ${esc(k.age_range)}` : ''} (${k.children})</option>`)
+        .join('')}</select>
+      <select id="pf-status">${[['active', 'مسجّل'], ['left', 'خرج'], ['', 'كل الحالات']]
+        .map(([v, l]) => `<option value="${v}" ${(sessionStorage.getItem('progStatus') ?? 'active') === v ? 'selected' : ''}>${l}</option>`)
+        .join('')}</select>
+      <input id="pf-q" type="search" placeholder="بحث بالاسم…">
+      <button class="btn ghost small" id="pf-edit-class" hidden>✎ تعديل القسم</button>
     </div>
+    <p class="muted small" id="pf-class-info"></p>
     <div id="prog-list"></div>
     <section class="card"><h3>المصاريف والأجور</h3>
-      <p class="muted">أجور المربّين تُسجَّل من <a href="#/staff">الإطار والأجور</a>، والمصاريف الأخرى من <a href="#/ledger">المداخيل والمصاريف</a> (النشاط: البرنامج التربوي).</p>
+      <p class="muted">أجور المؤطّرين من <a href="#/program/pay">خلاص المؤطّرين</a> و<a href="#/salaries">الأجور</a>، والمصاريف الأخرى من <a href="#/ledger">المداخيل والمصاريف</a> (النشاط: البرنامج التربوي).</p>
     </section>`;
 
   const render = () => {
-    const f = sessionStorage.getItem('progClass') || '';
-    const list = children.filter((c) => !f || String(c.class_id) === f);
+    const f = $('#pf-class').value;
+    const st = $('#pf-status').value;
+    const q = $('#pf-q').value.trim().toLowerCase();
+    sessionStorage.setItem('progClass', f);
+    sessionStorage.setItem('progStatus', st);
+    const k = classes.find((x) => String(x.id) === f);
+    $('#pf-edit-class').hidden = !k;
+    $('#pf-edit-class').dataset.editClass = k ? k.id : '';
+    $('#pf-class-info').textContent = k ? [k.age_range, k.teacher_name && `المؤطّر: ${k.teacher_name}`, k.notes].filter(Boolean).join(' · ') : '';
+    const list = children.filter(
+      (c) => (!f || String(c.class_id) === f) && (!st || c.status === st) && (!q || c.full_name.toLowerCase().includes(q) || String(c.contact_name || '').toLowerCase().includes(q))
+    );
     $('#prog-list').innerHTML = list.length
       ? `<div class="table-wrap"><table>
           <thead><tr><th>الطفل</th><th>العمر</th><th>القسم</th><th>الولي</th><th>المبلغ الشهري</th><th>الباقي</th><th></th></tr></thead>
@@ -417,20 +428,16 @@ async function viewProgram(el) {
               </tr>`
             )
             .join('')}</tbody></table></div>`
-      : '<div class="card muted">لا يوجد أطفال في هذا القسم.</div>';
+      : '<div class="card muted">لا يوجد أطفال بهذه الشروط.</div>';
     $('#prog-list').querySelectorAll('[data-edit]').forEach((b) =>
       b.addEventListener('click', () => childForm(children.find((c) => c.id === Number(b.dataset.edit)), lists, reload))
     );
   };
   const reload = () => viewProgram(el);
 
-  el.querySelectorAll('[data-class]').forEach((b) =>
-    b.addEventListener('click', () => {
-      sessionStorage.setItem('progClass', b.dataset.class);
-      el.querySelectorAll('[data-class]').forEach((x) => x.classList.toggle('on', x === b));
-      render();
-    })
-  );
+  $('#pf-class').addEventListener('change', render);
+  $('#pf-status').addEventListener('change', render);
+  $('#pf-q').addEventListener('input', render);
   const classForm = (k) =>
     openModal(
       k ? 'تعديل القسم' : 'قسم جديد',
