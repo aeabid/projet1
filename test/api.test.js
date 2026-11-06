@@ -962,35 +962,31 @@ test('salaries overview: support teachers, program staff, admin and cleaning sta
   assert.ok(users.every((u) => Array.isArray(u.subjects) && typeof u.program_classes === 'number'));
 });
 
-test('month closing freezes the month for the partner split; late payments count in the month they are paid', async () => {
+test('each amount counts in the month it belongs to: a January fee paid in March updates January and the partner share', async () => {
   const admin = await login('admin', 'admin123');
   assert.strictEqual((await admin('GET', '/api/dashboard/year')).status, 403);
   await pool.query(`UPDATE users SET super_admin = true WHERE username = 'admin'`);
   try {
-    const st = (await admin('POST', '/api/students', { full_name: 'Close Kid', level: '7', monthly_fee: 100, start_date: '2026-01-01' })).body.student;
-    // دفعة جانفي خُلّصت في مارس: تُحتسب نقدًا في مارس
+    const st = (await admin('POST', '/api/students', { full_name: 'Late Kid', level: '7', monthly_fee: 100, start_date: '2026-01-01' })).body.student;
+    const before = (await admin('GET', '/api/dashboard/year?mode=calendar&year=2026')).body.months.find((m) => m.month === '2026-01');
     await admin('POST', `/api/students/${st.id}/payments`, { month: '2026-01', amount: 100, paid_on: '2026-03-12' });
     const y = (await admin('GET', '/api/dashboard/year?mode=calendar&year=2026')).body;
-    const mar = y.months.find((m) => m.month === '2026-03');
-    assert.ok(mar.income.support >= 100);
-    assert.ok(mar.late_collected >= 100);
+    const jan = y.months.find((m) => m.month === '2026-01');
+    assert.strictEqual(jan.income.support, round(before.income.support + 100));
+    assert.strictEqual(jan.late_collected, round(before.late_collected + 100));
     assert.strictEqual(y.months.length, 12);
-    // تسكير مارس ثم لا عملية بتاريخ مارس
-    assert.strictEqual((await admin('POST', '/api/closings', { month: currentMonthForTest() })).status, 400);
-    const c = await admin('POST', '/api/closings', { month: '2026-03' });
-    assert.strictEqual(c.status, 201);
-    assert.ok(c.body.shares.Alaa !== undefined);
-    assert.strictEqual((await admin('POST', '/api/closings', { month: '2026-03' })).status, 409);
-    assert.strictEqual((await admin('POST', `/api/students/${st.id}/payments`, { month: '2026-02', amount: 50, paid_on: '2026-03-20' })).status, 409);
-    const pays = (await admin('GET', `/api/students/${st.id}`)).body.finance.months.flatMap((m) => m.payments);
-    assert.strictEqual((await admin('DELETE', `/api/payments/${pays[0].id}`)).status, 409);
-    assert.strictEqual((await admin('POST', '/api/ledger', { direction: 'expense', activity: 'general', category: 'rent', amount: 10, date: '2026-03-05' })).status, 409);
-    assert.strictEqual((await admin('POST', '/api/closings/reopen', { month: '2026-03' })).status, 200);
-    assert.strictEqual((await admin('DELETE', `/api/payments/${pays[0].id}`)).status, 200);
+    // نصيب الشريك يتحدّث، والتسبقة تنقص من الباقي
+    const p0 = (await admin('GET', '/api/partners')).body.summary[0];
+    assert.strictEqual((await admin('POST', '/api/partners/payments', { partner: p0.name, amount: 50, paid_on: new Date().toISOString().slice(0, 10) })).status, 201);
+    const p1 = (await admin('GET', '/api/partners')).body.summary[0];
+    assert.strictEqual(p1.balance, round(p0.balance - 50));
+    // لا تسكير: يمكن دائمًا تسجيل دفعة عن شهر قديم
+    assert.strictEqual((await admin('POST', `/api/students/${st.id}/payments`, { month: '2026-02', amount: 50, paid_on: '2026-03-20' })).status, 201);
   } finally {
     await pool.query(`UPDATE users SET super_admin = false WHERE username = 'admin'`);
   }
 });
+const round = (n) => Math.round(n * 1000) / 1000;
 function currentMonthForTest() {
   return new Date().toISOString().slice(0, 7);
 }

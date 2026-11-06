@@ -1513,13 +1513,16 @@ async function viewPartners(el) {
   const names = [...d.partners.map((p) => p.name), d.owner];
   el.innerHTML = `
     <div class="page-head"><div><a href="#/home" class="muted small">→ الرئيسية</a><h2>🤝 الشركاء والمرابيح</h2>
-      <p class="muted">المرابيح الشهرية = كل مداخيل المركز − كل مصاريفه في الشهر (نقدًا). كل شريك له نسبته ابتداءً من شهر محدّد.</p></div>
-      <div class="actions"><button class="btn ghost" id="pt-settings">⚙️ النسب</button><button class="btn" id="pt-pay">+ دفعة لشريك</button></div></div>
+      <p class="muted">مرابيح كل شهر = مداخيله − مصاريفه، وكل مبلغ يُحتسب في الشهر الذي يخصّه (دفعة متأخرة تُضاف إلى شهرها فيتحدّث نصيب الشريك).
+        ما يُعطى للشريك يُسجَّل «تسبقة»، والباقي = المتخلّد الإجمالي − التسبقات.</p></div>
+      <div class="actions"><button class="btn ghost" id="pt-settings">⚙️ النسب</button><button class="btn" id="pt-pay">+ تسبقة للشريك</button></div></div>
     <div class="fb-kpis">${d.summary
       .map(
         (s) => `<div class="fb-kpi net"><span>${esc(s.name)} — ${s.share}% منذ ${esc(monthLabel(s.from))}</span>
-          <b>${fmtMoney(s.balance)}</b><small>${s.balance >= 0 ? `بذمّة ${esc(d.owner)} لـ ${esc(s.name)}` : `رصيد لفائدة ${esc(d.owner)}`}<br>
-            باقي الحساب القديم ${fmtMoney(s.opening)} + نصيبه منذ ${esc(monthLabel(s.from))} ${fmtMoney(s.due)} − ما قبضه ${fmtMoney(s.paid)}</small></div>`
+          <b>${fmtMoney(s.balance)}</b><small>${s.balance >= 0 ? `الباقي بذمّة ${esc(d.owner)} لـ ${esc(s.name)}` : `${esc(s.name)} أخذ أكثر من مستحقاته`}</small></div>
+        <div class="fb-kpi out"><span>المتخلّد الإجمالي لـ ${esc(s.name)}</span><b>${fmtMoney(round2(s.opening + s.due))}</b>
+          <small>الحساب القديم ${fmtMoney(s.opening)} + ${s.share}% من مرابيح ${esc(monthLabel(s.from))} إلى اليوم ${fmtMoney(s.due)}</small></div>
+        <div class="fb-kpi in"><span>التسبقات المدفوعة</span><b>${fmtMoney(s.paid)}</b><small>منذ ${esc(monthLabel(s.from))}</small></div>`
       )
       .join('')}</div>
     <section class="card"><h3>📆 المرابيح شهرًا بشهر</h3>
@@ -1527,7 +1530,7 @@ async function viewPartners(el) {
         <thead><tr><th>الشهر</th><th>المداخيل</th><th>المصاريف</th><th>المرابيح</th>${names.map((n) => `<th>${esc(n)}</th>`).join('')}</tr></thead>
         <tbody>${d.months
           .map(
-            (m) => `<tr><td><b>${esc(monthLabel(m.month))}</b>${m.closed ? ' 🔒' : ''}</td><td class="in">${fmtMoney(m.income)}</td><td class="out">${fmtMoney(m.expense)}</td>
+            (m) => `<tr><td><b>${esc(monthLabel(m.month))}</b>${m.late ? `<div class="muted tiny">منها متأخرات ${fmtMoney(m.late)}</div>` : ''}</td><td class="in">${fmtMoney(m.income)}</td><td class="out">${fmtMoney(m.expense)}</td>
               <td>${netBadge(m.net)}</td>${names.map((n) => `<td>${fmtMoney(m.shares[n] ?? 0)}</td>`).join('')}</tr>`
           )
           .join('')}</tbody>
@@ -1551,7 +1554,7 @@ async function viewPartners(el) {
                 .join('')}</tbody></table></div></details>`
         : ''
     }
-    <section class="card"><h3>💵 ما دُفع للشركاء</h3>${
+    <section class="card"><h3>💵 التسبقات المدفوعة للشركاء</h3>${
       d.payments.length
         ? `<ul class="levels">${d.payments
             .map(
@@ -1563,7 +1566,7 @@ async function viewPartners(el) {
     }</section>`;
   $('#pt-pay').addEventListener('click', () =>
     openModal(
-      'دفعة لشريك',
+      'تسبقة للشريك',
       `<div class="row"><label>الشريك<select name="partner">${d.partners.map((p) => `<option>${esc(p.name)}</option>`).join('')}</select></label>
          <label>المبلغ (د.ت)<input name="amount" inputmode="decimal" required></label></div>
        <label>تاريخ الدفع<input type="date" name="paid_on" value="${today()}"></label>
@@ -1814,7 +1817,7 @@ async function viewBoard(el) {
             <div class="btip"><b>${esc(monthLabel(m.month))}</b><br>مداخيل ${fmtMoney(m.income_total)}<br>مصاريف ${fmtMoney(m.expense_total)}<br>${m.net >= 0 ? 'ربح' : 'خسارة'} ${fmtMoney(Math.abs(m.net))}</div>
             <div class="bbars"><div class="bstack">${stack}</div><div class="bex" style="height:${(m.expense_total / maxIn) * 100}%"></div></div>
             <span class="bnet ${m.net < 0 ? 'neg' : ''}">${m.future ? '' : (m.net >= 0 ? '+' : '−') + Math.round(Math.abs(m.net))}</span>
-            <span class="blab">${short(m.month)}${m.closed ? ' 🔒' : ''}</span></div>`;
+            <span class="blab">${short(m.month)}</span></div>`;
         })
         .join('')}</div>
     </section>
@@ -1828,10 +1831,10 @@ async function viewBoard(el) {
         .join('')}</section>
     </div>
 
-    <section class="card"><div class="section-head"><h3>الجدول التفصيلي</h3><span class="muted small">🔒 = شهر مسكّر (أرقامه وقسمته ثابتة)</span></div>
+    <section class="card"><div class="section-head"><h3>الجدول التفصيلي</h3><span class="muted small">كل مبلغ في الشهر الذي يخصّه</span></div>
       <div class="table-wrap"><table class="fin">
         <thead><tr><th>الشهر</th>${Object.values(BOARD_IN).map(([l]) => `<th>${l}</th>`).join('')}<th>المداخيل</th>
-          <th>أجور الدعم</th><th>أجور التربوي</th><th>إدارة ونظافة</th><th>أخرى</th><th>المصاريف</th><th>المرابيح</th>${partner ? `<th>${esc(partner)}</th>` : ''}<th></th></tr></thead>
+          <th>أجور الدعم</th><th>أجور التربوي</th><th>إدارة ونظافة</th><th>أخرى</th><th>المصاريف</th><th>المرابيح</th>${partner ? `<th>${esc(partner)}</th>` : ''}</tr></thead>
         <tbody>${d.months
           .filter((m) => !m.future)
           .map(
@@ -1840,14 +1843,14 @@ async function viewBoard(el) {
               <td>${fmtMoney(m.expense.salaries_support)}</td><td>${fmtMoney(m.expense.salaries_program)}</td><td>${fmtMoney(m.expense.salaries_admin)}</td>
               <td>${fmtMoney(m.expense.rent + m.expense.other + m.expense.salaries_courses)}</td><td class="out"><b>${fmtMoney(m.expense_total)}</b></td>
               <td>${netBadge(m.net)}</td>${partner ? `<td>${fmtMoney(m.shares[partner] || 0)}</td>` : ''}
-              <td>${m.closed ? `<span class="badge good">🔒 مسكّر</span> <button class="link small" data-reopen="${m.month}">فتح</button>` : m.month < today().slice(0, 7) ? `<button class="btn small" data-close="${m.month}">تسكير</button>` : '<span class="muted small">جارٍ</span>'}</td></tr>`
+              </tr>`
           )
           .join('')}</tbody>
         <tfoot><tr><th>المجموع</th>${Object.keys(BOARD_IN).map((k) => `<th>${fmtMoney(T.income[k])}</th>`).join('')}<th>${fmtMoney(T.income_total)}</th>
           <th>${fmtMoney(T.expense.salaries_support)}</th><th>${fmtMoney(T.expense.salaries_program)}</th><th>${fmtMoney(T.expense.salaries_admin)}</th>
-          <th>${fmtMoney(T.expense.rent + T.expense.other + T.expense.salaries_courses)}</th><th>${fmtMoney(T.expense_total)}</th><th>${netBadge(T.net)}</th>${partner ? `<th>${fmtMoney(T.shares[partner])}</th>` : ''}<th></th></tr></tfoot>
+          <th>${fmtMoney(T.expense.rent + T.expense.other + T.expense.salaries_courses)}</th><th>${fmtMoney(T.expense_total)}</th><th>${netBadge(T.net)}</th>${partner ? `<th>${fmtMoney(T.shares[partner])}</th>` : ''}</tr></tfoot>
       </table></div>
-      <p class="muted small">الحساب نقدًا: كل دفعة تُحتسب في الشهر الذي دُفعت فيه، حتى لو كانت عن شهر سابق (تظهر في «متأخرات»). عند تسكير شهر تُجمَّد أرقامه ونصيب الشريك، وأي عملية بعده تُسجَّل في الشهر المفتوح.</p>
+      <p class="muted small">كل مبلغ يُحتسب في الشهر الذي يخصّه: دفعة جانفي التي تصل في مارس تُضاف إلى جانفي (وتظهر في «متأخرات»)، فتتحدّث أرقام جانفي ونصيب الشريك منه. الأجور حسب شهر الأجرة، وبقية المصاريف حسب تاريخها.</p>
     </section>`;
   el.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
     sessionStorage.setItem('boardMode', b.dataset.mode);
@@ -1856,22 +1859,6 @@ async function viewBoard(el) {
   }));
   el.querySelectorAll('[data-year]').forEach((b) => b.addEventListener('click', () => {
     sessionStorage.setItem('boardYear', b.dataset.year);
-    viewBoard(el);
-  }));
-  el.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', async () => {
-    const m = b.dataset.close;
-    if (!confirmAction(`تسكير ${monthLabel(m)}؟ تُجمَّد أرقامه ونصيب الشريك، ولا تُقبل بعده أي عملية بتاريخ هذا الشهر.`)) return;
-    try {
-      await api('POST', '/api/closings', { month: m });
-      toast(`تم تسكير ${monthLabel(m)}`);
-      viewBoard(el);
-    } catch (err) {
-      toast(err.message, true);
-    }
-  }));
-  el.querySelectorAll('[data-reopen]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirmAction(`إعادة فتح ${monthLabel(b.dataset.reopen)}؟ (لتصحيح خطأ فقط، ثم سكّره من جديد)`)) return;
-    await api('POST', '/api/closings/reopen', { month: b.dataset.reopen }).catch((err) => toast(err.message, true));
     viewBoard(el);
   }));
 }
