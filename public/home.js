@@ -15,7 +15,7 @@ async function viewTeacherHome(el) {
   const p = h.pay;
   el.innerHTML = `
     ${heroBanner({ sub: `لوحة متابعة تلاميذك لشهر ${esc(monthLabel(h.month))}: الحصص، الملاحظات، الغيابات وأجرتك.`, art: '👩‍🏫',
-      actions: '<a class="btn" href="#/attendance">تسجيل الحضور</a><a class="btn ghost" href="#/evaluations">بطاقات التقييم</a>' })}
+      actions: '<a class="btn" href="#/attendance">تسجيل الغيابات</a><a class="btn ghost" href="#/evaluations">بطاقات التقييم</a>' })}
     <div class="kpis">
       <a class="kpi" href="#/students"><b>${h.students}</b><span>تلميذ أدرّسه</span></a>
       <a class="kpi" href="#/my-pay"><b>${fmtHours(p.hours_done)}</b><span>ساعات منجزة${p.hours_planned ? `<small>+ ${fmtHours(p.hours_planned)} مبرمجة</small>` : ''}</span></a>
@@ -26,7 +26,7 @@ async function viewTeacherHome(el) {
     </div>
     <div class="grid2">
       <section class="card">
-        <div class="section-head"><h3>🗓 حصص اليوم</h3><a class="btn small" href="#/attendance">تسجيل الحضور</a></div>
+        <div class="section-head"><h3>🗓 حصص اليوم</h3><a class="btn small" href="#/attendance">تسجيل الغيابات</a></div>
         ${
           h.today.length
             ? `<ul class="levels">${h.today
@@ -61,7 +61,7 @@ async function viewTeacherHome(el) {
       }
     </section>
     <section class="card">
-      <div class="section-head"><h3>📅 آخر الغيابات التي سجّلتها</h3><a class="small" href="#/attendance">الحضور ←</a></div>
+      <div class="section-head"><h3>📅 آخر الغيابات التي سجّلتها</h3><a class="small" href="#/attendance">الغيابات ←</a></div>
       ${
         h.absences.length
           ? `<ul class="levels">${h.absences

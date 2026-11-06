@@ -966,3 +966,7 @@ label .mp-label { flex: 1; justify-content: flex-start; }
 .mp-pop .mp-grid button.on { background: var(--feed-purple); color: #fff; }
 .mp-step, .mp-year button { display: inline-grid; place-items: center; }
 .mp-step svg, .mp-year svg { pointer-events: none; }
+.lv-chipset { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.lv-chip { display: inline-grid; place-items: center; min-width: 28px; height: 26px; padding: 0 .55rem; border-radius: 8px; background: var(--soft); color: var(--feed-purple); font-weight: 700; font-size: .82rem; white-space: nowrap; }
+.lv-chip.all { background: #e7f8ef; color: #1f7a4d; }
+.chip-check.lg { font-size: .9rem; padding: .35rem .8rem; font-weight: 600; } .chip-check:has(input:checked) { background: var(--feed-purple); color: #fff; }

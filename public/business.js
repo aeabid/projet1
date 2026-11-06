@@ -49,7 +49,7 @@ async function viewHome(el) {
     <div id="home-summary"><p class="muted">جاري التحميل…</p></div>
     <div class="home-tiles">
       <a class="home-tile" href="#/dashboard"><span class="ico">📚</span><b>دروس الدعم</b>
-        <small>التلاميذ، الجداول، الحضور، الخلاص، المعلمون</small></a>
+        <small>التلاميذ، الجداول، الغيابات، الخلاص، المعلمون</small></a>
       <a class="home-tile" href="#/program"><span class="ico">🎨</span><b>البرنامج التربوي</b>
         <small>الأقسام حسب الأعمار، الأطفال، الخلاص الشهري</small></a>
       <a class="home-tile" href="#/courses"><span class="ico">🏕️</span><b>الدورات والأنشطة</b>
@@ -369,7 +369,7 @@ async function viewProgram(el) {
     <div class="page-head">
       <div><a href="#/home" class="muted small">→ الرئيسية</a><h2>🎨 البرنامج التربوي</h2></div>
       <div class="actions">
-        <a class="btn ghost" href="#/program/attendance">الحضور</a>
+        <a class="btn ghost" href="#/program/attendance">الغيابات</a>
         <button class="btn ghost" id="add-class">+ قسم</button>
         <button class="btn" id="add-child">+ طفل</button>
       </div>
@@ -439,7 +439,7 @@ async function viewProgram(el) {
          <label>الأعمار<input name="age_range" value="${esc(k?.age_range || '')}" placeholder="مثال: 4-5 سنوات"></label>
          <label>المعلوم الشهري (د.ت)<input name="default_fee" inputmode="decimal" value="${esc(k?.default_fee ?? '')}"></label>
        </div>
-       <label>المرافق (يسجّل الحضور والملاحظات والأنشطة)<select name="teacher_id"><option value="">—</option>${teachers
+       <label>المرافق (يسجّل الغيابات والملاحظات والأنشطة)<select name="teacher_id"><option value="">—</option>${teachers
          .filter((t) => t.program_staff || t.id === k?.teacher_id)
          .map((t) => `<option value="${t.id}" ${k?.teacher_id === t.id ? 'selected' : ''}>${esc(t.full_name)}</option>`)
          .join('')}</select></label>
@@ -717,7 +717,7 @@ async function viewProgramChild(el, id) {
 async function viewProgramTeacher(el) {
   const { classes, children } = await api('GET', '/api/program');
   el.innerHTML = `
-    <div class="page-head"><h2>🎨 البرنامج التربوي</h2><a class="btn" href="#/program/attendance">تسجيل الحضور</a></div>
+    <div class="page-head"><h2>🎨 البرنامج التربوي</h2><a class="btn" href="#/program/attendance">تسجيل الغيابات</a></div>
     ${
       classes.length
         ? classes
@@ -744,13 +744,13 @@ async function viewProgramTeacher(el) {
 async function viewProgramAttendance(el) {
   const { classes } = await api('GET', '/api/program');
   if (!classes.length) {
-    el.innerHTML = '<h2>تسجيل الحضور — البرنامج التربوي</h2><div class="card muted">لا توجد أقسام.</div>';
+    el.innerHTML = '<h2>تسجيل الغيابات — البرنامج التربوي</h2><div class="card muted">لا توجد أقسام.</div>';
     return;
   }
   const saved = Number(sessionStorage.getItem('progAttClass'));
   el.innerHTML = `
     <a href="#/program" class="muted small">→ البرنامج التربوي</a>
-    <h2>تسجيل الحضور — البرنامج التربوي</h2>
+    <h2>تسجيل الغيابات — البرنامج التربوي</h2>
     <div class="filters">
       <select id="pa-class">${classes.map((k) => `<option value="${k.id}" ${k.id === saved ? 'selected' : ''}>${esc(k.name)}</option>`).join('')}</select>
       <input type="date" id="pa-date" value="${today()}">
@@ -769,7 +769,7 @@ async function viewProgramAttendance(el) {
           )
           .join('')}</ul>
         <p class="att-summary"></p>
-        <button class="btn" id="pa-save">حفظ الحضور</button>`
+        <button class="btn" id="pa-save">حفظ الغيابات</button>`
       : '<p class="muted">لا يوجد أطفال في هذا القسم.</p>';
     const summary = () => {
       const n = list.querySelectorAll('.att-row.absent').length;
@@ -789,7 +789,7 @@ async function viewProgramAttendance(el) {
           date: $('#pa-date').value,
           absent_ids: [...list.querySelectorAll('.att-row.absent')].map((b) => Number(b.dataset.id)),
         });
-        toast('تم حفظ الحضور');
+        toast('تم حفظ الغيابات');
       } catch (err) {
         toast(err.message, true);
       }

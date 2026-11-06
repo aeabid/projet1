@@ -388,8 +388,7 @@ const NAV = {
         ['#/dashboard', 'لوحة دروس الدعم'],
         ['', 'التلاميذ'],
         ['#/students', 'قائمة التلاميذ'],
-        ['#/registrations', 'التلاميذ الجدد'],
-        ['#/attendance', 'الحضور'],
+        ['#/attendance', 'الغيابات'],
         ['', 'التنظيم'],
         ['#/timetable', 'جداول الأوقات'],
         ['#/subjects', 'المواد'],
@@ -397,10 +396,8 @@ const NAV = {
         ['#/support/teachers', 'قائمة المدرّسين'],
         ['#/payroll', 'خلاص المدرّسين (الرواتب الشهرية)'],
         ['', 'التقييم'],
-        ['#/import', 'الاستيراد'],
         ['#/evaluations', 'إدخال الملاحظات'],
-        ['#/report-class', 'الطباعة'],
-        ['#/overview', 'الرؤية الإجمالية'],
+        ['#/overview', 'الرؤية الإجمالية والطباعة'],
         ['#/tasks', 'تمارين وأنشطة القسم'],
         ['#/group-message', 'رسالة لكامل القسم'],
       ],
@@ -409,7 +406,7 @@ const NAV = {
       label: 'البرنامج التربوي',
       items: [
         ['#/program/board', 'لوحة التحكم'],
-        ['#/program', 'الأطفال والأقسام والحضور'],
+        ['#/program', 'الأطفال والأقسام والغيابات'],
         ['#/program/timetable', 'جداول الأوقات'],
         ['#/program/posts', 'أنشطة ورسائل الأقسام'],
         ['', 'المرافقون'],
@@ -462,7 +459,7 @@ const NAV = {
     ['#/home', 'الرئيسية'],
     ['#/students', 'تلاميذي'],
     ['#/timetable', 'جدولي'],
-    ['#/attendance', 'الحضور'],
+    ['#/attendance', 'الغيابات'],
     ['#/tasks', 'تمارين وأنشطة القسم'],
     ['#/group-message', 'رسالة لكامل القسم'],
     ['#/evaluations', 'بطاقات التقييم'],
@@ -478,7 +475,7 @@ const NAV = {
   program_staff: [
     ['#/home', 'الرئيسية'],
     ['#/program/posts', 'أنشطة ورسائل قسمي'],
-    ['#/program/attendance', 'الحضور'],
+    ['#/program/attendance', 'الغيابات'],
     ['#/program/timetable', 'جدول الأوقات'],
     ['#/program/pay', 'أجرتي'],
     ['#/account', 'حسابي'],
@@ -538,8 +535,8 @@ const LINK_ICONS = {
 // شريط التنقل السفلي في الهاتف: 4 وجهات حسب الدور + «المزيد»
 const TABS = {
   admin: [['#/home', 'الرئيسية', 'home'], ['#/students', 'التلاميذ', 'users'], ['#/program', 'التربوي', 'spark'], ['#/messages', 'الرسائل', 'chat']],
-  teacher: [['#/home', 'الرئيسية', 'home'], ['#/students', 'تلاميذي', 'users'], ['#/attendance', 'الحضور', 'check'], ['#/messages', 'الرسائل', 'chat']],
-  program_staff: [['#/home', 'الرئيسية', 'home'], ['#/program/posts', 'الأنشطة', 'star'], ['#/program/attendance', 'الحضور', 'check'], ['#/program/pay', 'أجرتي', 'wallet']],
+  teacher: [['#/home', 'الرئيسية', 'home'], ['#/students', 'تلاميذي', 'users'], ['#/attendance', 'الغيابات', 'check'], ['#/messages', 'الرسائل', 'chat']],
+  program_staff: [['#/home', 'الرئيسية', 'home'], ['#/program/posts', 'الأنشطة', 'star'], ['#/program/attendance', 'الغيابات', 'check'], ['#/program/pay', 'أجرتي', 'wallet']],
   parent: [['#/home', 'الرئيسية', 'home'], ['#/students', 'أبنائي', 'smile'], ['#/timetable', 'الجدول', 'calendar'], ['#/messages', 'الرسائل', 'chat']],
 };
 
@@ -857,8 +854,7 @@ async function viewStudents(el) {
       <h2>التلاميذ</h2>
       ${
         role === 'admin'
-          ? `<div class="actions"><a class="btn ghost" href="#/import">⇪ استيراد قائمة</a>
-             <a class="btn ghost" href="#/photos">📷 صور بالجملة</a>
+          ? `<div class="actions"><a class="btn ghost" href="#/photos">📷 صور بالجملة</a>
              <button class="btn" id="add-student">+ تلميذ جديد</button></div>`
           : ''
       }
@@ -1703,8 +1699,14 @@ async function viewUsers(el, role, scope = null) {
 
 // ---------- المواد ----------
 function levelsText(levels) {
-  return levels ? levels.map(levelLabel).join('، ') : 'كل المستويات';
+  return levels ? levels.map(levelShort).join('، ') : 'كل المستويات';
 }
+// اسم قصير للمستوى: «5»، «6 عن بعد»… (الاسم الكامل في التلميح)
+const levelShort = (code) => String(code).replace('-distance', ' عن بعد');
+const levelChips = (levels) =>
+  levels
+    ? `<span class="lv-chipset">${levels.map((c) => `<span class="lv-chip" title="${esc(levelLabel(c))}">${esc(levelShort(c))}</span>`).join('')}</span>`
+    : '<span class="lv-chip all">كل المستويات</span>';
 
 function subjectForm(subject, onDone) {
   const sel = new Set(subject?.levels || []);
@@ -1713,7 +1715,7 @@ function subjectForm(subject, onDone) {
     `<label>اسم المادة<input name="name" value="${esc(subject?.name)}" required></label>
      <fieldset><legend>المستويات (لا تختر شيئًا = كل المستويات)</legend><div class="checks">${state.meta.levels
        .map(
-         (l) => `<label class="check"><input type="checkbox" name="levels[]" value="${esc(l.code)}" ${sel.has(l.code) ? 'checked' : ''}> ${esc(l.label)}</label>`
+         (l) => `<label class="chip-check lg" title="${esc(l.label)}"><input type="checkbox" name="levels[]" value="${esc(l.code)}" ${sel.has(l.code) ? 'checked' : ''}> ${esc(levelShort(l.code))}</label>`
        )
        .join('')}</div></fieldset>`,
     async (data) => {
@@ -1737,7 +1739,7 @@ async function viewSubjects(el) {
       <thead><tr><th>المادة</th><th>المستويات</th><th></th></tr></thead>
       <tbody>${state.meta.subjects
         .map(
-          (s) => `<tr><td><b>${esc(s.name)}</b></td><td>${esc(levelsText(s.levels))}</td>
+          (s) => `<tr><td><b>${esc(s.name)}</b></td><td>${levelChips(s.levels)}</td>
             <td class="row-actions"><button class="btn ghost small" data-edit="${s.id}">تعديل</button>
             <button class="btn danger small" data-del="${s.id}">حذف</button></td></tr>`
         )
@@ -1993,11 +1995,11 @@ async function viewTasks(el) {
 async function viewAttendance(el) {
   const subjects = workSubjects();
   if (!subjects.length) {
-    el.innerHTML = '<h2>الحضور</h2><div class="card muted">لم تُسند لك أي مادة بعد.</div>';
+    el.innerHTML = '<h2>الغيابات</h2><div class="card muted">لم تُسند لك أي مادة بعد.</div>';
     return;
   }
   el.innerHTML = `
-    <h2>تسجيل الحضور</h2>
+    <h2>تسجيل الغيابات</h2>
     <div class="filters">
       <select id="a-subject">${subjectOptions(subjects, Number(sessionStorage.getItem('attSubject')) || null)}</select>
       <select id="a-level"></select>
@@ -2015,7 +2017,7 @@ async function viewAttendance(el) {
       const { students } = await api('GET', '/api/attendance?' + params);
       list.innerHTML = students.length
         ? `<div class="card">
-            <p class="muted">اضغط على التلميذ الغائب. الكل حاضر افتراضيًا.</p>
+            <p class="muted">كل التلاميذ حاضرون افتراضيًا: اضغط فقط على من تغيّب.</p>
             <ul class="att">${students
               .map(
                 (st) => `<li><button type="button" class="att-row ${st.absent ? 'absent' : ''}" data-id="${st.id}">
@@ -2023,7 +2025,7 @@ async function viewAttendance(el) {
               )
               .join('')}</ul>
             <p class="att-summary"></p>
-            <button class="btn" id="att-save">حفظ الحضور</button>
+            <button class="btn" id="att-save">حفظ الغيابات</button>
           </div>`
         : '<div class="card muted">لا يوجد تلاميذ يدرسون هذه المادة في هذا المستوى.</div>';
       const summary = () => {
@@ -2043,7 +2045,7 @@ async function viewAttendance(el) {
             ...Object.fromEntries(params),
             absent_ids: [...list.querySelectorAll('.att-row.absent')].map((b) => Number(b.dataset.id)),
           });
-          toast('تم حفظ الحضور');
+          toast('تم حفظ الغيابات');
         } catch (err) {
           toast(err.message, true);
         }
