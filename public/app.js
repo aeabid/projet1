@@ -2746,3 +2746,91 @@ function viewAccount(el) {
     }
   });
 }
+
+// ---------- منتقي الشهر: بالعربية وبشكل التصميم الجديد (يعوّض input type=month للمتصفح) ----------
+// الحقل الأصلي يبقى (مخفيًا) بنفس id وname، فكل الشيفرة القديمة تقرأ .value وتسمع change كما هي
+const ym = (v) => (/^\d{4}-\d{2}$/.test(v || '') ? v : today().slice(0, 7));
+const shiftMonth = (v, n) => {
+  const [y, m] = ym(v).split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + n, 1));
+  return d.toISOString().slice(0, 7);
+};
+const chev = (dir) =>
+  `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${dir === 'right' ? 'm9 18 6-6-6-6' : 'm15 18-6-6 6-6'}"/></svg>`;
+function enhanceMonthInput(input) {
+  if (input.dataset.mp) return;
+  input.dataset.mp = '1';
+  input.type = 'hidden';
+  const box = document.createElement('div');
+  box.className = 'mpick';
+  box.innerHTML = `<button type="button" class="mp-step" data-step="-1" aria-label="الشهر السابق">${chev('right')}</button>
+    <button type="button" class="mp-label"></button>
+    <button type="button" class="mp-step" data-step="1" aria-label="الشهر الموالي">${chev('left')}</button>
+    <div class="mp-pop" hidden></div>`;
+  input.after(box);
+  const label = box.querySelector('.mp-label');
+  const pop = box.querySelector('.mp-pop');
+  let year;
+  const sync = () => (label.textContent = monthLabel(ym(input.value)));
+  const set = (v) => {
+    input.value = v;
+    sync();
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const drawPop = () => {
+    const cur = ym(input.value);
+    pop.innerHTML = `<div class="mp-year"><button type="button" data-y="-1">${chev('right')}</button><b>${year}</b><button type="button" data-y="1">${chev('left')}</button></div>
+      <div class="mp-grid">${MONTHS_AR.map((n, i) => {
+        const v = `${year}-${String(i + 1).padStart(2, '0')}`;
+        return `<button type="button" data-v="${v}" class="${v === cur ? 'on' : ''}${v === today().slice(0, 7) ? ' now' : ''}">${n}</button>`;
+      }).join('')}</div>`;
+  };
+  box.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.step) return set(shiftMonth(input.value, Number(b.dataset.step)));
+    if (b.classList.contains('mp-label')) {
+      year = Number(ym(input.value).slice(0, 4));
+      drawPop();
+      document.querySelectorAll('.mp-pop').forEach((p) => p !== pop && (p.hidden = true));
+      pop.hidden = !pop.hidden;
+      document.body.appendChild(pop);
+      // فوق كل شيء (حتى داخل اللافتة أو النافذة)
+      const r = box.getBoundingClientRect();
+      pop.style.top = `${Math.min(r.bottom + 6, innerHeight - 250)}px`;
+      pop.style.left = `${Math.max(8, Math.min(r.right - 268, innerWidth - 276))}px`;
+      return;
+    }
+    if (b.dataset.y) return (year += Number(b.dataset.y)), drawPop();
+    if (b.dataset.v) {
+      pop.hidden = true;
+      set(b.dataset.v);
+    }
+  });
+  pop.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.y) return (year += Number(b.dataset.y)), drawPop();
+    if (b.dataset.v) {
+      pop.hidden = true;
+      set(b.dataset.v);
+    }
+  });
+  // الصفحة تتبدّل: نحذف القائمة المعلّقة في body
+  new MutationObserver(() => !box.isConnected && pop.remove()).observe(document.body, { childList: true, subtree: true });
+  // تغيير القيمة من الشيفرة (مثلًا النقر على شهر في جدول السنة)
+  const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  Object.defineProperty(input, 'value', {
+    get() { return desc.get.call(this); },
+    set(v) { desc.set.call(this, v); sync(); },
+  });
+  sync();
+}
+document.addEventListener('click', () => document.querySelectorAll('.mp-pop').forEach((p) => (p.hidden = true)));
+new MutationObserver(() => document.querySelectorAll('input[type=month]').forEach(enhanceMonthInput)).observe(document.body, {
+  childList: true,
+  subtree: true,
+});
