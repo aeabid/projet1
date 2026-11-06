@@ -671,3 +671,17 @@ ALTER TABLE center_debt_payments ENABLE ROW LEVEL SECURITY;
 -- 20261109090000_pay_per_child.sql
 -- أجرة المرافق حسب عدد الأطفال: مبلغ عن كل طفل يدفع في أقسامه (مثلًا أمال: 40 = نصف 80 في أثر)
 ALTER TABLE users ADD COLUMN pay_per_child NUMERIC(10, 3);
+
+-- 20261110090000_month_closings.sql
+-- تسكير الشهر: تُجمَّد أرقام الشهر (نقدًا) ونصيب كل شريك، ولا تُسجَّل بعدها عملية بتاريخ ذلك الشهر
+CREATE TABLE month_closings (
+  month TEXT PRIMARY KEY,
+  income NUMERIC(12, 3) NOT NULL,
+  expense NUMERIC(12, 3) NOT NULL,
+  net NUMERIC(12, 3) NOT NULL,
+  shares JSONB NOT NULL DEFAULT '{}',
+  details JSONB NOT NULL DEFAULT '{}',
+  closed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  closed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE month_closings ENABLE ROW LEVEL SECURITY;

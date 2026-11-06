@@ -974,3 +974,26 @@ label .mp-label { flex: 1; justify-content: flex-start; }
 .sal-bar { position: relative; display: flex; justify-content: space-between; gap: 1rem; padding: .65rem .9rem; border-radius: 12px; background: var(--card); border: 1px solid var(--border); overflow: hidden; font-weight: 600; }
 .sal-bar > * { position: relative; z-index: 1; }
 .sal-bar i { position: absolute; inset-block: 0; inset-inline-start: 0; background: var(--soft); z-index: 0; }
+/* لوحة المشرف */
+.seg.on-dark { margin: 0; }
+.seg.on-dark .chip { background: rgba(255,255,255,.14); color: #fff; border-color: rgba(255,255,255,.3); }
+.seg.on-dark .chip.on { background: #fff; color: var(--feed-purple); }
+.legend { display: flex; flex-wrap: wrap; gap: .8rem; font-size: .78rem; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-inline-end: .3rem; vertical-align: middle; }
+.legend i.ex { background: repeating-linear-gradient(45deg, #fda4af 0 3px, #fecdd3 3px 6px); }
+.bchart { display: grid; grid-template-columns: repeat(12, 1fr); gap: .45rem; height: 260px; align-items: end; padding-top: 1rem; }
+.bcol { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px; outline: none; }
+.bcol.future { opacity: .35; }
+.bbars { flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 3px; min-height: 0; }
+.bstack { width: 46%; height: 100%; display: flex; flex-direction: column-reverse; }
+.bstack i { display: block; width: 100%; }
+.bstack i:last-child { border-radius: 6px 6px 0 0; }
+.bex { width: 30%; border-radius: 6px 6px 0 0; background: repeating-linear-gradient(45deg, #fda4af 0 3px, #fecdd3 3px 6px); }
+.bnet { font-size: .7rem; font-weight: 700; color: var(--good); font-family: 'Tajawal', sans-serif; }
+.bnet.neg { color: var(--danger); }
+.blab { font-size: .72rem; color: var(--muted); white-space: nowrap; }
+.btip { display: none; position: absolute; bottom: 100%; z-index: 5; background: #1d1433; color: #fff; padding: .45rem .6rem; border-radius: 10px; font-size: .75rem; white-space: nowrap; line-height: 1.5; }
+.bcol:hover .btip, .bcol:focus .btip { display: block; }
+.tiny { font-size: .72rem; }
+@media (max-width: 700px) { .bchart { gap: .2rem; height: 200px; } .blab { font-size: .62rem; } .bnet { display: none; } }
+.fin td, .fin th { white-space: nowrap; }

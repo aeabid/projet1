@@ -1527,7 +1527,7 @@ async function viewPartners(el) {
         <thead><tr><th>الشهر</th><th>المداخيل</th><th>المصاريف</th><th>المرابيح</th>${names.map((n) => `<th>${esc(n)}</th>`).join('')}</tr></thead>
         <tbody>${d.months
           .map(
-            (m) => `<tr><td><b>${esc(monthLabel(m.month))}</b></td><td class="in">${fmtMoney(m.income)}</td><td class="out">${fmtMoney(m.expense)}</td>
+            (m) => `<tr><td><b>${esc(monthLabel(m.month))}</b>${m.closed ? ' 🔒' : ''}</td><td class="in">${fmtMoney(m.income)}</td><td class="out">${fmtMoney(m.expense)}</td>
               <td>${netBadge(m.net)}</td>${names.map((n) => `<td>${fmtMoney(m.shares[n] ?? 0)}</td>`).join('')}</tr>`
           )
           .join('')}</tbody>
@@ -1762,4 +1762,116 @@ async function viewSalaries(el) {
   };
   bindMonth('sal-month', load);
   await load();
+}
+
+// ---------- لوحة المشرف العام: السنة كاملة ----------
+const BOARD_IN = { support: ['📚 دروس الدعم', '#6d28d9'], program: ['🎨 البرنامج التربوي', '#db2777'], courses: ['🏕️ الدورات والعطل', '#0ea5e9'], other: ['➕ مداخيل أخرى', '#94a3b8'] };
+const BOARD_EX = {
+  salaries_support: ['أجور مدرّسي الدعم', '#6d28d9'], salaries_program: ['أجور مؤطّري التربوي', '#db2777'], salaries_admin: ['أجور الإدارة والنظافة', '#f59e0b'],
+  salaries_courses: ['أجور الدورات', '#0ea5e9'], rent: ['الكراء', '#64748b'], other: ['مصاريف أخرى', '#cbd5e1'],
+};
+async function viewBoard(el) {
+  const mode = sessionStorage.getItem('boardMode') || 'school';
+  const year = sessionStorage.getItem('boardYear') || '';
+  el.innerHTML = `<div id="board-body"><p class="muted">جاري التحميل…</p></div>`;
+  const d = await api('GET', `/api/dashboard/year?mode=${mode}${year ? `&year=${year}` : ''}`);
+  const T = d.totals;
+  const short = (m) => MONTHS_AR[Number(m.slice(5)) - 1];
+  const label = mode === 'calendar' ? `السنة الإدارية ${d.year}` : `السنة الدراسية ${d.year}–${d.year + 1}`;
+  const past = d.months.filter((m) => !m.future);
+  const maxIn = Math.max(1, ...d.months.map((m) => Math.max(m.income_total, m.expense_total)));
+  const coll = d.collection;
+  const partner = Object.keys(T.shares).find((n) => n !== 'Alaa');
+  el.innerHTML = `
+    <section class="hero"><div>
+      <small>لوحة المشرف العام</small>
+      <h2>📊 ${esc(label)}</h2>
+      <p>مداخيل ومصاريف ومرابيح مركز فيد شهرًا بشهر، لكل برنامج وللمجموع.</p>
+      <div class="hero-actions">
+        <div class="seg on-dark"><button class="chip ${mode === 'school' ? 'on' : ''}" data-mode="school">سنة دراسية (سبتمبر–أوت)</button>
+          <button class="chip ${mode === 'calendar' ? 'on' : ''}" data-mode="calendar">سنة إدارية (جانفي–ديسمبر)</button></div>
+        <div class="seg on-dark"><button class="chip" data-year="${d.year - 1}">‹ ${d.year - 1}</button><button class="chip" data-year="${d.year + 1}">${d.year + 1} ›</button></div>
+      </div></div><div class="hero-art" aria-hidden="true">📈</div></section>
+
+    <div class="kpis">
+      <div class="kpi"><span>المداخيل</span><b class="in">${fmtMoney(T.income_total)}</b><small>منها متأخرات مستخلصة ${fmtMoney(T.late_collected)}</small></div>
+      <div class="kpi"><span>المصاريف</span><b class="out">${fmtMoney(T.expense_total)}</b><small>منها أجور ${fmtMoney(T.expense.salaries_support + T.expense.salaries_program + T.expense.salaries_admin + T.expense.salaries_courses)}</small></div>
+      <div class="kpi"><span>المرابيح</span><b>${T.net < 0 ? '−' : ''}${fmtMoney(Math.abs(T.net))}</b><small>${past.length} شهر محسوب</small></div>
+      ${partner ? `<div class="kpi"><span>نصيب ${esc(partner)}</span><b>${fmtMoney(T.shares[partner])}</b><small><a href="#/partners">الحساب مع الشريك ←</a></small></div>` : ''}
+      <div class="kpi"><span>التلاميذ</span><b>${d.counts.support + d.counts.program}</b><small>دعم ${d.counts.support} · تربوي ${d.counts.program}${d.counts.waiting ? ` · انتظار ${d.counts.waiting}` : ''}</small></div>
+      ${coll ? `<div class="kpi"><span>استخلاص ${esc(monthLabel(coll.month))}</span><b>${coll.billed ? Math.round((coll.collected / coll.billed) * 100) : 0}%</b><small>${fmtMoney(coll.collected)} من ${fmtMoney(coll.billed)}</small></div>` : ''}
+      <div class="kpi"><span>على الأولياء</span><b class="out">${fmtMoney(d.parents_owe)}</b><small><a href="#/debts">المتخلّد بذمتهم ←</a></small></div>
+      <div class="kpi"><span>ديون المركز</span><b class="out">${fmtMoney(d.counts.center_debts)}</b><small><a href="#/center-debts">التفاصيل ←</a></small></div>
+    </div>
+
+    <section class="card">
+      <div class="section-head"><h3>المداخيل والمصاريف شهرًا بشهر</h3>
+        <div class="legend">${Object.values(BOARD_IN).map(([l, c]) => `<span><i style="background:${c}"></i>${l}</span>`).join('')}<span><i class="ex"></i>المصاريف</span></div></div>
+      <div class="bchart">${d.months
+        .map((m) => {
+          const stack = Object.keys(BOARD_IN).map((k) => `<i style="height:${(m.income[k] / maxIn) * 100}%;background:${BOARD_IN[k][1]}" title="${BOARD_IN[k][0]}: ${fmtMoney(m.income[k])}"></i>`).join('');
+          return `<div class="bcol ${m.future ? 'future' : ''}" tabindex="0">
+            <div class="btip"><b>${esc(monthLabel(m.month))}</b><br>مداخيل ${fmtMoney(m.income_total)}<br>مصاريف ${fmtMoney(m.expense_total)}<br>${m.net >= 0 ? 'ربح' : 'خسارة'} ${fmtMoney(Math.abs(m.net))}</div>
+            <div class="bbars"><div class="bstack">${stack}</div><div class="bex" style="height:${(m.expense_total / maxIn) * 100}%"></div></div>
+            <span class="bnet ${m.net < 0 ? 'neg' : ''}">${m.future ? '' : (m.net >= 0 ? '+' : '−') + Math.round(Math.abs(m.net))}</span>
+            <span class="blab">${short(m.month)}${m.closed ? ' 🔒' : ''}</span></div>`;
+        })
+        .join('')}</div>
+    </section>
+
+    <div class="grid2 even">
+      <section class="card"><h3>مصادر المداخيل</h3>${Object.entries(BOARD_IN)
+        .map(([k, [l, c]]) => `<div class="cat-row"><span>${l}</span><div class="cat-bar"><i style="width:${T.income_total ? (T.income[k] / T.income_total) * 100 : 0}%;background:${c}"></i></div><b>${fmtMoney(T.income[k])}</b></div>`)
+        .join('')}</section>
+      <section class="card"><h3>أين تذهب المصاريف</h3>${Object.entries(BOARD_EX)
+        .map(([k, [l, c]]) => `<div class="cat-row"><span>${l}</span><div class="cat-bar"><i style="width:${T.expense_total ? (T.expense[k] / T.expense_total) * 100 : 0}%;background:${c}"></i></div><b>${fmtMoney(T.expense[k])}</b></div>`)
+        .join('')}</section>
+    </div>
+
+    <section class="card"><div class="section-head"><h3>الجدول التفصيلي</h3><span class="muted small">🔒 = شهر مسكّر (أرقامه وقسمته ثابتة)</span></div>
+      <div class="table-wrap"><table class="fin">
+        <thead><tr><th>الشهر</th>${Object.values(BOARD_IN).map(([l]) => `<th>${l}</th>`).join('')}<th>المداخيل</th>
+          <th>أجور الدعم</th><th>أجور التربوي</th><th>إدارة ونظافة</th><th>أخرى</th><th>المصاريف</th><th>المرابيح</th>${partner ? `<th>${esc(partner)}</th>` : ''}<th></th></tr></thead>
+        <tbody>${d.months
+          .filter((m) => !m.future)
+          .map(
+            (m) => `<tr><td><b>${esc(monthLabel(m.month))}</b>${m.late_collected ? `<div class="muted tiny">متأخرات ${fmtMoney(m.late_collected)}</div>` : ''}</td>
+              ${Object.keys(BOARD_IN).map((k) => `<td>${fmtMoney(m.income[k])}</td>`).join('')}<td class="in"><b>${fmtMoney(m.income_total)}</b></td>
+              <td>${fmtMoney(m.expense.salaries_support)}</td><td>${fmtMoney(m.expense.salaries_program)}</td><td>${fmtMoney(m.expense.salaries_admin)}</td>
+              <td>${fmtMoney(m.expense.rent + m.expense.other + m.expense.salaries_courses)}</td><td class="out"><b>${fmtMoney(m.expense_total)}</b></td>
+              <td>${netBadge(m.net)}</td>${partner ? `<td>${fmtMoney(m.shares[partner] || 0)}</td>` : ''}
+              <td>${m.closed ? `<span class="badge good">🔒 مسكّر</span> <button class="link small" data-reopen="${m.month}">فتح</button>` : m.month < today().slice(0, 7) ? `<button class="btn small" data-close="${m.month}">تسكير</button>` : '<span class="muted small">جارٍ</span>'}</td></tr>`
+          )
+          .join('')}</tbody>
+        <tfoot><tr><th>المجموع</th>${Object.keys(BOARD_IN).map((k) => `<th>${fmtMoney(T.income[k])}</th>`).join('')}<th>${fmtMoney(T.income_total)}</th>
+          <th>${fmtMoney(T.expense.salaries_support)}</th><th>${fmtMoney(T.expense.salaries_program)}</th><th>${fmtMoney(T.expense.salaries_admin)}</th>
+          <th>${fmtMoney(T.expense.rent + T.expense.other + T.expense.salaries_courses)}</th><th>${fmtMoney(T.expense_total)}</th><th>${netBadge(T.net)}</th>${partner ? `<th>${fmtMoney(T.shares[partner])}</th>` : ''}<th></th></tr></tfoot>
+      </table></div>
+      <p class="muted small">الحساب نقدًا: كل دفعة تُحتسب في الشهر الذي دُفعت فيه، حتى لو كانت عن شهر سابق (تظهر في «متأخرات»). عند تسكير شهر تُجمَّد أرقامه ونصيب الشريك، وأي عملية بعده تُسجَّل في الشهر المفتوح.</p>
+    </section>`;
+  el.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
+    sessionStorage.setItem('boardMode', b.dataset.mode);
+    sessionStorage.removeItem('boardYear');
+    viewBoard(el);
+  }));
+  el.querySelectorAll('[data-year]').forEach((b) => b.addEventListener('click', () => {
+    sessionStorage.setItem('boardYear', b.dataset.year);
+    viewBoard(el);
+  }));
+  el.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', async () => {
+    const m = b.dataset.close;
+    if (!confirmAction(`تسكير ${monthLabel(m)}؟ تُجمَّد أرقامه ونصيب الشريك، ولا تُقبل بعده أي عملية بتاريخ هذا الشهر.`)) return;
+    try {
+      await api('POST', '/api/closings', { month: m });
+      toast(`تم تسكير ${monthLabel(m)}`);
+      viewBoard(el);
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }));
+  el.querySelectorAll('[data-reopen]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirmAction(`إعادة فتح ${monthLabel(b.dataset.reopen)}؟ (لتصحيح خطأ فقط، ثم سكّره من جديد)`)) return;
+    await api('POST', '/api/closings/reopen', { month: b.dataset.reopen }).catch((err) => toast(err.message, true));
+    viewBoard(el);
+  }));
 }

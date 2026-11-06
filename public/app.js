@@ -306,6 +306,7 @@ const routes = [
   [/^#\/group-message$/, (el) => viewGroupMessage(el)],
   [/^#\/partners$/, (el) => viewPartners(el)],
   [/^#\/salaries$/, (el) => viewSalaries(el)],
+  [/^#\/board$/, (el) => viewBoard(el)],
   [/^#\/center-debts$/, (el) => viewCenterDebts(el)],
   [/^#\/courses$/, (el) => viewCourses(el)],
   [/^#\/courses\/(\d+)$/, (el, id) => viewCourse(el, Number(id))],
@@ -384,6 +385,7 @@ async function router() {
 const NAV = {
   admin: [
     ['#/home', 'الرئيسية'],
+    ['#/board', 'لوحة المشرف'],
     {
       label: 'دروس الدعم',
       items: [
@@ -532,7 +534,7 @@ const LINK_ICONS = {
   '#/home': 'home', '#/courses': 'flag', '#/students': 'users', '#/timetable': 'calendar', '#/program/timetable': 'calendar',
   '#/attendance': 'check', '#/program/attendance': 'check', '#/messages': 'chat', '#/my-pay': 'wallet', '#/program/pay': 'wallet',
   '#/account': 'user', '#/tasks': 'clipboard', '#/evaluations': 'clipboard', '#/overview': 'chart', '#/program/posts': 'star',
-  '#/todo': 'clipboard', '#/program': 'spark', '#/group-message': 'chat',
+  '#/todo': 'clipboard', '#/program': 'spark', '#/group-message': 'chat', '#/board': 'chart',
 };
 // شريط التنقل السفلي في الهاتف: 4 وجهات حسب الدور + «المزيد»
 const TABS = {
@@ -560,6 +562,7 @@ function renderTopbar() {
   // «البرنامج التربوي» للمعلم فقط إن كان منشّطًا لقسم
   const nav = NAV[navKey]
     .filter((e) => !(navKey === 'teacher' && String(e[0]).startsWith('#/program') && !state.user.program_classes))
+    .filter((e) => !(Array.isArray(e) && e[0] === '#/board' && !state.user.super_admin))
     .map((e) => (Array.isArray(e) || state.user.super_admin ? e : { ...e, items: e.items.filter(([h]) => h !== '#/partners') }));
   $('#nav').innerHTML = nav
     .map((entry, i) =>
