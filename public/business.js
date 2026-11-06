@@ -1613,7 +1613,7 @@ async function viewCenterDebts(el) {
   const d = await api('GET', '/api/center-debts');
   el.innerHTML = `
     <div class="page-head"><div><a href="#/home" class="muted small">→ الرئيسية</a><h2>📕 ديون المركز</h2>
-      <p class="muted">كل تسديد ينقص من الباقي، ويُسجَّل مصروفًا عامًا في شهر الدفع (فيدخل في حساب المرابيح).</p></div>
+      <p class="muted">مكان لحفظ ديون المركز فقط: تضيف دينًا أو تحذفه، وكل تسديد ينقص من الباقي. لا علاقة لها بالمداخيل والمصاريف ولا بالمرابيح.</p></div>
       <div class="actions"><button class="btn" id="cd-add">+ دين</button></div></div>
     <div class="fb-kpis">
       <div class="fb-kpi out"><span>الباقي</span><b>${fmtMoney(d.remaining)}</b><small>من أصل ${fmtMoney(d.total)}</small></div>
@@ -1663,8 +1663,7 @@ async function viewCenterDebts(el) {
         `تسديد — ${x.creditor}`,
         `<div class="row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(x.remaining)}" required></label>
            <label>تاريخ الدفع<input type="date" name="paid_on" value="${today()}"></label></div>
-         <label>ملاحظة<input name="note"></label>
-         <label class="check"><input type="checkbox" name="as_expense" checked> تسجيله مصروفًا عامًا (ينقص من مرابيح الشهر)</label>`,
+         <label>ملاحظة<input name="note"></label>`,
         async (data) => {
           await api('POST', `/api/center-debts/${x.id}/payments`, data);
           toast('تم التسديد');
@@ -1804,7 +1803,6 @@ async function viewBoard(el) {
       <div class="kpi"><span>التلاميذ</span><b>${d.counts.support + d.counts.program}</b><small>دعم ${d.counts.support} · تربوي ${d.counts.program}${d.counts.waiting ? ` · انتظار ${d.counts.waiting}` : ''}</small></div>
       ${coll ? `<div class="kpi"><span>استخلاص ${esc(monthLabel(coll.month))}</span><b>${coll.billed ? Math.round((coll.collected / coll.billed) * 100) : 0}%</b><small>${fmtMoney(coll.collected)} من ${fmtMoney(coll.billed)}</small></div>` : ''}
       <div class="kpi"><span>على الأولياء</span><b class="out">${fmtMoney(d.parents_owe)}</b><small><a href="#/debts">المتخلّد بذمتهم ←</a></small></div>
-      <div class="kpi"><span>ديون المركز</span><b class="out">${fmtMoney(d.counts.center_debts)}</b><small><a href="#/center-debts">التفاصيل ←</a></small></div>
     </div>
 
     <section class="card">
