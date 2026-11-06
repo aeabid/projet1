@@ -299,7 +299,7 @@ async function viewStaff(el) {
       `<label>الاسم واللقب<input name="full_name" value="${esc(x?.full_name || '')}" required></label>
        <div class="row">
          <label>النشاط<select name="activity">${Object.entries(meta.activities)
-           .map(([k, v]) => `<option value="${k}" ${(x?.activity || 'program') === k ? 'selected' : ''}>${v}</option>`)
+           .map(([k, v]) => `<option value="${k}" ${(x?.activity || 'general') === k ? 'selected' : ''}>${v}</option>`)
            .join('')}</select></label>
          <label>الخطة<input name="role" value="${esc(x?.role || '')}" placeholder="مثال: مربية، منشط، عامل نظافة"></label>
        </div>
@@ -439,7 +439,7 @@ async function viewProgram(el) {
          <label>الأعمار<input name="age_range" value="${esc(k?.age_range || '')}" placeholder="مثال: 4-5 سنوات"></label>
          <label>المعلوم الشهري (د.ت)<input name="default_fee" inputmode="decimal" value="${esc(k?.default_fee ?? '')}"></label>
        </div>
-       <label>المرافق (يسجّل الغيابات والملاحظات والأنشطة)<select name="teacher_id"><option value="">—</option>${teachers
+       <label>المؤطّر (يسجّل الغيابات والملاحظات والأنشطة)<select name="teacher_id"><option value="">—</option>${teachers
          .filter((t) => t.program_staff || t.id === k?.teacher_id)
          .map((t) => `<option value="${t.id}" ${k?.teacher_id === t.id ? 'selected' : ''}>${esc(t.full_name)}</option>`)
          .join('')}</select></label>
@@ -1373,7 +1373,7 @@ async function viewProgramTimetable(el) {
        <div class="row"><label>من<input type="time" name="start_time" value="${esc(s?.start_time || '')}" required></label>
          <label>إلى<input type="time" name="end_time" value="${esc(s?.end_time || '')}" required></label></div>
        <label>النشاط / المحتوى<input name="title" value="${esc(s?.title || '')}" placeholder="مثال: أفلا ينظرون"></label>
-       <label>المرافق<select name="teacher_id"><option value="">—</option>${teachers.filter((t) => t.program_staff || t.program_classes).map((t) => `<option value="${t.id}" ${s?.teacher_id === t.id ? 'selected' : ''}>${esc(t.full_name)}</option>`).join('')}</select></label>
+       <label>المؤطّر<select name="teacher_id"><option value="">—</option>${teachers.filter((t) => t.program_staff || t.program_classes).map((t) => `<option value="${t.id}" ${s?.teacher_id === t.id ? 'selected' : ''}>${esc(t.full_name)}</option>`).join('')}</select></label>
        <label>القاعة<input name="room" value="${esc(s?.room || '')}"></label>`,
       async (data) => {
         if (s) await api('PUT', `/api/program/slots/${s.id}`, data);
@@ -1425,12 +1425,12 @@ async function viewProgramNotes(el) {
   });
 }
 
-// خلاص المرافقين: أجرة شهرية لكل مرافق + بقية مصاريف البرنامج التربوي
+// خلاص المؤطّرين: أجرة شهرية لكل مؤطّر + بقية مصاريف البرنامج التربوي
 async function viewProgramPay(el) {
   if (state.user.role === 'teacher') return viewMyProgramPay(el);
   el.innerHTML = `
-    <div class="page-head"><div><a href="#/home" class="muted small">→ الرئيسية</a><h2>💸 خلاص المرافقين</h2>
-      <p class="muted">أجرة شهرية لكل مرافق. حدّد الأجرة من «قائمة المرافقين».</p></div>${monthPicker('sp-month')}</div>
+    <div class="page-head"><div><a href="#/home" class="muted small">→ الرئيسية</a><h2>💸 خلاص المؤطّرين</h2>
+      <p class="muted">أجرة شهرية لكل مؤطّر. حدّد الأجرة من «قائمة المؤطّرين».</p></div>${monthPicker('sp-month')}</div>
     <div id="sp-body"></div>
     <div id="sp-ledger"></div>`;
   const load = async () => {
@@ -1459,7 +1459,7 @@ async function viewProgramPay(el) {
                   }</span></li>`
               )
               .join('')}</ul>`
-          : '<p class="muted">لا يوجد مرافقون. أضفهم من «قائمة المرافقين».</p>'
+          : '<p class="muted">لا يوجد مؤطّرون. أضفهم من «قائمة المؤطّرين».</p>'
       }</section>`;
     $('#sp-body').querySelectorAll('[data-pay]').forEach((b) =>
       b.addEventListener('click', () => {
@@ -1488,7 +1488,7 @@ async function viewProgramPay(el) {
   await load();
 }
 
-// المرافق: أجرته الشهرية وما قبضه
+// المؤطّر: أجرته الشهرية وما قبضه
 async function viewMyProgramPay(el) {
   const r = await api('GET', '/api/program/staff-pay');
   const me = r.staff[0];
@@ -1684,4 +1684,82 @@ async function viewCenterDebts(el) {
       reload();
     })
   );
+}
+
+// ---------- الأجور: نظرة عامة على كل الإطار ----------
+async function viewSalaries(el) {
+  el.innerHTML = `
+    <div class="page-head"><div><a href="#/home" class="muted small">→ الرئيسية</a><h2>💼 الأجور</h2>
+      <p class="muted">كل أجور الشهر في مكان واحد: مدرّسو دروس الدعم، مؤطّرو البرنامج التربوي، الإدارة والنظافة.</p></div>
+      ${monthPicker('sal-month')}</div>
+    <div id="sal-body"><p class="muted">جاري التحميل…</p></div>`;
+  const ICONS = { support: '📚', program: '🎨', admin: '🏢' };
+  const LINKS = {
+    support: '<a class="btn ghost small" href="#/payroll">خلاص المدرّسين ←</a>',
+    program: '<a class="btn ghost small" href="#/program/staff">قائمة المؤطّرين ←</a>',
+    admin: '<a class="btn ghost small" href="#/staff">إدارة القائمة (+ شخص) ←</a>',
+  };
+  const load = async () => {
+    const month = $('#sal-month').value;
+    const r = await api('GET', '/api/salaries?month=' + month);
+    const rest = Math.max(r.due - r.paid, 0);
+    $('#sal-body').innerHTML = `
+      <div class="fb-kpis">
+        <div class="fb-kpi out"><span>مجموع الأجور المستحقة</span><b>${fmtMoney(r.due)}</b><small>${esc(monthLabel(month))}</small></div>
+        <div class="fb-kpi in"><span>مدفوع</span><b>${fmtMoney(r.paid)}</b><small>${r.due ? Math.round((r.paid / r.due) * 100) : 0}%</small></div>
+        <div class="fb-kpi net ${rest > 0 ? 'neg' : ''}"><span>باقي للخلاص</span><b>${fmtMoney(rest)}</b><small>${rest > 0 ? 'لم يُخلَّص بعد' : 'كل الأجور خالصة'}</small></div>
+      </div>
+      <div class="sal-split">${r.groups
+        .map((g) => `<div class="sal-bar"><span>${ICONS[g.key]} ${esc(g.label)}</span><b>${fmtMoney(g.due)}</b>
+          <i style="width:${r.due ? (g.due / r.due) * 100 : 0}%"></i></div>`)
+        .join('')}</div>
+      ${r.groups
+        .map(
+          (g) => `<section class="card">
+            <div class="section-head"><h3>${ICONS[g.key]} ${esc(g.label)}</h3>
+              <span class="muted small">مستحق <b>${fmtMoney(g.due)}</b> · مدفوع <b class="in">${fmtMoney(g.paid)}</b></span>${LINKS[g.key]}</div>
+            ${
+              g.people.length
+                ? `<div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الحساب</th><th>المستحق</th><th>المدفوع</th><th></th></tr></thead><tbody>${g.people
+                    .map(
+                      (p) => `<tr><td><b>${esc(p.name)}</b></td><td class="muted small">${esc(p.basis)}</td><td>${fmtMoney(p.due)}</td>
+                        <td>${p.paid ? `<b class="in">${fmtMoney(p.paid)}</b>` : '—'}</td>
+                        <td class="row-actions">${
+                          p.link
+                            ? `<a class="btn ghost small" href="${p.link}">التفاصيل</a>`
+                            : p.payment_id
+                              ? `<span class="badge good">✓ خالص</span> <button class="link danger small" data-undo="${p.payment_id}">إلغاء</button>`
+                              : `<button class="btn small" data-pay="${esc(p.pay)}" data-name="${esc(p.name)}" data-due="${p.due}">خلاص</button>`
+                        }</td></tr>`
+                    )
+                    .join('')}</tbody></table></div>`
+                : '<p class="muted">لا أحد في هذا الصنف هذا الشهر.</p>'
+            }</section>`
+        )
+        .join('')}
+      <p class="muted small">مدرّسو الدعم يُخلَّصون بالساعة من «خلاص المدرّسين» (ساعات جدول الأوقات). كل أجرة تُسجَّل مصروفًا في نشاطها: الدعم، التربوي، أو المصاريف العامة للمركز.</p>`;
+    $('#sal-body').querySelectorAll('[data-pay]').forEach((b) =>
+      b.addEventListener('click', () =>
+        openModal(
+          `خلاص ${b.dataset.name} — ${monthLabel(month)}`,
+          `<div class="row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(b.dataset.due || '')}" required></label>
+             <label>تاريخ الدفع<input type="date" name="date" value="${today()}"></label></div>`,
+          async (data) => {
+            await api('POST', b.dataset.pay, { ...data, month });
+            toast('تم تسجيل الخلاص');
+            load();
+          }
+        )
+      )
+    );
+    $('#sal-body').querySelectorAll('[data-undo]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirmAction('إلغاء هذا الخلاص؟')) return;
+        await api('DELETE', `/api/ledger/${b.dataset.undo}`).catch((err) => toast(err.message, true));
+        load();
+      })
+    );
+  };
+  bindMonth('sal-month', load);
+  await load();
 }

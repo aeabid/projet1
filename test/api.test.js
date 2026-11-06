@@ -945,3 +945,19 @@ test('facilitator paid per child: 40 for each paying child in her classes', asyn
   const me = sp.staff.find((s) => s.id === amel.id);
   assert.deepStrictEqual([me.children_count, me.expected], [2, 80]);
 });
+
+test('salaries overview: support teachers, program staff, admin and cleaning staff', async () => {
+  const admin = await login('admin', 'admin123');
+  const cleaner = (await admin('POST', '/api/staff', { full_name: 'Samira M', activity: 'general', role: 'عاملة نظافة', monthly_salary: 300 })).body.staff;
+  const month = '2026-10';
+  let r = (await admin('GET', `/api/salaries?month=${month}`)).body;
+  const adminGroup = r.groups.find((g) => g.key === 'admin');
+  assert.ok(adminGroup.people.some((p) => p.id === cleaner.id && p.due === 300 && p.paid === 0));
+  assert.strictEqual((await admin('POST', `/api/staff/${cleaner.id}/pay`, { month })).status, 201);
+  assert.strictEqual((await admin('POST', `/api/staff/${cleaner.id}/pay`, { month })).status, 409);
+  r = (await admin('GET', `/api/salaries?month=${month}`)).body;
+  assert.strictEqual(r.groups.find((g) => g.key === 'admin').people.find((p) => p.id === cleaner.id).paid, 300);
+  assert.deepStrictEqual(r.groups.map((g) => g.key), ['support', 'program', 'admin']);
+  const users = (await admin('GET', '/api/users?role=teacher')).body.users;
+  assert.ok(users.every((u) => Array.isArray(u.subjects) && typeof u.program_classes === 'number'));
+});

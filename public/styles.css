@@ -970,3 +970,7 @@ label .mp-label { flex: 1; justify-content: flex-start; }
 .lv-chip { display: inline-grid; place-items: center; min-width: 28px; height: 26px; padding: 0 .55rem; border-radius: 8px; background: var(--soft); color: var(--feed-purple); font-weight: 700; font-size: .82rem; white-space: nowrap; }
 .lv-chip.all { background: #e7f8ef; color: #1f7a4d; }
 .chip-check.lg { font-size: .9rem; padding: .35rem .8rem; font-weight: 600; } .chip-check:has(input:checked) { background: var(--feed-purple); color: #fff; }
+.sal-split { display: grid; gap: .5rem; margin-bottom: 1rem; }
+.sal-bar { position: relative; display: flex; justify-content: space-between; gap: 1rem; padding: .65rem .9rem; border-radius: 12px; background: var(--card); border: 1px solid var(--border); overflow: hidden; font-weight: 600; }
+.sal-bar > * { position: relative; z-index: 1; }
+.sal-bar i { position: absolute; inset-block: 0; inset-inline-start: 0; background: var(--soft); z-index: 0; }

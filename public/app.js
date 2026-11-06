@@ -305,6 +305,7 @@ const routes = [
   [/^#\/support\/teachers$/, (el) => viewUsers(el, 'teacher', 'support')],
   [/^#\/group-message$/, (el) => viewGroupMessage(el)],
   [/^#\/partners$/, (el) => viewPartners(el)],
+  [/^#\/salaries$/, (el) => viewSalaries(el)],
   [/^#\/center-debts$/, (el) => viewCenterDebts(el)],
   [/^#\/courses$/, (el) => viewCourses(el)],
   [/^#\/courses\/(\d+)$/, (el, id) => viewCourse(el, Number(id))],
@@ -355,6 +356,7 @@ async function router() {
       return;
     }
   }
+  if ($('#modal').open) $('#modal').close();
   renderTopbar();
   if (state.user && (hash === '#/' || isPublic)) {
     location.hash = homeFor(state.user);
@@ -409,10 +411,10 @@ const NAV = {
         ['#/program', 'الأطفال والأقسام والغيابات'],
         ['#/program/timetable', 'جداول الأوقات'],
         ['#/program/posts', 'أنشطة ورسائل الأقسام'],
-        ['', 'المرافقون'],
-        ['#/program/staff', 'قائمة المرافقين'],
-        ['#/program/pay', 'خلاص المرافقين'],
-        ['#/program/notes', 'ملاحظات المرافقين'],
+        ['', 'المؤطّرون'],
+        ['#/program/staff', 'قائمة المؤطّرين'],
+        ['#/program/pay', 'خلاص المؤطّرين'],
+        ['#/program/notes', 'ملاحظات المؤطّرين'],
       ],
     },
     ['#/courses', 'الدورات والأنشطة'],
@@ -430,7 +432,7 @@ const NAV = {
         ['#/receipts', 'الوصولات'],
         ['#/ledger', 'المداخيل والمصاريف'],
         ['#/fees', 'التعريفات والتخفيضات'],
-        ['#/staff', 'الإطار والأجور'],
+        ['#/salaries', 'الأجور (كل الإطار)'],
         ['#/center-debts', 'ديون المركز'],
         ['#/partners', 'الشركاء والمرابيح'],
       ],
@@ -447,7 +449,7 @@ const NAV = {
       label: 'الحسابات',
       items: [
         ['#/support/teachers', 'مدرّسو دروس الدعم'],
-        ['#/program/staff', 'مرافقو البرنامج التربوي'],
+        ['#/program/staff', 'مؤطّرو البرنامج التربوي'],
         ['#/parents', 'الأولياء'],
         ['#/parent-requests', 'طلبات أولياء Google'],
         ['#/admins', 'الإدارة'],
@@ -471,7 +473,7 @@ const NAV = {
     ['#/todo', 'مهامي'],
     ['#/account', 'حسابي'],
   ],
-  // مرافق البرنامج التربوي: لا علاقة له بدروس الدعم
+  // مؤطّر البرنامج التربوي: لا علاقة له بدروس الدعم
   program_staff: [
     ['#/home', 'الرئيسية'],
     ['#/program/posts', 'أنشطة ورسائل قسمي'],
@@ -846,6 +848,7 @@ function subjectsCell(s) {
 
 async function viewStudents(el) {
   const role = state.user.role;
+  state.parentsCache = null;
   if (role === 'parent') return viewMyChildren(el);
 
   const level = sessionStorage.getItem('levelFilter') || '';
@@ -854,7 +857,7 @@ async function viewStudents(el) {
       <h2>التلاميذ</h2>
       ${
         role === 'admin'
-          ? `<div class="actions"><a class="btn ghost" href="#/photos">📷 صور بالجملة</a>
+          ? `<div class="actions">
              <button class="btn" id="add-student">+ تلميذ جديد</button></div>`
           : ''
       }
@@ -938,9 +941,16 @@ async function viewStudents(el) {
 }
 
 async function studentForm(student, onDone) {
-  const { users: parents } = await api('GET', '/api/users?role=parent');
-  const s = student ? (await api('GET', `/api/students/${student.id}`)).student : {};
-  const enrolled = new Set(s.pack ? [] : (s.subjects || []).map((x) => x.id));
+  // معطيات القائمة تكفي (لا حاجة لتحميل ملف التلميذ كاملًا)، والأولياء يُحمّلون مرة واحدة
+  const listed = student && ('subject_ids' in student || student.subjects);
+  const [parents, s] = await Promise.all([
+    (state.parentsCache ??= api('GET', '/api/users?role=parent').then((r) => r.users)).catch((e) => {
+      state.parentsCache = null;
+      throw e;
+    }),
+    !student ? {} : listed ? student : api('GET', `/api/students/${student.id}`).then((r) => r.student),
+  ]);
+  const enrolled = new Set(s.pack ? [] : s.subjects ? s.subjects.map((x) => x.id) : s.subject_ids || []);
   openModal(
     student ? 'تعديل تلميذ' : 'تلميذ جديد',
     `<label>الاسم واللقب<input name="full_name" value="${esc(s.full_name)}" required></label>
@@ -1579,10 +1589,10 @@ function bindFinance(el, f, { kind, id }, reload) {
 
 // ---------- المستخدمون ----------
 async function viewUsers(el, role, scope = null) {
-  const titles = { teacher: scope === 'program' ? 'المرافقون (البرنامج التربوي)' : scope === 'support' ? 'مدرّسو دروس الدعم' : 'المعلمون', parent: 'الأولياء', admin: 'حسابات الإدارة' };
-  const addLabels = { teacher: scope === 'program' ? '+ مرافق جديد' : '+ مدرّس جديد', parent: '+ ولي جديد', admin: '+ حساب إدارة' };
+  const titles = { teacher: scope === 'program' ? 'المؤطّرون (البرنامج التربوي)' : scope === 'support' ? 'مدرّسو دروس الدعم' : 'المعلمون', parent: 'الأولياء', admin: 'حسابات الإدارة' };
+  const addLabels = { teacher: scope === 'program' ? '+ مؤطّر جديد' : '+ مدرّس جديد', parent: '+ ولي جديد', admin: '+ حساب إدارة' };
   let { users } = await api('GET', `/api/users?role=${role}`);
-  // المدرّسون: من عنده مواد (دروس الدعم) / المرافقون: من عنده قسم في التربوي. الحساب الجديد بلا شيء يظهر في الاثنين
+  // المدرّسون: من عنده مواد (دروس الدعم) / المؤطّرون: من عنده قسم في التربوي. الحساب الجديد بلا شيء يظهر في الاثنين
   const isProgram = (u) => !!u.program_staff;
   if (scope === 'support') users = users.filter((u) => !isProgram(u));
   if (scope === 'program') users = users.filter(isProgram);
@@ -1638,7 +1648,7 @@ async function viewUsers(el, role, scope = null) {
        ${role === 'teacher' && !prog ? `<label>معلوم الساعة (د.ت)<input name="hourly_rate" inputmode="decimal" value="${esc(u.hourly_rate ?? '')}" placeholder="مثال: 20"></label>` : ''}
        ${prog ? `<div class="row"><label>الأجرة الشهرية الثابتة (د.ت)<input name="monthly_salary" inputmode="decimal" value="${esc(u.monthly_salary ?? '')}" placeholder="مثال: 500"></label>
          <label>أو مبلغ عن كل طفل يدفع (د.ت)<input name="pay_per_child" inputmode="decimal" value="${esc(u.pay_per_child ?? '')}" placeholder="مثال: 40"></label></div>
-         <p class="muted small">القسم الذي يرافقه يُحدَّد من «الأطفال والأقسام» (تعديل القسم ← المرافق).</p>` : ''}
+         <p class="muted small">القسم الذي يرافقه يُحدَّد من «الأطفال والأقسام» (تعديل القسم ← المؤطّر).</p>` : ''}
        <div class="row">
          <label>رقم بطاقة التعريف<input name="cin" value="${esc(u.cin)}" dir="ltr" inputmode="numeric"></label>
          <label>البريد الإلكتروني<input name="email" type="email" value="${esc(u.email)}" dir="ltr"></label>
