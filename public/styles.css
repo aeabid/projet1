@@ -1451,3 +1451,5 @@ body.sel-open { overflow: hidden; }
 .pk-bal { font-family: 'Tajawal', sans-serif; font-weight: 800; border-radius: 12px; padding: .3rem .7rem; white-space: nowrap; }
 .pk-bal.due { background: #fde8f1; color: #be185d; } .pk-bal.ok { background: #e7f8ef; color: #15803d; }
 @media (prefers-color-scheme: dark) { .pk-bal.due { background: #3a1a2b; color: #f9a8d4; } .pk-bal.ok { background: #16301f; color: #86efac; } }
+/* عناوين أقسام القائمة: واضحة وبخط عريض */
+.nav-sub, #vmenu .nav-sub, #subnav .nav-sub { font-weight: 800 !important; color: var(--text) !important; opacity: 1 !important; font-size: .82rem; letter-spacing: 0; }
