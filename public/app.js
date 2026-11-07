@@ -1103,6 +1103,7 @@ async function studentForm(student, onDone) {
        <label>تخفيض شهري (د.ت)<input name="discount" inputmode="decimal" value="${esc(s.discount ?? '')}" placeholder="0"></label>
        <label>سبب التخفيض<input name="discount_reason" value="${esc(s.discount_reason || '')}" placeholder="مثال: إخوة، منحة"></label>
      </div>
+     <label class="check"><input type="checkbox" name="no_sibling" ${s.no_sibling ? 'checked' : ''}> بدون تخفيض الإخوة (يدفع المعلوم كاملًا حتى لو عندو إخوة)</label>
      <label>ملاحظات التسجيل<input name="remarks" value="${esc(s.remarks)}" placeholder="مثال: ما عدا الفرنسية"></label>
      <label>الولي
        <select name="parent_id">

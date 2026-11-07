@@ -729,3 +729,6 @@ CREATE INDEX product_sales_sold_on_idx ON product_sales (sold_on);
 CREATE INDEX product_sales_student_idx ON product_sales (student_id);
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_sales ENABLE ROW LEVEL SECURITY;
+
+-- تلميذ يدفع معلومه كاملًا حتى لو عنده إخوة مسجّلون
+ALTER TABLE students ADD COLUMN no_sibling BOOLEAN NOT NULL DEFAULT false;
