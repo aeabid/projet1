@@ -877,7 +877,6 @@ async function viewProgramChild(el, id) {
           ${role === 'admin' && c.contact_phone ? `<span class="phone-line"><span dir="ltr">${esc(c.contact_phone)}</span>${waButton(c.contact_phone)}</span>` : ''}
           ${c.status === 'left' ? `<span class="badge status-left">خرج في ${fmtDate(c.end_date)}</span>` : ''}
           ${c.student_id && role !== 'teacher' ? `<a class="badge level" href="#/students/${c.student_id}">مسجّل أيضًا في دروس الدعم ←</a>` : ''}</div>
-        ${c.notes && role === 'admin' ? `<p class="remarks">📝 ${esc(c.notes)}</p>` : ''}
       </div>
     </div>
     ${fileTabs([['follow', 'المتابعة'], finance ? ['pay', 'الخلاص'] : null, role === 'admin' ? ['info', 'المعلومات'] : null])}

@@ -1042,6 +1042,7 @@ async function viewStudents(el) {
           : ''
       }
     </div>
+    ${role === 'admin' ? '<div class="stats compact" id="sup-stats"></div>' : ''}
     <div class="filters">
       <select id="f-level" aria-label="المستوى">${levelOptions(level, true)}</select>
       ${
@@ -1114,7 +1115,24 @@ async function viewStudents(el) {
     timer = setTimeout(load, 250);
   });
   $('#add-student')?.addEventListener('click', () => studentForm(null, load));
+  if (role === 'admin') loadSupportStats();
   await load();
+}
+
+// إحصائيات صغيرة فوق قائمة الدعم (مثل البرنامج التربوي) — على كل التلاميذ الذين يدرسون
+async function loadSupportStats() {
+  const { students } = await api('GET', '/api/students?status=studying').catch(() => ({ students: null }));
+  const box = $('#sup-stats');
+  if (!box || !students) return;
+  const levels = new Set(students.map((s) => s.level)).size;
+  const expected = students.filter((s) => !s.free).reduce((t, s) => t + (s.monthly_fee || 0), 0);
+  const due = students.filter((s) => !s.free && s.balance > 0);
+  const owed = due.reduce((t, s) => t + s.balance, 0);
+  box.innerHTML = `
+    <div class="stat"><b>${students.length}</b><span>تلميذ يدرس</span></div>
+    <div class="stat"><b>${levels}</b><span>مستويات</span></div>
+    <div class="stat good"><b>${fmtMoney(expected)}</b><span>المنتظر شهريًا</span></div>
+    <div class="stat warn"><b>${fmtMoney(owed)}</b><span>مبالغ غير مدفوعة · ${due.length} تلميذ</span></div>`;
 }
 
 // السعر حسب التسعيرة: عدد حصص المواد المختارة في الأسبوع، أو الباقة
