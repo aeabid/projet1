@@ -304,6 +304,7 @@ const routes = [
   [/^#\/program\/posts$/, (el) => viewProgramPosts(el)],
   [/^#\/program\/staff$/, (el) => viewUsers(el, 'teacher', 'program')],
   [/^#\/support\/teachers$/, (el) => viewUsers(el, 'teacher', 'support')],
+  [/^#\/support\/teachers\/timetable$/, (el) => viewTimetable(el, 'teacher')],
   [/^#\/group-message$/, (el) => viewGroupMessage(el)],
   [/^#\/partners$/, (el) => viewPartners(el)],
   [/^#\/salaries$/, (el) => viewSalaries(el)],
@@ -429,6 +430,7 @@ const NAV = {
         ['#/subjects', 'المواد'],
         ['', 'المدرّسون'],
         ['#/support/teachers', 'قائمة المدرّسين'],
+        ['#/support/teachers/timetable', 'جداول أوقات المدرّسين'],
         ['#/payroll', 'خلاص المدرّسين (الرواتب الشهرية)'],
         ['', 'التقييم'],
         ['#/evaluations', 'إدخال الملاحظات'],
@@ -2736,7 +2738,7 @@ function weekView(slots, { showLevel = false, showTeacher = false, showChild = f
     .join('')}</div>`;
 }
 
-async function viewTimetable(el) {
+async function viewTimetable(el, mode = 'level') {
   const role = state.user.role;
   if (role === 'teacher') {
     const { slots } = await api('GET', '/api/timetable');
@@ -2757,22 +2759,39 @@ async function viewTimetable(el) {
     return;
   }
 
-  // الإدارة: جدول كل مستوى
+  // الإدارة: جدول كل مستوى، أو جدول كل معلّم (نفس الحصص: أي تعديل يظهر في الاثنين)
+  const byTeacher = mode === 'teacher';
   const level = sessionStorage.getItem('ttLevel') || state.meta.levels[0].code;
   const teachers = (await api('GET', '/api/users?role=teacher')).users.filter((u) => !u.program_staff);
+  const tSel = Number(sessionStorage.getItem('ttTeacher')) || teachers[0]?.id;
   el.innerHTML = `
     <div class="page-head">
-      <h2>جداول الأوقات</h2>
+      <div><h2>${byTeacher ? 'جداول أوقات المدرّسين' : 'جداول الأوقات'}</h2>
+        <p class="muted small">${byTeacher ? 'يُستخرج وحده من جداول المستويات: أي تعديل هنا يظهر في جدول التلاميذ، والعكس.' : 'جدول المدرّس يُستخرج وحده من هنا: <a href="#/support/teachers/timetable">جداول أوقات المدرّسين ←</a>'}</p></div>
       <button class="btn" id="add-slot">+ حصة جديدة</button>
     </div>
-    <div class="filters"><select id="tt-level">${levelOptions(level)}</select></div>
+    <div class="filters">${
+      byTeacher
+        ? `<select id="tt-teacher" aria-label="المدرّس">${teachers.map((t) => `<option value="${t.id}" ${t.id === tSel ? 'selected' : ''}>${esc(t.full_name)}</option>`).join('')}</select>`
+        : `<select id="tt-level" aria-label="المستوى">${levelOptions(level)}</select>`
+    }</div>
+    <p class="muted small" id="tt-sum"></p>
     <div class="card" id="tt-week"></div>`;
 
   const load = async () => {
-    const lvl = $('#tt-level').value;
-    sessionStorage.setItem('ttLevel', lvl);
-    const { slots } = await api('GET', '/api/timetable?level=' + encodeURIComponent(lvl));
-    $('#tt-week').innerHTML = weekView(slots, { showTeacher: true, editable: true, showLevel: false });
+    let slots;
+    if (byTeacher) {
+      const tid = $('#tt-teacher').value;
+      sessionStorage.setItem('ttTeacher', tid);
+      ({ slots } = await api('GET', '/api/timetable?teacher=' + encodeURIComponent(tid)));
+      const hours = slots.reduce((t, x) => t + (toMinutes(x.end_time) - toMinutes(x.start_time)), 0) / 60;
+      $('#tt-sum').textContent = `${slots.length} حصة في الأسبوع · ${hours.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} ساعة`;
+    } else {
+      const lvl = $('#tt-level').value;
+      sessionStorage.setItem('ttLevel', lvl);
+      ({ slots } = await api('GET', '/api/timetable?level=' + encodeURIComponent(lvl)));
+    }
+    $('#tt-week').innerHTML = weekView(slots, { showTeacher: !byTeacher, editable: true, showLevel: byTeacher });
     $('#tt-week').querySelectorAll('[data-edit-slot]').forEach((b) =>
       b.addEventListener('click', () => slotForm(slots.find((x) => x.id === Number(b.dataset.editSlot))))
     );
@@ -2786,11 +2805,12 @@ async function viewTimetable(el) {
   };
 
   const slotForm = (slot) => {
-    const lvl = slot?.level || $('#tt-level').value;
+    const lvl = slot?.level || (byTeacher ? state.meta.levels[0].code : $('#tt-level').value);
     const subjects = state.meta.subjects.filter((x) => !x.levels || x.levels.includes(lvl));
+    const presetTeacher = !slot && byTeacher ? Number($('#tt-teacher').value) : null;
     openModal(
-      slot ? 'تعديل الحصة' : `حصة جديدة — ${levelLabel(lvl)}`,
-      `<input type="hidden" name="level" value="${esc(lvl)}">
+      slot ? 'تعديل الحصة' : byTeacher ? 'حصة جديدة' : `حصة جديدة — ${levelLabel(lvl)}`,
+      `${byTeacher ? `<label>المستوى<select name="level" id="slot-level">${levelOptions(lvl)}</select></label>` : `<input type="hidden" name="level" value="${esc(lvl)}">`}
        <div class="row">
          <label>اليوم<select name="day">${DAYS_AR.map((d, i) => `<option value="${i + 1}" ${slot?.day === i + 1 ? 'selected' : ''}>${d}</option>`).join('')}</select></label>
          <label>الفوج (اختياري)<input name="group_name" value="${esc(slot?.group_name || '')}" placeholder="كل الأفواج"></label>
@@ -2815,16 +2835,28 @@ async function viewTimetable(el) {
     const syncTeachers = () => {
       const sid = Number($('#slot-subject').value);
       const list = teachers.filter((t) => t.subjects.some((x) => x.id === sid));
+      const want = slot?.teacher_id || presetTeacher;
       $('#slot-teacher').innerHTML =
         '<option value="">— بدون —</option>' +
-        list.map((t) => `<option value="${t.id}" ${t.id === slot?.teacher_id ? 'selected' : ''}>${esc(t.full_name)}</option>`).join('');
-      if (list.length === 1 && !slot) $('#slot-teacher').value = list[0].id;
+        list.map((t) => `<option value="${t.id}" ${t.id === want ? 'selected' : ''}>${esc(t.full_name)}</option>`).join('');
+      if (list.length === 1 && !slot && !presetTeacher) $('#slot-teacher').value = list[0].id;
+    };
+    // في جدول المدرّس: المواد حسب المستوى المختار، ومواد هذا المدرّس أولًا
+    const syncSubjects = () => {
+      const l = $('#slot-level').value;
+      const mine = teachers.find((t) => t.id === presetTeacher)?.subjects.map((x) => x.id) || [];
+      const subs = state.meta.subjects.filter((x) => (!x.levels || x.levels.includes(l)) && (!mine.length || mine.includes(x.id)));
+      $('#slot-subject').innerHTML = subjectOptions(subs.length ? subs : state.meta.subjects.filter((x) => !x.levels || x.levels.includes(l)), slot?.subject_id);
+      syncTeachers();
     };
     $('#slot-subject').addEventListener('change', syncTeachers);
-    syncTeachers();
+    if ($('#slot-level')) {
+      $('#slot-level').addEventListener('change', syncSubjects);
+      syncSubjects();
+    } else syncTeachers();
   };
 
-  $('#tt-level').addEventListener('change', load);
+  ($('#tt-level') || $('#tt-teacher')).addEventListener('change', load);
   $('#add-slot').addEventListener('click', () => slotForm(null));
   await load();
 }
