@@ -558,8 +558,7 @@ function childForm(c, { classes, parents, students, children }, onDone) {
      </div>
      <label class="check"><input type="checkbox" name="free" ${c?.free ? 'checked' : ''}> مجاني</label>
      <label>ملاحظات<input name="notes" value="${esc(c?.notes || '')}"></label>
-     <p class="muted small">الشهر الأول بالـ prorata حسب تاريخ البداية. تخفيض الإخوة يُحسب وحده من «التعريفات والتخفيضات».
-       ${c ? '<button type="button" class="link danger" id="del-child">حذف الطفل نهائيًا</button>' : ''}</p>`,
+     ${c ? '<p><button type="button" class="link danger" id="del-child">حذف الطفل نهائيًا</button></p>' : ''}`,
     async (data) => {
       if (c) await api('PUT', `/api/program/children/${c.id}`, data);
       else await api('POST', '/api/program/children', data);

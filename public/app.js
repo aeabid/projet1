@@ -1111,8 +1111,7 @@ async function studentForm(student, onDone) {
            .map((p) => `<option value="${p.id}" ${p.id === s.parent_id ? 'selected' : ''}>${esc(p.full_name)} (${esc(p.username)})</option>`)
            .join('')}
        </select>
-     </label>
-     <p class="muted small">أضف حساب الولي من صفحة «الأولياء» إن لم يكن موجودًا. الشهر الأول يُحتسب بالـ prorata حسب تاريخ بداية الدراسة (وكذلك شهر الخروج). إذا لم يُحدَّد التاريخ يُحتسب من شهر التسجيل. لا مستحقات في الانتظار، ولا في جويلية وأوت.</p>`,
+     </label>`,
     async (data) => {
       if (data.pack) data.subject_ids = [];
       if (student) await api('PUT', `/api/students/${student.id}`, data);
