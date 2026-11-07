@@ -41,60 +41,138 @@ function bindMonth(id, load) {
 
 // ---------- الرئيسية: حوصلة الشهر ثم أيقونات الدخول ----------
 async function viewHome(el) {
-  // إداري بلا صلاحية الإحصائيات: رئيسية بالروابط فقط (دون أرقام مالية)
-  if (!can('stats')) {
-    const links = [
-      can('school') && ['#/students', '📚', 'تلاميذ الدعم'],
-      can('school') && ['#/program', '🎨', 'البرنامج التربوي'],
-      can('school') && ['#/attendance', '✅', 'الغيابات'],
-      ['#/receipts', '🧾', 'الوصولات'],
-      can('expenses') && ['#/ledger', '💸', 'المداخيل والمصاريف'],
-      can('accounting') && ['#/accounting', '🏦', 'فضاء المحاسبة'],
-      ['#/messages', '✉️', 'الرسائل'],
-      ['#/todo', '📌', 'المهام'],
-    ].filter(Boolean);
-    el.innerHTML = `${heroBanner({ sub: 'مرحبًا بك في فضاء إدارة مركز فيد.', art: '🌿' })}
-      <div id="home-cash"></div>
-      <div class="home-links">${links.map(([h, i, l]) => `<a class="home-link" href="${h}"><span>${i}</span><b>${l}</b></a>`).join('')}</div>`;
-    loadCashCard($('#home-cash'));
-    return;
-  }
+  // الرئيسية: أيقونات الدخول فقط (الإحصائيات في «لوحة المشرف»)
+  const tiles = [
+    can('stats') && ['#/board', '📊', 'لوحة المشرف', 'الإحصائيات، الخزينة اليومية، المداخيل والمصاريف، الغيابات، الإشعارات', 'board'],
+    can('school') && ['#/dashboard', '📚', 'دروس الدعم', 'التلاميذ، الجداول، الغيابات، الخلاص، المعلمون'],
+    can('school') && ['#/program', '🎨', 'البرنامج التربوي', 'الأقسام حسب الأعمار، الأطفال، الخلاص الشهري'],
+    can('school') && ['#/courses', '🏕️', 'الدورات والأنشطة', 'دورات العطل والصيف، الأنشطة، الرحلات والمخيمات'],
+    ['#/todo', '🗂️', 'إدارة المركز', 'المهام، الاجتماعات والقرارات، التنبيهات', 'alt'],
+    !can('stats') && can('cash') && ['#/cash', '💵', 'الصندوق اليومي', 'ما دخل وما خرج اليوم، والمفروض في الصندوق'],
+    can('accounting') && ['#/accounting', '🏦', 'فضاء المحاسبة', 'مداخيل البنك، مصاريف المحاسبة، الوصولات والملفات', 'alt'],
+  ].filter(Boolean);
   el.innerHTML = `
-    ${heroBanner({ sub: 'حوصلة مالية وإدارية لمركز فيد: دروس الدعم، البرنامج التربوي، الدورات والمصاريف.', art: '📊', actions: monthPicker('home-month') })}
-    <div id="home-cash"></div>
+    ${heroBanner({ sub: 'مركز فيد: اختر الفضاء الذي تريد الدخول إليه.', art: '🌿' })}
     <div id="home-db"></div>
-    <div id="home-kpis"></div>
-    <div id="home-alerts"></div>
-    <div id="home-summary"><p class="muted">جاري التحميل…</p></div>
-    <div class="home-tiles">
-      <a class="home-tile" href="#/dashboard"><span class="ico">📚</span><b>دروس الدعم</b>
-        <small>التلاميذ، الجداول، الغيابات، الخلاص، المعلمون</small></a>
-      <a class="home-tile" href="#/program"><span class="ico">🎨</span><b>البرنامج التربوي</b>
-        <small>الأقسام حسب الأعمار، الأطفال، الخلاص الشهري</small></a>
-      <a class="home-tile" href="#/courses"><span class="ico">🏕️</span><b>الدورات والأنشطة</b>
-        <small>دورات العطل والصيف، الأنشطة، الرحلات والمخيمات</small></a>
-      <a class="home-tile alt" href="#/todo"><span class="ico">🗂️</span><b>إدارة المركز</b>
-        <small>المهام، الاجتماعات والقرارات، التنبيهات</small></a>
-      <a class="home-tile" href="#/finance"><span class="ico">📈</span><b>تفاصيل المردودية المالية</b>
-        <small>المداخيل والمصاريف والربح حسب كل نشاط</small></a>
-    </div>
-    <p class="quick-actions">
-      <button class="btn ghost small" id="q-expense">+ مصروف</button>
-      <button class="btn ghost small" id="q-income">+ مدخول آخر</button>
-      <a class="btn ghost small" href="#/staff">الإطار والأجور</a>
-    </p>`;
+    <div class="home-tiles">${tiles
+      .map(([h, i, t, sub, cls]) => `<a class="home-tile ${cls || ''}" href="${h}"><span class="ico">${i}</span><b>${t}</b><small>${sub}</small></a>`)
+      .join('')}</div>`;
+  // نقل المعطيات إلى Supabase (يظهر فقط إن كانت قاعدة Supabase فارغة والقديمة فيها معطيات)
+  if (state.user.super_admin)
+    api('GET', '/api/admin/db-status').then((db) => {
+      if (!$('#home-db') || !db.migration_available || db.target_rows > 0 || !db.source_rows) return;
+      $('#home-db').innerHTML = `<div class="card alert-card"><b>🔄 قاعدة Supabase فارغة.</b>
+        <button class="btn" id="db-migrate">نقل كل المعطيات إلى Supabase</button></div>`;
+      $('#db-migrate').addEventListener('click', async (e) => {
+        if (!confirmAction('نقل كل المعطيات من قاعدة Netlify إلى Supabase؟')) return;
+        e.target.disabled = true;
+        try {
+          await api('POST', '/api/admin/migrate-db', {});
+          location.reload();
+        } catch (err) {
+          toast(err.message, true);
+          e.target.disabled = false;
+        }
+      });
+    }).catch(() => {});
+}
 
+// ---------- لوحة المشرف: صفحات الإحصائيات ----------
+const BOARD_TABS = [
+  ['', '📊', 'نظرة عامة'],
+  ['cash', '💵', 'الخزينة اليومية'],
+  ['month', '📅', 'المداخيل والمصاريف'],
+  ['absences', '📉', 'الغيابات والملاحظات'],
+  ['notices', '🔔', 'الإشعارات'],
+];
+async function viewBoardHub(el, tab = '') {
+  el.innerHTML = `
+    <div class="board-tabs" role="tablist">${BOARD_TABS.filter(([k]) => k !== 'cash' || can('cash'))
+      .map(([k, i, l]) => `<a href="#/board${k ? '/' + k : ''}" class="${k === tab ? 'on' : ''}" role="tab"><span>${i}</span>${l}<b class="bt-badge" data-badge="${k}" hidden></b></a>`)
+      .join('')}</div>
+    <div id="board-page"></div>`;
+  const page = $('#board-page');
+  // عدد الإشعارات على التبويب
+  api('GET', '/api/board/notices')
+    .then((n) => {
+      const c = n.salaries.length + n.unpaid.length;
+      const b = el.querySelector('[data-badge="notices"]');
+      if (b && c) (b.textContent = c), (b.hidden = false);
+    })
+    .catch(() => {});
+  if (tab === 'cash') return viewCash(page);
+  if (tab === 'month') return boardMonth(page);
+  if (tab === 'absences') return boardAbsences(page);
+  if (tab === 'notices') return boardNotices(page);
+  return boardOverview(page);
+}
+
+// نظرة عامة: مؤشرات اليوم والشهر، ثم السنة (الرسم البياني والجداول)
+async function boardOverview(el) {
+  el.innerHTML = `<div id="bo-kpis"></div><div id="bo-year"></div>`;
+  api('GET', '/api/kpis').then((k) => {
+    if (!$('#bo-kpis')) return;
+    $('#bo-kpis').innerHTML = `<div class="kpis">
+      <a class="kpi" href="#/people"><b>${k.support_active + k.program_active}</b><span>تلميذ وطفل مسجّل<small>${k.support_active} دعم · ${k.program_active} تربوي</small></span></a>
+      <a class="kpi" href="#/board/month"><b class="${k.net >= 0 ? 'in' : 'out'}">${k.net >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(k.net))}</b><span>صافي ${esc(monthLabel(k.month))}</span></a>
+      <a class="kpi" href="#/board/notices"><b>${k.collection_rate ?? '—'}${k.collection_rate !== null ? '%' : ''}</b><span>نسبة الاستخلاص هذا الشهر</span></a>
+      <a class="kpi" href="#/debts"><b class="${k.debts_total ? 'out' : ''}">${fmtMoney(k.debts_total)}</b><span>متخلّد بذمّة ${k.debtors} عائلة</span></a>
+      <a class="kpi" href="#/payroll"><b>${fmtHours(k.teacher_hours)}</b><span>ساعات تدريس هذا الشهر</span></a>
+      <a class="kpi" href="#/board/absences"><b>${k.absences_month}</b><span>غياب هذا الشهر</span></a>
+      <a class="kpi" href="#/courses"><b>${k.events_open}</b><span>دورة ونشاط مفتوح</span></a>
+      <a class="kpi" href="#/todo"><b>${k.tasks_open}</b><span>مهمة مفتوحة${k.tasks_overdue ? `<small class="out">${k.tasks_overdue} متأخرة</small>` : ''}</span></a>
+    </div>`;
+  });
+  await viewBoard($('#bo-year'));
+}
+
+// رسم أعمدة بسيط (أفقي): [[label, value, color?]]
+function hbars(rows, { money = false, max } = {}) {
+  const top = max || Math.max(1, ...rows.map((r) => Math.abs(r[1])));
+  return `<div class="hbars">${rows
+    .map(
+      ([l, v, c]) => `<div class="hb-row"><span class="hb-l">${esc(l)}</span><span class="hb-track"><i style="width:${Math.max(2, (Math.abs(v) / top) * 100)}%;${c ? `background:${c}` : ''}"></i></span><b class="hb-v">${money ? fmtMoney(v) : v}</b></div>`
+    )
+    .join('')}</div>`;
+}
+const ACT_COLORS = { support: '#7c3aed', program: '#db2777', courses: '#0ea5e9', products: '#10b981', general: '#94a3b8' };
+const ACT_LABELS = { support: '📚 الدعم', program: '🎨 التربوي', courses: '🏕️ الدورات', products: '📗 المنتجات', general: '🏢 عامة' };
+
+// المداخيل والمصاريف: الشهر حسب البرنامج، ثم أسبوعًا بأسبوع
+async function boardMonth(el) {
+  el.innerHTML = `<div class="page-head"><h2>📅 المداخيل والمصاريف</h2><div class="actions">${monthPicker('bm-month')}
+      <button class="btn ghost small" id="bm-exp">− مصروف</button><button class="btn ghost small" id="bm-inc">+ مدخول آخر</button></div></div>
+    <div id="bm-body"><p class="muted">جاري التحميل…</p></div>`;
   const load = async () => {
-    const s = await api('GET', '/api/finance/summary?month=' + $('#home-month').value);
-    if (!$('#home-summary')) return;
+    const month = $('#bm-month').value;
+    const [s, w] = await Promise.all([api('GET', '/api/finance/summary?month=' + month), api('GET', '/api/board/weeks?month=' + month)]);
+    if (!$('#bm-body')) return;
     const t = s.totals;
-    $('#home-summary').innerHTML = `
-      <div class="stats">
-        <div class="stat good"><b>${fmtMoney(t.income)}</b><span>المداخيل المقبوضة</span></div>
-        <div class="stat warn"><b>${fmtMoney(t.expense)}</b><span>المصاريف المدفوعة</span></div>
-        <div class="stat ${t.net >= 0 ? 'profit' : 'loss'}"><b>${t.net >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(t.net))}</b>
-          <span>${t.net > 0 ? 'ربح الشهر' : t.net < 0 ? 'خسارة الشهر' : 'الصافي'}</span></div>
+    const maxW = Math.max(1, ...w.weeks.map((x) => Math.max(x.income_total, x.expense_total)));
+    $('#bm-body').innerHTML = `
+      <div class="fb-kpis">
+        <div class="fb-kpi in"><span>المداخيل المقبوضة</span><b>${fmtMoney(t.income)}</b><small>${esc(monthLabel(month))}</small></div>
+        <div class="fb-kpi out"><span>المصاريف المدفوعة</span><b>${fmtMoney(t.expense)}</b><small>حسب تاريخ الدفع</small></div>
+        <div class="fb-kpi net ${t.net < 0 ? 'neg' : ''}"><span>${t.net >= 0 ? 'ربح الشهر' : 'خسارة الشهر'}</span><b>${fmtMoney(Math.abs(t.net))}</b><small>المداخيل − المصاريف</small></div>
       </div>
+      <section class="card"><div class="section-head"><h3>📆 أسبوعًا بأسبوع</h3><span class="legend"><span><i style="background:#16a34a"></i>مداخيل</span><span><i style="background:#db2777"></i>مصاريف</span></span></div>
+        <div class="wk-chart">${w.weeks
+          .map(
+            (x) => `<div class="wk-col"><div class="wk-bars"><i class="in" style="height:${(x.income_total / maxW) * 100}%" title="${fmtMoney(x.income_total)}"></i><i class="out" style="height:${(x.expense_total / maxW) * 100}%" title="${fmtMoney(x.expense_total)}"></i></div>
+              <b>الأسبوع ${x.week}</b><small>${Number(x.from.slice(8))}–${Number(x.to.slice(8))}</small><span class="${x.net >= 0 ? 'in' : 'out'}">${fmtMoney(x.net)}</span></div>`
+          )
+          .join('')}</div>
+        <div class="table-wrap"><table><thead><tr><th>الأسبوع</th>${Object.keys(ACT_LABELS).map((k) => `<th>${ACT_LABELS[k]}</th>`).join('')}<th>المداخيل</th><th>المصاريف</th><th>الصافي</th></tr></thead>
+          <tbody>${w.weeks
+            .map(
+              (x) => `<tr><td class="nowrap"><b>${x.week}</b> <span class="muted small">${Number(x.from.slice(8))}–${Number(x.to.slice(8))}</span></td>${Object.keys(ACT_LABELS)
+                .map((k) => `<td class="nowrap"><span class="in">${x.income[k] ? fmtMoney(x.income[k]) : '—'}</span>${x.expense[k] ? `<div class="out small">− ${fmtMoney(x.expense[k])}</div>` : ''}</td>`)
+                .join('')}<td class="in nowrap">${fmtMoney(x.income_total)}</td><td class="out nowrap">${fmtMoney(x.expense_total)}</td><td>${netBadge(x.net)}</td></tr>`
+            )
+            .join('')}</tbody></table></div></section>
+      <section class="card"><h3>🧩 حسب البرنامج</h3>
+        ${hbars(s.activities.filter((a) => a.income || a.expense).map((a) => [a.label, a.net, a.net >= 0 ? ACT_COLORS[a.key] || '#7c3aed' : '#db2777']), { money: true })}
+      </section>
       <div class="activity-cards">${s.activities
         .map(
           (a) => `<div class="card activity">
@@ -105,68 +183,103 @@ async function viewHome(el) {
               <div><span class="muted small">المصاريف</span><b class="out">${fmtMoney(a.expense)}</b>
                 ${a.expense_lines.map((l) => `<div class="line"><span>${esc(l.label)}</span><span>${fmtMoney(l.amount)}</span></div>`).join('')}</div>
             </div>
-            ${
-              a.shared_pct
-                ? `<div class="line"><span>نصيبه من المصاريف المشتركة (${a.shared_pct}%)</span><span class="out">${fmtMoney(a.shared)}</span></div>
-                   <div class="line total"><span>الصافي بعد التوزيع</span>${netBadge(a.net_after)}</div>`
-                : ''
-            }
+            ${a.shared_pct ? `<div class="line"><span>نصيبه من المصاريف المشتركة (${a.shared_pct}%)</span><span class="out">${fmtMoney(a.shared)}</span></div><div class="line total"><span>الصافي بعد التوزيع</span>${netBadge(a.net_after)}</div>` : ''}
           </div>`
         )
         .join('')}</div>
       ${unpaidNote(s.accrual)}`;
   };
-  // نقل المعطيات إلى Supabase (يظهر فقط إن كانت قاعدة Supabase فارغة والقديمة فيها معطيات)
-  api('GET', '/api/admin/db-status').then((db) => {
-    if (!$('#home-db') || !db.migration_available || db.target_rows > 0 || !db.source_rows) return;
-    $('#home-db').innerHTML = `<div class="card alert-card">
-      <b>🔄 التطبيق يعمل الآن على Supabase، وقاعدة البيانات الجديدة فارغة.</b>
-      <p>المعطيات الحالية (التلاميذ، الخلاص، الحسابات…) مازالت في قاعدة Netlify. انقلها كلها بنقرة واحدة.</p>
-      <button class="btn" id="db-migrate">نقل كل المعطيات إلى Supabase</button></div>`;
-    $('#db-migrate').addEventListener('click', async (e) => {
-      if (!confirmAction('نقل كل المعطيات من قاعدة Netlify إلى Supabase؟ (قاعدة Netlify تبقى كما هي)')) return;
-      e.target.disabled = true;
-      e.target.textContent = 'جاري النقل…';
-      try {
-        const { copied } = await api('POST', '/api/admin/migrate-db', {});
-        const total = Object.values(copied).reduce((t, n) => t + n, 0);
-        alert(`تم نقل ${total} سجل. ادخل من جديد بكلمة سرّك المعتادة.`);
-        location.reload();
-      } catch (err) {
-        toast(err.message, true);
-        e.target.disabled = false;
-        e.target.textContent = 'نقل كل المعطيات إلى Supabase';
-      }
-    });
-  });
-
-  // مؤشرات المركز والتنبيهات (للشهر الحالي)
-  api('GET', '/api/kpis').then((k) => {
-    if (!$('#home-kpis')) return;
-    $('#home-kpis').innerHTML = `<div class="kpis">
-      <a class="kpi" href="#/people"><b>${k.support_active + k.program_active}</b><span>تلميذ وطفل مسجّل<small>${k.support_active} دعم · ${k.program_active} تربوي</small></span></a>
-      <a class="kpi" href="#/courses"><b>${k.events_open}</b><span>دورة ونشاط مفتوح</span></a>
-      <a class="kpi" href="#/finance"><b class="${k.net >= 0 ? 'in' : 'out'}">${k.net >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(k.net))}</b><span>صافي ${esc(monthLabel(k.month))}</span></a>
-      <a class="kpi" href="#/debts"><b>${k.collection_rate ?? '—'}${k.collection_rate !== null ? '%' : ''}</b><span>نسبة الاستخلاص هذا الشهر</span></a>
-      <a class="kpi" href="#/debts"><b class="${k.debts_total ? 'out' : ''}">${fmtMoney(k.debts_total)}</b><span>ديون ${k.debtors} عائلة</span></a>
-      <a class="kpi" href="#/payroll"><b>${fmtHours(k.teacher_hours)}</b><span>ساعات تدريس هذا الشهر</span></a>
-      <a class="kpi" href="#/todo"><b>${k.tasks_open}</b><span>مهمة مفتوحة${k.tasks_overdue ? `<small class="out">${k.tasks_overdue} متأخرة</small>` : ''}</span></a>
-      <a class="kpi" href="#/attendance"><b>${k.absences_month}</b><span>غياب هذا الشهر</span></a>
-    </div>`;
-  });
-  api('GET', '/api/alerts').then(({ alerts }) => {
-    if (!$('#home-alerts')) return;
-    const top = alerts.filter((a) => a.level !== 'info');
-    $('#home-alerts').innerHTML = top.length
-      ? `<div class="card alerts-box"><div class="section-head"><h3>🔔 تنبيهات</h3><a href="#/alerts" class="small">كل التنبيهات ←</a></div>
-          ${top.map((a) => `<a class="alert-line ${a.level}" href="${a.link}">${a.level === 'urgent' ? '⛔' : '⚠️'} ${esc(a.text)}</a>`).join('')}</div>`
-      : '';
-  });
-  loadCashCard($('#home-cash'));
-  bindMonth('home-month', load);
-  $('#q-expense').addEventListener('click', () => ledgerForm(null, 'expense', load));
-  $('#q-income').addEventListener('click', () => ledgerForm(null, 'income', load));
+  bindMonth('bm-month', load);
+  $('#bm-exp').addEventListener('click', () => ledgerForm(null, 'expense', load));
+  $('#bm-inc').addEventListener('click', () => ledgerForm(null, 'income', load));
   await load();
+}
+
+// الغيابات والملاحظات
+async function boardAbsences(el) {
+  el.innerHTML = `<div class="page-head"><h2>📉 الغيابات والملاحظات</h2>${monthPicker('ba-month')}</div><div id="ba-body"><p class="muted">جاري التحميل…</p></div>`;
+  const load = async () => {
+    const d = await api('GET', '/api/board/attendance?month=' + $('#ba-month').value);
+    if (!$('#ba-body')) return;
+    const maxS = Math.max(1, ...d.series.map((x) => x.support + x.program));
+    const CAT = { level: 'المستوى', behavior: 'السلوك', content: 'متابعة المحتوى', general: 'عامة' };
+    const RAT = { excellent: ['ممتاز', '#16a34a'], good: ['حسن', '#22c55e'], average: ['متوسط', '#f59e0b'], weak: ['ضعيف', '#db2777'] };
+    $('#ba-body').innerHTML = `
+      <div class="fb-kpis">
+        <div class="fb-kpi out"><span>غيابات تلاميذ الدعم</span><b>${d.totals.support}</b><small>${d.totals.unjustified} غير مبرّر</small></div>
+        <div class="fb-kpi net"><span>غيابات أطفال التربوي</span><b>${d.totals.program}</b><small>${esc(monthLabel(d.month))}</small></div>
+        <div class="fb-kpi ${d.totals.teachers ? 'out' : 'in'}"><span>غيابات المدرّسين</span><b>${d.totals.teachers}</b><small>حصة لم تُحتسب</small></div>
+        <div class="fb-kpi in"><span>الملاحظات</span><b>${d.totals.notes}</b><small>الدعم والتربوي</small></div>
+      </div>
+      <section class="card"><div class="section-head"><h3>📈 آخر 6 أشهر</h3><span class="legend"><span><i style="background:#7c3aed"></i>الدعم</span><span><i style="background:#db2777"></i>التربوي</span><span><i style="background:#f59e0b"></i>المدرّسون</span></span></div>
+        <div class="wk-chart">${d.series
+          .map(
+            (x) => `<div class="wk-col"><div class="wk-bars stack"><i style="height:${(x.support / maxS) * 100}%;background:#7c3aed" title="الدعم ${x.support}"></i><i style="height:${(x.program / maxS) * 100}%;background:#db2777" title="التربوي ${x.program}"></i></div>
+              <b>${esc(MONTHS_AR[Number(x.month.slice(5)) - 1])}</b><small>${x.support + x.program} غياب${x.teachers ? ` · ${x.teachers} مدرّس` : ''}</small></div>`
+          )
+          .join('')}</div></section>
+      <div class="board-grid">
+        <section class="card"><h3>📚 حسب المستوى</h3>${d.by_level.length ? hbars(d.by_level.map((x) => [levelLabel(x.level) + (x.unjustified ? ` (${x.unjustified} غير مبرّر)` : ''), x.n, '#7c3aed'])) : '<p class="muted">لا غيابات.</p>'}</section>
+        <section class="card"><h3>📖 حسب المادة</h3>${d.by_subject.length ? hbars(d.by_subject.map((x) => [x.subject, x.n, '#8b5cf6'])) : '<p class="muted">لا غيابات.</p>'}</section>
+        <section class="card"><h3>🎨 التربوي حسب القسم</h3>${d.by_class.length ? hbars(d.by_class.map((x) => [x.class_name, x.n, '#db2777'])) : '<p class="muted">لا غيابات.</p>'}</section>
+        <section class="card"><h3>👩‍🏫 غيابات المدرّسين</h3>${d.teachers.length ? hbars(d.teachers.map((x) => [x.full_name, x.n, '#f59e0b'])) : '<p class="muted">كل المدرّسين حضروا ✓</p>'}</section>
+      </div>
+      <section class="card"><div class="section-head"><h3>⚠️ الأكثر غيابًا هذا الشهر</h3><a class="link small" href="#/attendance">تسجيل الغيابات ←</a></div>
+        ${
+          d.top_students.length
+            ? `<div class="pkids">${d.top_students
+                .map((x) => `<a class="pkid" href="#/students/${x.id}"><span class="pk-main"><b>${esc(x.full_name)}</b><small>${esc(levelLabel(x.level))}</small></span><span class="pk-bal ${x.unjustified ? 'due' : 'ok'}">${x.n} غياب${x.unjustified ? ` · ${x.unjustified} غير مبرّر` : ''}</span></a>`)
+                .join('')}</div>`
+            : '<p class="muted">لا غيابات هذا الشهر 👏</p>'
+        }</section>
+      <div class="board-grid">
+        <section class="card"><h3>📝 الملاحظات حسب النوع</h3>${d.notes.length ? hbars(d.notes.map((x) => [CAT[x.category] || x.category, x.n, '#0ea5e9'])) : '<p class="muted">لا ملاحظات.</p>'}</section>
+        <section class="card"><h3>⭐ تقييمات المعلّمين</h3>${d.ratings.length ? hbars(Object.keys(RAT).map((k) => [RAT[k][0], d.ratings.find((r) => r.rating === k)?.n || 0, RAT[k][1]])) : '<p class="muted">لا تقييمات.</p>'}</section>
+      </div>`;
+  };
+  bindMonth('ba-month', load);
+  await load();
+}
+
+// الإشعارات: أجور غير مدفوعة، تلاميذ لم يدفعوا الشهر، وبقية التنبيهات
+async function boardNotices(el) {
+  el.innerHTML = `<div class="page-head"><div><h2>🔔 الإشعارات</h2><p class="muted small">ما يحتاج قرارًا أو متابعة اليوم.</p></div></div><div id="bn-body"><p class="muted">جاري التحميل…</p></div>`;
+  const [n, { alerts }] = await Promise.all([api('GET', '/api/board/notices'), api('GET', '/api/alerts').catch(() => ({ alerts: [] }))]);
+  if (!$('#bn-body')) return;
+  const other = alerts.filter((a) => a.level !== 'info');
+  $('#bn-body').innerHTML = `
+    <div class="fb-kpis">
+      <div class="fb-kpi ${n.salaries.length ? 'out' : 'in'}"><span>💼 أجور ${esc(monthLabel(n.prev))} غير مدفوعة</span><b>${fmtMoney(n.totals.salaries)}</b><small>${n.salaries.length} شخص</small></div>
+      <div class="fb-kpi ${n.unpaid.length ? 'out' : 'in'}"><span>👨‍👩‍👧 لم يدفعوا ${esc(monthLabel(n.month))}</span><b>${fmtMoney(n.totals.unpaid_month)}</b><small>${n.unpaid.length} تلميذ وطفل</small></div>
+      <div class="fb-kpi net"><span>المتخلّد بذمّتهم (كل الأشهر)</span><b>${fmtMoney(n.totals.unpaid_all)}</b><small><a href="#/debts">كل الديون ←</a></small></div>
+    </div>
+    <section class="card"><div class="section-head"><h3>💼 أجور ${esc(monthLabel(n.prev))} لم تُدفع بعد</h3><a class="link small" href="#/salaries">الأجور ←</a></div>
+      ${
+        n.salaries.length
+          ? `<div class="pkids">${n.salaries
+              .map((x) => `<a class="pkid" href="${x.link}"><span class="pk-main"><b>${esc(x.name)}</b><small>${esc(x.group)} · مستحق ${fmtMoney(x.due)} · مدفوع ${fmtMoney(x.paid)}</small></span><span class="pk-bal due">${fmtMoney(x.rest)}</span></a>`)
+              .join('')}</div>`
+          : '<p class="muted">كل أجور الشهر الماضي خالصة ✓</p>'
+      }</section>
+    <section class="card"><div class="section-head"><h3>👨‍👩‍👧 لم يدفعوا ${esc(monthLabel(n.month))} (منذ 1 الشهر)</h3><a class="link small" href="#/students" id="bn-list">القائمة ←</a></div>
+      ${
+        n.unpaid.length
+          ? `<div class="pkids">${n.unpaid
+              .map(
+                (x) => `<div class="pkid"><a class="pk-main" href="${x.link}"><b>${esc(x.full_name)}</b><small>${x.kind === 'support' ? esc(levelLabel(x.level)) : `🎨 ${esc(x.class_name || 'التربوي')}`}${x.parent ? ` · ${esc(x.parent)}` : ''}</small></a>
+                  ${x.phone && waNumber(x.phone) ? waButton(x.phone, `السلام عليكم ${x.parent || ''}، نذكّركم بمعلوم ${monthLabel(n.month)} لـ ${x.full_name}: ${fmtMoney(x.month_rest)}. شكرًا — مركز فيد`) : ''}
+                  <span class="pk-bal due" title="كل الأشهر: ${fmtMoney(x.balance)}">${fmtMoney(x.month_rest)}</span></div>`
+              )
+              .join('')}</div>`
+          : '<p class="muted">الكل دفع هذا الشهر ✓</p>'
+      }</section>
+    ${
+      other.length
+        ? `<section class="card"><div class="section-head"><h3>⚠️ تنبيهات أخرى</h3><a class="link small" href="#/alerts">كل التنبيهات ←</a></div>
+            ${other.map((a) => `<a class="alert-line ${a.level}" href="${a.link}">${a.level === 'urgent' ? '⛔' : '⚠️'} ${esc(a.text)}</a>`).join('')}</section>`
+        : ''
+    }`;
+  $('#bn-list')?.addEventListener('click', () => sessionStorage.setItem('payFilter', 'due'));
 }
 
 function unpaidNote(acc) {
