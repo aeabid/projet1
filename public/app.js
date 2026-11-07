@@ -849,6 +849,65 @@ function subjectsCell(s) {
   return s.subject_names.map((n) => `<span class="pill small">${esc(SUBJECT_SHORT[n] || n)}</span>`).join(' ');
 }
 
+// ---------- عرض التلاميذ: جدول أو بطاقات ----------
+const VIEW_ICONS = {
+  table: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>',
+  cards: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg>',
+};
+function studentsView() {
+  let v = null;
+  try {
+    v = localStorage.getItem('studentsView');
+  } catch {}
+  return v === 'table' || v === 'cards' ? v : matchMedia('(max-width: 640px)').matches ? 'cards' : 'table';
+}
+// لون مميز لكل مستوى (شريط البطاقة)
+function levelHue(level) {
+  const n = parseInt(level, 10);
+  return { 5: 262, 6: 200, 7: 152, 8: 28, 9: 330 }[n] ?? 262;
+}
+function studentCards(students, role) {
+  const admin = role === 'admin';
+  return `<div class="scards">${students
+    .map((s) => {
+      const money = !admin
+        ? ''
+        : s.balance > 0
+        ? `<div class="sc-stat owe"><b>${fmtMoney(s.balance)}</b><span>الباقي</span></div>`
+        : s.monthly_fee || s.free
+        ? `<div class="sc-stat ok"><b>✓</b><span>${s.free ? 'مجاني' : 'خالص'}</span></div>`
+        : '<div class="sc-stat"><b>—</b><span>الخلاص</span></div>';
+      return `<article class="scard" style="--lv:${levelHue(s.level)}">
+        <a class="sc-head" href="#/students/${s.id}">
+          ${avatar(s, 'md')}
+          <div class="sc-id">
+            <h3>${esc(s.full_name)}</h3>
+            <div class="sc-tags"><span class="sc-level">${esc(levelLabel(s.level))}</span>${s.status !== 'studying' ? statusBadge(s.status) : ''}</div>
+          </div>
+        </a>
+        <div class="sc-subjects">${subjectsCell(s)}</div>
+        <div class="sc-parent">
+          <span class="sc-ico" aria-hidden="true">👤</span>
+          <div><b>${esc(s.parent_name || 'بدون ولي')}</b>${s.parent_phone ? `<span dir="ltr" class="muted small">${esc(s.parent_phone)}</span>` : ''}</div>
+          ${admin && s.parent_phone ? waButton(s.parent_phone) : ''}
+        </div>
+        <div class="sc-stats">
+          <div class="sc-stat ${s.unjustified_count ? 'warn' : ''}"><b>${s.absence_count}</b><span>غيابات${s.unjustified_count ? ` · ${s.unjustified_count} غير مبرر` : ''}</span></div>
+          <div class="sc-stat"><b>${s.note_count}</b><span>ملاحظات</span></div>
+          ${money}
+        </div>
+        ${
+          admin
+            ? `<div class="sc-actions"><a class="btn ghost small" href="#/students/${s.id}">الملف</a>
+                <button class="btn ghost small" data-edit="${s.id}">تعديل</button>
+                <button class="btn link danger small" data-del="${s.id}" title="حذف">حذف</button></div>`
+            : ''
+        }
+      </article>`;
+    })
+    .join('')}</div>`;
+}
+
 async function viewStudents(el) {
   const role = state.user.role;
   state.parentsCache = null;
@@ -875,8 +934,17 @@ async function viewStudents(el) {
           : ''
       }
       <input id="f-q" type="search" placeholder="بحث بالاسم…">
+      <div class="view-toggle" role="group" aria-label="طريقة العرض">
+        <button type="button" data-view="table" title="جدول">${VIEW_ICONS.table}<span>جدول</span></button>
+        <button type="button" data-view="cards" title="بطاقات">${VIEW_ICONS.cards}<span>بطاقات</span></button>
+      </div>
     </div>
     <div id="students-list"></div>`;
+
+  let view = studentsView();
+  const syncToggle = () => el.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === view));
+  syncToggle();
+  let current = [];
 
   const load = async () => {
     const params = new URLSearchParams();
@@ -888,8 +956,17 @@ async function viewStudents(el) {
     if (status) params.set('status', status);
     if ($('#f-q').value.trim()) params.set('q', $('#f-q').value.trim());
     const { students } = await api('GET', '/api/students?' + params);
-    $('#students-list').innerHTML = students.length
-      ? `<div class="table-wrap"><table>
+    current = students;
+    render();
+  };
+
+  const render = () => {
+    const students = current;
+    $('#students-list').innerHTML = !students.length
+      ? '<div class="card muted">لا يوجد تلاميذ.</div>'
+      : view === 'cards'
+      ? studentCards(students, role)
+      : `<div class="table-wrap as-table"><table>
           <thead><tr><th>الاسم</th><th>المستوى</th><th>المواد</th><th>الولي</th><th>الغيابات</th><th>الملاحظات</th>${
             role === 'admin' ? '<th>الباقي</th><th></th>' : ''
           }</tr></thead>
@@ -916,8 +993,7 @@ async function viewStudents(el) {
                 }
               </tr>`
             )
-            .join('')}</tbody></table></div>`
-      : '<div class="card muted">لا يوجد تلاميذ.</div>';
+            .join('')}</tbody></table></div>`;
 
     $('#students-list').querySelectorAll('[data-edit]').forEach((b) =>
       b.addEventListener('click', () => studentForm(students.find((s) => s.id === Number(b.dataset.edit)), load))
@@ -932,6 +1008,16 @@ async function viewStudents(el) {
     );
   };
 
+  el.querySelectorAll('[data-view]').forEach((b) =>
+    b.addEventListener('click', () => {
+      view = b.dataset.view;
+      try {
+        localStorage.setItem('studentsView', view);
+      } catch {}
+      syncToggle();
+      render();
+    })
+  );
   $('#f-level').addEventListener('change', load);
   $('#f-status')?.addEventListener('change', load);
   let timer;
