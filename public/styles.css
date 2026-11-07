@@ -1377,3 +1377,6 @@ body.sel-open { overflow: hidden; }
 .mc-pedit { font-size: .85rem; padding: 0 .2rem; text-decoration: none !important; }
 .mc-edited { font-size: .68rem; font-weight: 700; color: #9a6400; background: #fff3df; border-radius: 999px; padding: 0 .45rem; }
 @media (prefers-color-scheme: dark) { .mc-edited { background: #3a2a12; color: #fcd34d; } }
+.pf-sum { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .4rem 1rem; background: #fde8f1; color: #9d174d; border-radius: 14px; padding: .65rem .9rem; margin-bottom: .8rem; font-size: .9rem; }
+.pf-sum b { font-family: 'Tajawal', sans-serif; font-size: 1.05rem; }
+@media (prefers-color-scheme: dark) { .pf-sum { background: #3a1a2b; color: #f9a8d4; } }

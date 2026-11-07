@@ -387,6 +387,7 @@ async function viewProgram(el) {
       <select id="pf-status" aria-label="الحالة">${[['active', 'يدرس'], ['left', 'خرج'], ['', 'كل الحالات']]
         .map(([v, l]) => `<option value="${v}" ${(sessionStorage.getItem('progStatus') ?? 'active') === v ? 'selected' : ''}>${l}</option>`)
         .join('')}</select>
+      ${payFilterSelect('pf-pay')}
       <input id="pf-q" type="search" placeholder="بحث بالاسم…">
       <button class="btn ghost small" id="pf-edit-class" hidden>✎ تعديل القسم</button>
       ${viewToggle()}
@@ -406,13 +407,14 @@ async function viewProgram(el) {
     $('#pf-edit-class').hidden = !k;
     $('#pf-edit-class').dataset.editClass = k ? k.id : '';
     $('#pf-class-info').textContent = k ? [k.age_range, k.teacher_name && `المؤطّر: ${k.teacher_name}`, k.notes].filter(Boolean).join(' · ') : '';
-    const list = children.filter(
+    const list0 = children.filter(
       (c) => (!f || String(c.class_id) === f) && (!st || c.status === st) && (!q || c.full_name.toLowerCase().includes(q) || String(c.contact_name || '').toLowerCase().includes(q))
     );
+    const list = applyPayFilter(list0, $('#pf-pay').value);
     const owedCell = (c) => (c.free ? '<span class="badge free">مجاني</span>' : c.balance > 0 ? `<b class="owed">${fmtMoney(c.balance)}</b>` : c.monthly_fee && !c.free ? '<span class="badge good">خالص</span>' : '—');
     const feeCell = (c) => `${c.free ? '<span class="muted">—</span>' : fmtMoney(c.monthly_fee)}${c.sibling_pct ? `<div class="muted small">إخوة −${c.sibling_pct}%</div>` : ''}`;
     const badges = (c) => `${c.status === 'left' ? ' <span class="badge status-left">خرج</span>' : ''}${c.student_id ? ' <span class="badge level">+ دروس الدعم</span>' : ''}`;
-    $('#prog-list').innerHTML = !list.length
+    $('#prog-list').innerHTML = payFilterSummary(list, $('#pf-pay').value) + (!list.length
       ? '<div class="card muted">لا يوجد أطفال بهذه الشروط.</div>'
       : view === 'cards'
       ? `<div class="scards">${list
@@ -455,7 +457,7 @@ async function viewProgram(el) {
                 <td>${payButton('program', c)}</td>
               </tr>`
             )
-            .join('')}</tbody></table></div>`;
+            .join('')}</tbody></table></div>`);
     bindPayButtons($('#prog-list'), reload);
   };
   const reload = () => viewProgram(el);
@@ -464,6 +466,7 @@ async function viewProgram(el) {
   $('#pf-class').addEventListener('change', render);
   $('#pf-status').addEventListener('change', render);
   $('#pf-q').addEventListener('input', render);
+  $('#pf-pay').addEventListener('change', () => (sessionStorage.setItem('payFilter', $('#pf-pay').value), render()));
   const classForm = (k) =>
     openModal(
       k ? 'تعديل القسم' : 'قسم جديد',

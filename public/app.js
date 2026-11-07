@@ -914,6 +914,24 @@ function bindPayButtons(root, reload) {
   );
 }
 
+// فلتر الخلاص في القوائم: الكل، لم يدفع بعد (باقي عليه)، خالص
+function payFilterSelect(id) {
+  const v = sessionStorage.getItem('payFilter') || '';
+  return `<select id="${id}" aria-label="الخلاص">${[['', 'كل الخلاص'], ['due', 'لم يدفع بعد'], ['ok', 'خالص']]
+    .map(([k, l]) => `<option value="${k}" ${v === k ? 'selected' : ''}>${l}</option>`)
+    .join('')}</select>`;
+}
+function applyPayFilter(list, f) {
+  if (f === 'due') return list.filter((x) => !x.free && x.balance > 0).sort((a, b) => b.balance - a.balance);
+  if (f === 'ok') return list.filter((x) => x.free || (x.monthly_fee && x.balance <= 0));
+  return list;
+}
+function payFilterSummary(list, f) {
+  if (f !== 'due') return '';
+  const total = list.reduce((t, x) => t + x.balance, 0);
+  return `<div class="pf-sum"><span>💰 <b>${list.length}</b> لم يدفعو بعد</span><span>المجموع الباقي: <b>${fmtMoney(total)}</b></span></div>`;
+}
+
 function studentCards(students, role) {
   const admin = role === 'admin';
   return `<div class="scards">${students
@@ -975,6 +993,7 @@ async function viewStudents(el) {
               .join('')}</select>`
           : ''
       }
+      ${role === 'admin' ? payFilterSelect('f-pay') : ''}
       <input id="f-q" type="search" placeholder="بحث بالاسم…">
       ${viewToggle()}
     </div>
@@ -998,8 +1017,8 @@ async function viewStudents(el) {
   };
 
   const render = () => {
-    const students = current;
-    $('#students-list').innerHTML = !students.length
+    const students = applyPayFilter(current, $('#f-pay')?.value);
+    $('#students-list').innerHTML = payFilterSummary(students, $('#f-pay')?.value) + (!students.length
       ? '<div class="card muted">لا يوجد تلاميذ.</div>'
       : view === 'cards'
       ? studentCards(students, role)
@@ -1025,7 +1044,7 @@ async function viewStudents(el) {
                 ${role === 'admin' ? `<td>${payButton('support', s)}</td>` : ''}
               </tr>`
             )
-            .join('')}</tbody></table></div>`;
+            .join('')}</tbody></table></div>`);
 
     bindPayButtons($('#students-list'), load);
   };
@@ -1033,6 +1052,7 @@ async function viewStudents(el) {
   bindViewToggle(el, 'studentsView', () => view, (v) => (view = v), render);
   $('#f-level').addEventListener('change', load);
   $('#f-status')?.addEventListener('change', load);
+  $('#f-pay')?.addEventListener('change', () => (sessionStorage.setItem('payFilter', $('#f-pay').value), render()));
   let timer;
   $('#f-q').addEventListener('input', () => {
     clearTimeout(timer);
