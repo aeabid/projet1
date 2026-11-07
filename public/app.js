@@ -305,6 +305,7 @@ const routes = [
   [/^#\/program\/staff$/, (el) => viewUsers(el, 'teacher', 'program')],
   [/^#\/support\/teachers$/, (el) => viewUsers(el, 'teacher', 'support')],
   [/^#\/support\/teachers\/timetable$/, (el) => viewTimetable(el, 'teacher')],
+  [/^#\/support\/teachers\/absences$/, (el) => viewTeacherAbsences(el)],
   [/^#\/group-message$/, (el) => viewGroupMessage(el)],
   [/^#\/partners$/, (el) => viewPartners(el)],
   [/^#\/salaries$/, (el) => viewSalaries(el)],
@@ -431,6 +432,7 @@ const NAV = {
         ['', 'المدرّسون'],
         ['#/support/teachers', 'قائمة المدرّسين'],
         ['#/support/teachers/timetable', 'جداول أوقات المدرّسين'],
+        ['#/support/teachers/absences', 'غيابات المدرّسين'],
         ['#/payroll', 'خلاص المدرّسين (الرواتب الشهرية)'],
         ['', 'التقييم'],
         ['#/evaluations', 'إدخال الملاحظات'],
@@ -2822,8 +2824,7 @@ async function viewTimetable(el, mode = 'level') {
        <label>المادة<select name="subject_id" id="slot-subject">${subjectOptions(subjects, slot?.subject_id)}</select></label>
        <label>المعلم<select name="teacher_id" id="slot-teacher"></select></label>
        <label>القاعة / الرابط<input name="room" value="${esc(slot?.room || '')}" placeholder="مثال: قاعة 2 أو عن بعد"></label>
-       <label>تُحتسب ابتداءً من<input type="date" name="valid_from" value="${esc(slot ? today() : today())}"></label>
-       <p class="muted small">${slot ? 'التعديل يُطبَّق ابتداءً من هذا التاريخ، والأسابيع الماضية تبقى كما هي في حساب ساعات المعلم.' : 'لحساب ساعات المعلم: ضع تاريخ بداية الدراسة إن كانت الحصة قائمة منذ مدة.'}</p>`,
+       <p class="muted small">تُحتسب ساعات المدرّس من أول الشهر الحالي إلى آخره (والتعديل يُطبَّق على كامل الشهر). الأشهر الماضية تُسجَّل يدويًا.</p>`,
       async (data) => {
         if (slot) await api('PUT', `/api/timetable/${slot.id}`, data);
         else await api('POST', '/api/timetable', data);
@@ -3037,6 +3038,64 @@ const SESSION_LABELS = {
 const fmtHours = (h) => `${Number(h).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} س`;
 const payMonth = () => sessionStorage.getItem('payMonth') || today().slice(0, 7);
 const weekdayName = (d) => DAYS_AR[(new Date(d + 'T00:00:00Z').getUTCDay() || 7) - 1];
+
+// ---------- غيابات المدرّسين: الكل حاضر افتراضيًا، الإدارة تسجّل الغياب فقط ----------
+async function viewTeacherAbsences(el) {
+  let day = sessionStorage.getItem('taDay') || today();
+  el.innerHTML = `
+    <div class="page-head"><div><h2>غيابات المدرّسين</h2>
+      <p class="muted small">كل مدرّس حاضر افتراضيًا في حصصه. اضغط على الحصة اللي غاب فيها: تُحتسب 0 ساعة في خلاصه.</p></div></div>
+    <div class="ta-day"><button type="button" class="btn ghost small" data-step="-1" aria-label="اليوم السابق">›</button>
+      <input type="date" id="ta-date"><button type="button" class="btn ghost small" data-step="1" aria-label="اليوم الموالي">‹</button>
+      <button type="button" class="btn ghost small" id="ta-today">اليوم</button></div>
+    <div id="ta-list"><p class="muted">جاري التحميل…</p></div>`;
+  const load = async () => {
+    $('#ta-date').value = day;
+    sessionStorage.setItem('taDay', day);
+    const r = await api('GET', '/api/teacher-attendance?date=' + day);
+    if (!$('#ta-list')) return;
+    const absent = r.sessions.filter((x) => x.absent).length;
+    $('#ta-list').innerHTML = `
+      <p class="ta-sum"><b>${esc(weekdayName(day))} ${fmtDate(day)}</b> · ${r.sessions.length} حصة${absent ? ` · <span class="owed">${absent} غياب</span>` : r.sessions.length ? ' · الكل حاضر ✓' : ''}</p>
+      ${r.pause ? `<div class="pf-sum warn-box">⏸ يوم موقوف العدّ (${esc(r.pause)}): الحصص لا تُحتسب هذا اليوم.</div>` : ''}
+      ${
+        r.sessions.length
+          ? `<div class="ta-list">${r.sessions
+              .map(
+                (x) => `<button type="button" class="ta-row ${x.absent ? 'absent' : ''}" data-slot="${x.id}" data-absent="${x.absent ? 1 : 0}">
+                  <span class="ta-time">${esc(x.start_time)}<small>${esc(x.end_time)}</small></span>
+                  <span class="ta-main"><b>${esc(x.teacher_name || '—')}</b><small>${esc(levelLabel(x.level))}${x.group_name ? ` · فوج ${esc(x.group_name)}` : ''} · ${esc(x.subject_name || '')}</small></span>
+                  <span class="ta-state">${x.absent ? '✕ غائب' : '✓ حاضر'}</span></button>`
+              )
+              .join('')}</div>`
+          : '<div class="card muted">لا حصص مبرمجة في هذا اليوم.</div>'
+      }`;
+    $('#ta-list').querySelectorAll('[data-slot]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const absent = b.dataset.absent !== '1';
+        b.disabled = true;
+        try {
+          await api('POST', '/api/teacher-attendance', { date: day, timetable_id: b.dataset.slot, absent });
+          toast(absent ? 'سُجّل الغياب: الحصة لا تُحتسب' : 'أُلغي الغياب');
+        } catch (err) {
+          toast(err.message, true);
+        }
+        load();
+      })
+    );
+  };
+  el.querySelectorAll('[data-step]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const d = new Date(day + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + Number(b.dataset.step));
+      day = d.toISOString().slice(0, 10);
+      load();
+    })
+  );
+  $('#ta-date').addEventListener('change', (e) => ((day = e.target.value || today()), load()));
+  $('#ta-today').addEventListener('click', () => ((day = today()), load()));
+  await load();
+}
 
 async function viewPayroll(el) {
   el.innerHTML = `

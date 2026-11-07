@@ -1461,3 +1461,19 @@ body.sel-open { overflow: hidden; }
 .pr-card .sc-actions .wa-btn { margin-inline-start: auto; }
 .pauses .levels li { align-items: center; }
 @media (prefers-color-scheme: dark) { .pr-warn { background: #3a2a12; color: #fcd34d; } }
+/* ---------- غيابات المدرّسين ---------- */
+.ta-day { display: flex; align-items: center; gap: .4rem; margin-bottom: .8rem; flex-wrap: wrap; }
+.ta-day input { width: auto; margin: 0; }
+.ta-day [data-step] { font-size: 1.2rem; font-weight: 800; width: 40px; padding: .3rem 0; }
+.ta-sum { margin: 0 0 .7rem; }
+.ta-list { display: flex; flex-direction: column; gap: .5rem; }
+.ta-row { display: flex; align-items: center; gap: .8rem; width: 100%; text-align: start; font: inherit; color: inherit; cursor: pointer;
+  background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: .7rem .85rem; box-shadow: var(--shadow-sm); transition: background .15s, border-color .15s; }
+.ta-row:hover { border-color: #d8c6f3; }
+.ta-time { display: flex; flex-direction: column; align-items: center; min-width: 54px; font-family: 'Tajawal', sans-serif; font-weight: 800; color: var(--feed-purple); }
+.ta-time small { font-weight: 500; color: var(--muted); font-size: .75rem; }
+.ta-main { flex: 1; display: flex; flex-direction: column; min-width: 0; } .ta-main small { color: var(--muted); font-size: .8rem; }
+.ta-state { flex: none; border-radius: 999px; padding: .3rem .8rem; font-weight: 700; font-size: .85rem; background: #e7f8ef; color: #15803d; }
+.ta-row.absent { background: #fff5f8; border-color: #f8cfe0; }
+.ta-row.absent .ta-state { background: #fde8f1; color: #be185d; }
+@media (prefers-color-scheme: dark) { .ta-state { background: #16301f; color: #86efac; } .ta-row.absent { background: #2a1520; border-color: #5a2a40; } .ta-row.absent .ta-state { background: #3a1a2b; color: #f9a8d4; } }

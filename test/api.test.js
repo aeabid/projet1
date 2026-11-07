@@ -333,6 +333,8 @@ test('teacher payroll: hours from timetable, adjustments, payments, history kept
 
   // الأربعاء 14:00–15:30 منذ 1 سبتمبر 2025: أيام الأربعاء في سبتمبر 2025 = 3، 10، 17، 24
   const slot = (await admin('POST', '/api/timetable', { level: '5', day: 3, start_time: '14:00', end_time: '15:30', subject_id: math, teacher_id: t.id, valid_from: '2025-09-01' })).body.slot;
+  // حصة قديمة (قائمة منذ سبتمبر 2025): الجديدة تُحتسب من أول الشهر الحالي
+  await pool.query(`UPDATE timetable SET valid_from = '2025-09-01' WHERE id = $1`, [slot.id]);
   let m = (await admin('GET', `/api/payroll/${t.id}?month=2025-09`)).body;
   assert.deepStrictEqual(m.sessions.map((x) => x.date), ['2025-09-03', '2025-09-10', '2025-09-17', '2025-09-24']);
   assert.strictEqual(m.hours_done, 6);
@@ -1134,6 +1136,8 @@ test('teacher hours: counted day by day from the timetable, except absences and 
   // حصة كل اثنين ساعتين منذ سبتمبر
   const slot = await admin('POST', '/api/timetable', { level: '7', day: 1, start_time: '08:00', end_time: '10:00', subject_id: math, teacher_id: t.id, valid_from: '2026-09-01' });
   assert.strictEqual(slot.status, 201);
+  assert.strictEqual((await pool.query('SELECT valid_from::text AS v FROM timetable WHERE id = $1', [slot.body.slot.id])).rows[0].v, `${new Date().toISOString().slice(0, 7)}-01`);
+  await pool.query(`UPDATE timetable SET valid_from = '2026-09-01' WHERE id = $1`, [slot.body.slot.id]);
   const before = (await admin('GET', `/api/payroll/${t.id}?month=2026-10`)).body;
   const mondays = before.sessions.filter((x) => x.status === 'done').length;
   assert.ok(mondays >= 4);
@@ -1149,4 +1153,24 @@ test('teacher hours: counted day by day from the timetable, except absences and 
   assert.strictEqual(list.pauses.length >= 1, true);
   await admin('DELETE', `/api/payroll/pauses/${pz.body.id}`);
   assert.strictEqual((await admin('GET', `/api/payroll/${t.id}?month=2026-10`)).body.hours_done, mondays * 2);
+});
+
+test('teacher absences page: everyone present by default, admin marks an absence', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const math = meta.subjects.find((x) => x.name === 'الرياضيات').id;
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'ta-t', full_name: 'مدرّس حضور', password: 'secret1', subject_ids: [math], hourly_rate: 10 })).body.user;
+  const day = new Date().toISOString().slice(0, 10);
+  const wd = new Date(day + 'T00:00:00Z').getUTCDay() || 7;
+  const slot = (await admin('POST', '/api/timetable', { level: '8', day: wd, start_time: '06:00', end_time: '07:00', subject_id: math, teacher_id: t.id })).body.slot;
+  let r = (await admin('GET', `/api/teacher-attendance?date=${day}`)).body;
+  assert.strictEqual(r.sessions.find((x) => x.id === slot.id).absent, false);
+  await admin('POST', '/api/teacher-attendance', { date: day, timetable_id: slot.id, absent: true });
+  r = (await admin('GET', `/api/teacher-attendance?date=${day}`)).body;
+  assert.strictEqual(r.sessions.find((x) => x.id === slot.id).absent, true);
+  const pay = (await admin('GET', `/api/payroll/${t.id}?month=${day.slice(0, 7)}`)).body;
+  assert.strictEqual(pay.sessions.find((x) => x.date === day && x.timetable_id === slot.id).status, 'absent');
+  await admin('POST', '/api/teacher-attendance', { date: day, timetable_id: slot.id, absent: false });
+  r = (await admin('GET', `/api/teacher-attendance?date=${day}`)).body;
+  assert.strictEqual(r.sessions.find((x) => x.id === slot.id).absent, false);
 });
