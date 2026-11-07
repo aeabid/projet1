@@ -892,14 +892,16 @@ function levelHue(level) {
 }
 // زر الخلاص في القوائم: لونه يقول الحالة (أخضر خالص، وردي باقي، رمادي مجاني أو بلا معلوم)
 function payButton(kind, x) {
+  const n = (v) => fmtMoney(v).replace(/\s*د\.ت$/, '');
   const [cls, top, sub] = x.free
-    ? ['free', 'مجاني', '']
+    ? ['free', 'مجاني', 'معفى']
     : x.balance > 0
-    ? ['due', fmtMoney(x.balance), 'باقي']
+    ? ['due', n(x.balance), 'باقي · د.ت']
     : x.monthly_fee
-    ? ['ok', 'خالص', x.balance < 0 ? `رصيد ${fmtMoney(-x.balance)}` : '✓']
+    ? ['ok', 'خالص', x.balance < 0 ? `رصيد +${n(-x.balance)}` : 'مدفوع']
     : ['none', '—', 'بلا معلوم'];
-  return `<button type="button" class="pay-btn ${cls}" data-pay="${kind}:${x.id}" title="الخلاص"><span class="pb-ico">💰</span><span class="pb-txt"><b>${top}</b>${sub ? `<i>${sub}</i>` : ''}</span></button>`;
+  const ico = cls === 'ok' ? '<path d="M20 6 9 17l-5-5"/>' : '<rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M16 14.5h2"/>';
+  return `<button type="button" class="pay-btn ${cls}" data-pay="${kind}:${x.id}" title="الخلاص"><span class="pb-ico"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ico}</svg></span><span class="pb-txt"><b>${top}</b><i>${sub}</i></span></button>`;
 }
 function bindPayButtons(root, reload) {
   root.querySelectorAll('[data-pay]').forEach((b) =>
