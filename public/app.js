@@ -196,6 +196,8 @@ async function api(method, url, body) {
 }
 
 function toast(message, isError = false) {
+  // خطأ تقني من صفحة غادرها المستخدم قبل اكتمال تحميلها (العنصر لم يعد موجودًا): لا يُعرض
+  if (isError && /properties of (null|undefined)/.test(String(message))) return console.warn('stale page update:', message);
   const el = $('#toast');
   el.textContent = message;
   el.className = 'toast' + (isError ? ' error' : '');

@@ -1019,7 +1019,9 @@ async function viewCash(el) {
     }
   };
   const load = async () => {
+    if (!$('#cs-month')) return;
     c = await api('GET', '/api/cash?month=' + $('#cs-month').value);
+    if (!$('#cs-body')) return; // الصفحة تبدّلت قبل اكتمال التحميل
     const lc = c.last_count;
     $('#cs-body').innerHTML = `
       ${cashTodayHtml(c, false)}
