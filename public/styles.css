@@ -1691,3 +1691,48 @@ body.kb-dragging { cursor: grabbing; user-select: none; }
 @media print { .stamp { color: #1e3a8a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .sig-hand { color: #0b2a6b !important; } }
 .receipt-sign .sig-hand { border: 0; padding: 0; min-width: 0; color: #0b2a6b; }
 .receipt-head p.small { font-size: .74rem; }
+
+/* ===== الوصل (تصميم جديد) ===== */
+.rc { max-width: 680px; margin: 0 auto 1.5rem; background: #fff; color: #1f1633; border-radius: 22px; overflow: hidden; box-shadow: 0 14px 40px rgba(60, 20, 110, .14); border: 1px solid #ece4f7; }
+.rc-band { display: flex; align-items: center; gap: 1rem; padding: 1.1rem 1.3rem; background: linear-gradient(120deg, #4c0480, #61038d 45%, #8b3fd1); color: #fff; }
+.rc-band img { height: 42px; }
+.rc-title { flex: 1; } .rc-title h2 { margin: 0; color: #fff; font-size: 1.35rem; } .rc-title span { font-size: .78rem; opacity: .8; letter-spacing: .04em; }
+.rc-no { text-align: center; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.3); border-radius: 14px; padding: .35rem .8rem; }
+.rc-no small { display: block; font-size: .68rem; opacity: .85; } .rc-no b { font-family: 'Tajawal', sans-serif; font-size: 1.5rem; line-height: 1.1; }
+.rc-center { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .3rem 1rem; padding: .55rem 1.3rem; background: #f7f2fd; font-size: .78rem; color: #6b5c85; border-bottom: 1px solid #ece4f7; }
+.rc-center b { color: #4c0480; }
+.rc-info { display: grid; grid-template-columns: repeat(2, 1fr); gap: .6rem; padding: 1.1rem 1.3rem .4rem; }
+.rc-info > div { background: #faf8fd; border: 1px solid #f0e9f8; border-radius: 14px; padding: .55rem .75rem; display: flex; flex-direction: column; min-width: 0; }
+.rc-info small { font-size: .72rem; color: #8a7ca3; } .rc-info b { font-size: .98rem; } .rc-info i { font-style: normal; font-size: .76rem; color: #6b5c85; }
+.rc-lines { width: calc(100% - 2.6rem); margin: .8rem 1.3rem; border-collapse: separate; border-spacing: 0; font-size: .9rem; }
+.rc-lines th { background: #f3ecfb; color: #4c0480; font-weight: 700; text-align: start; padding: .5rem .7rem; font-size: .8rem; }
+.rc-lines th:first-child { border-start-start-radius: 10px; border-end-start-radius: 10px; } .rc-lines th:last-child { border-start-end-radius: 10px; border-end-end-radius: 10px; }
+.rc-lines td { padding: .55rem .7rem; border-bottom: 1px dashed #e8def4; }
+.rc-lines .rc-amt, .rc-lines th:last-child { text-align: end; } .rc-amt { font-weight: 800; font-family: 'Tajawal', sans-serif; white-space: nowrap; }
+.rc-total { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: .4rem 1.3rem 1rem; padding: .85rem 1.1rem; border-radius: 16px; background: linear-gradient(120deg, #f5efff, #fdf4ff); border: 1px solid #e9dcfa; }
+.rc-total > div { text-align: end; } .rc-total small { display: block; font-size: .78rem; color: #6b5c85; }
+.rc-total b { font-family: 'Tajawal', sans-serif; font-size: 1.9rem; color: #61038d; line-height: 1.1; }
+.rc-paid { display: inline-flex; align-items: center; gap: .3rem; padding: .35rem .8rem; border: 2px solid #1f9d63; color: #1f9d63; border-radius: 10px; font-weight: 800; transform: rotate(-6deg); background: #effaf4; }
+.rc-note { margin: 0 1.3rem 1rem; font-size: .85rem; color: #6b5c85; display: flex; flex-wrap: wrap; gap: .5rem 1rem; }
+.rc-foot { display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: end; padding: .4rem 1.3rem 1rem; }
+.rc-thanks { display: flex; flex-direction: column; gap: .2rem; font-size: .82rem; color: #6b5c85; } .rc-thanks b { color: #1f1633; font-size: .95rem; }
+.rc-sign { display: flex; flex-direction: column; align-items: center; min-width: 260px; }
+.rc-sign > small { width: 100%; text-align: center; color: #8a7ca3; font-size: .74rem; border-bottom: 1px dashed #d9cce9; padding-bottom: .2rem; }
+.rc-sign-art { display: flex; align-items: center; justify-content: center; gap: 0; margin-top: .3rem; }
+.rc-sign-art .stamp { width: 120px; height: 120px; color: #1e3a8a; opacity: .85; transform: rotate(-10deg); mix-blend-mode: multiply; flex: none; }
+.rc-sign-art .signature { margin-inline-end: -1.6rem; z-index: 1; transform: rotate(-4deg); display: flex; flex-direction: column; align-items: center; }
+.rc-sign-art .sig-hand { font-family: 'Great Vibes', cursive; font-size: 2.4rem; line-height: 1.1; color: #0b2a6b; direction: ltr; }
+.rc-sign-art .signature small { font-size: .68rem; color: #8a7ca3; }
+.rc-contact { display: flex; justify-content: center; flex-wrap: wrap; gap: .4rem 1.4rem; padding: .6rem 1rem; background: #61038d; color: #fff; font-size: .8rem; }
+@media (max-width: 560px) {
+  .rc-band { flex-wrap: wrap; } .rc-band img { height: 34px; } .rc-title h2 { font-size: 1.15rem; }
+  .rc-info { grid-template-columns: 1fr 1fr; } .rc-foot { grid-template-columns: 1fr; } .rc-sign { min-width: 0; }
+  .rc-total b { font-size: 1.6rem; }
+}
+@media print {
+  .rc { box-shadow: none; border: 1px solid #ddd; max-width: 100%; }
+  .rc, .rc * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+.rc-title h2 { white-space: nowrap; } .rc-title span { display: block; }
+@media (max-width: 560px) { .rc-band { flex-wrap: nowrap; gap: .7rem; } .rc-title span { font-size: .68rem; } .rc-no b { font-size: 1.25rem; } }
+.rc-lines tbody tr:nth-child(odd) td { background: transparent; }

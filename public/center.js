@@ -193,38 +193,36 @@ async function viewReceipt(el, kind, id) {
         <button class="btn" id="rc-print">🖨 طباعة / PDF</button>
       </div>
     </div>
-    <div class="receipt print-area">
-      <div class="receipt-head">
-        <img src="feed-logo.png" alt="فيد">
-        <div><h2>وصل خلاص</h2><p class="muted">مركز فيد التربوي · Feed Education Center</p><p class="muted small" dir="ltr">Nouvelle Ariana · Tél 93 400 219 · MF 1816760/C</p></div>
-        <div class="receipt-no">رقم<b>${r.receipt_no}</b></div>
+    <article class="rc print-area">
+      <header class="rc-band">
+        <img src="feed-logo-white.png" alt="فيد">
+        <div class="rc-title"><h2>وصل خلاص</h2><span>Reçu de paiement</span></div>
+        <div class="rc-no"><small>رقم الوصل</small><b>${r.receipt_no ?? '—'}</b></div>
+      </header>
+      <div class="rc-center"><b>مركز فيد التربوي · Feed Education Center</b><span dir="ltr">Nouvelle Ariana · Tél 93 400 219 · MF 1816760/C</span></div>
+      <section class="rc-info">
+        <div><small>التاريخ</small><b>${fmtDate(r.paid_on)}</b></div>
+        <div><small>تسلّمنا من</small><b>${esc(r.payer || '—')}</b></div>
+        <div><small>طريقة الدفع</small><b>${esc(PAYMENT_LABELS[r.method] || r.method || '—')}</b></div>
+        ${multi && !oneKid ? '' : `<div><small>لفائدة</small><b>${esc(r.beneficiary)}</b>${r.level ? `<i>${esc(levelLabel(r.level))}</i>` : ''}</div>`}
+      </section>
+      <table class="rc-lines">
+        <thead><tr><th>البيان</th>${oneKid ? '' : '<th>لفائدة</th>'}<th>الشهر</th><th>المبلغ</th></tr></thead>
+        <tbody>${lines
+          .map((l) => `<tr><td>${esc(l.program || r.program || '—')}</td>${oneKid ? '' : `<td>${esc(l.beneficiary)}</td>`}<td>${l.month ? esc(monthLabel(l.month)) : '—'}</td><td class="rc-amt">${fmtMoney(l.amount)}</td></tr>`)
+          .join('')}</tbody>
+      </table>
+      <div class="rc-total">
+        <span class="rc-paid">✓ مدفوع</span>
+        <div><small>${multi ? `المجموع · ${lines.length} أشهر` : 'المبلغ المدفوع'}</small><b>${fmtMoney(total)}</b></div>
       </div>
-      <dl class="receipt-body">
-        <dt>التاريخ</dt><dd>${fmtDate(r.paid_on)}</dd>
-        <dt>تسلّمنا من</dt><dd>${esc(r.payer || '—')}</dd>
-        ${
-          multi && !oneKid
-            ? ''
-            : `<dt>لفائدة</dt><dd><b>${esc(r.beneficiary)}</b>${r.level ? ` — ${esc(levelLabel(r.level))}` : ''}</dd>
-               <dt>البرنامج</dt><dd>${esc(r.program)}${r.month && !multi ? ` — شهر ${esc(monthLabel(r.month))}` : ''}</dd>`
-        }
-        <dt>طريقة الدفع</dt><dd>${esc(PAYMENT_LABELS[r.method] || r.method || '—')}</dd>
-        ${r.note ? `<dt>ملاحظة</dt><dd>${esc(r.note)}</dd>` : ''}
-        ${r.edited_at ? `<dt>ملاحظة</dt><dd class="muted">وصل معدّل في ${fmtDate(r.edited_at)}</dd>` : ''}
-      </dl>
-      ${
-        multi
-          ? `<table class="receipt-lines"><thead><tr>${oneKid ? '' : '<th>لفائدة</th><th>البرنامج</th>'}<th>الشهر</th><th>المبلغ</th></tr></thead>
-             <tbody>${lines
-               .map((l) => `<tr>${oneKid ? '' : `<td>${esc(l.beneficiary)}</td><td>${esc(l.program)}</td>`}<td>${l.month ? esc(monthLabel(l.month)) : '—'}</td><td><b>${fmtMoney(l.amount)}</b></td></tr>`)
-               .join('')}</tbody></table>`
-          : ''
-      }
-      <div class="receipt-amount">${multi ? `المجموع (${lines.length} أشهر)` : 'المبلغ'}: <b>${fmtMoney(total)}</b></div>
-      <div class="receipt-sign">
-        <div class="sign-box"><small>الإمضاء والختم</small>${CENTER_SIGNATURE}${CENTER_STAMP}</div>
-      </div>
-    </div>`;
+      ${r.note || r.edited_at ? `<p class="rc-note">${r.note ? `📝 ${esc(r.note)}` : ''}${r.edited_at ? `<span>وصل معدّل في ${fmtDate(r.edited_at)}</span>` : ''}</p>` : ''}
+      <footer class="rc-foot">
+        <div class="rc-thanks"><b>شكرًا لثقتكم 🌿</b><span>احتفظوا بهذا الوصل، وهو متاح أيضًا في فضاء الولي على التطبيقة.</span></div>
+        <div class="rc-sign"><small>الإمضاء والختم</small><div class="rc-sign-art">${CENTER_SIGNATURE}${CENTER_STAMP}</div></div>
+      </footer>
+      <div class="rc-contact"><span>📞 <bdi dir="ltr">93 400 219</bdi></span><span>🌐 feed.tn</span><span>📍 Nouvelle Ariana</span></div>
+    </article>`;
   $('#rc-print').addEventListener('click', () => window.print());
 }
 
