@@ -799,6 +799,18 @@ async function viewDashboard(el) {
   el.innerHTML = `
     <a href="#/home" class="muted small">→ الرئيسية</a>
     <h2>لوحة دروس الدعم</h2>
+    ${
+      s.finance?.today && can('school')
+        ? `<section class="cash-today sup-today">
+            <div class="ct-head"><b>💰 دروس الدعم · اليوم ${fmtDate(today())}</b><a class="link small" href="#/students" id="sup-owed">المتخلّد بذمتهم ←</a></div>
+            <div class="ct-grid">
+              <div class="bal"><small>المتخلّد بالذمّة</small><b>${fmtMoney(s.finance.outstanding)}</b><i>${s.finance.unpaid_count} تلميذ لم يدفع بعد</i></div>
+              <div class="in"><small>المدخول اليوم</small><b>${fmtMoney(s.finance.today.income)}</b><i>${s.finance.today.payments} دفعة</i></div>
+              <div class="out"><small>المصاريف اليوم</small><b>${fmtMoney(s.finance.today.expense)}</b><i>خلاص المدرّسين ومصاريف الدعم</i></div>
+              <div class="${s.finance.today.income - s.finance.today.expense >= 0 ? 'in' : 'out'}"><small>الصافي اليوم</small><b>${fmtMoney(Math.round((s.finance.today.income - s.finance.today.expense) * 1000) / 1000)}</b></div>
+            </div></section>`
+        : ''
+    }
     <div class="stats">
       <div class="stat"><b>${s.students}</b><span>تلميذ يدرس</span></div>
       <div class="stat"><b>${s.teachers}</b><span>معلم</span></div>
@@ -866,6 +878,10 @@ async function viewDashboard(el) {
     sessionStorage.setItem('levelFilter', '');
   });
   activityBoard($('#support-board'), 'support').catch((err) => toast(err.message, true));
+  $('#sup-owed')?.addEventListener('click', () => {
+    sessionStorage.setItem('payFilter', 'due');
+    sessionStorage.setItem('statusFilter', '');
+  });
   $('#copy-reg').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText($('#reg-link').textContent);
