@@ -1354,3 +1354,10 @@ body.sel-open { overflow: hidden; }
   .tab-panel .qa { margin-top: 0; margin-bottom: .8rem; }
 }
 .tab-panel > .qa { margin-top: 0; margin-bottom: 1rem; }
+.mc-reg { margin-top: .55rem; padding: .55rem .65rem; border: 1.5px dashed #d9c7f2; border-radius: 12px; background: #faf6ff; display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; }
+.mc-reg > span { font-size: .84rem; font-weight: 700; color: var(--feed-purple); } .mc-reg small { font-weight: 500; color: var(--muted); }
+.mc-reg-opts { display: flex; flex-wrap: wrap; gap: .3rem; margin-inline-start: auto; }
+.mc-reg-opts button { border: 1px solid #d9c7f2; background: var(--card); color: var(--feed-purple); font: inherit; font-size: .8rem; font-weight: 700; border-radius: 999px; padding: .2rem .7rem; cursor: pointer; }
+.mc-reg-opts button:hover { background: var(--feed-purple); color: #fff; }
+.mc-reg-opts button.ex { color: var(--muted); border-color: var(--border); }
+@media (prefers-color-scheme: dark) { .mc-reg { background: #241c31; border-color: #4a3866; } .mc-reg-opts button { border-color: #4a3866; } }

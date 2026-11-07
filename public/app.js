@@ -1372,7 +1372,7 @@ async function viewStudent(el, id) {
     }
     </div>
     <div class="tab-panel" data-panel="pay">
-      ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضعية المالية — دروس الدعم' : '💰 الوضعية المالية') : ''}
+      ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضعية المالية — دروس الدعم' : '💰 الوضعية المالية', { registration: true }) : ''}
       ${program?.finance ? financeSection(program.finance, role, 'program', '💰 الوضعية المالية — البرنامج التربوي') : ''}
     </div>
     <div class="tab-panel" data-panel="follow">
@@ -1620,7 +1620,12 @@ async function viewStudent(el, id) {
 }
 
 // الوضعية المالية: الولي والإدارة (kind: support أو program — قسمان في نفس الصفحة ممكن)
-function financeSection(f, role, kind = 'support', title = '💰 الوضعية المالية') {
+function financeSection(f, role, kind = 'support', title = '💰 الوضعية المالية', { registration = false } = {}) {
+  // معلوم التسجيل: يُضاف اختياريًا لأول شهر (عادة 40، أو مخفّض، أو معفى)
+  const isReg = (x) => /تسجيل/.test(x.reason || '');
+  const hasReg = f.months.some((m) => (m.extras || []).some(isReg));
+  const firstMonth = [...f.months].filter((m) => m.due > 0 || m.adjustment).map((m) => m.month).sort()[0];
+  const askReg = registration && role === 'admin' && !hasReg && !f.free && firstMonth;
   const status = (m) =>
     m.adjustment?.kind === 'exempt' && !m.paid
       ? '<span class="badge general">معفى</span>'
@@ -1705,10 +1710,18 @@ function financeSection(f, role, kind = 'support', title = '💰 الوضعية 
                   ${
                     a || notes.length || m.extras?.length
                       ? `<div class="mc-tags">${a ? `<span class="mc-tag adj">✂️ ${esc(adjLabel(a))}${a.reason ? ` · ${esc(a.reason)}` : ''} <s>${fmtMoney(a.original)}</s></span>` : ''}${(m.extras || [])
-                          .map((x) => `<span class="mc-tag plus">+ ${fmtMoney(x.amount)} · ${esc(x.reason || '')}${role === 'admin' ? ` <button class="link danger" data-del-extra="${x.id}" aria-label="حذف">✕</button>` : ''}</span>`)
+                          .map((x) => `<span class="mc-tag ${x.amount ? 'plus' : ''}">${x.amount ? `+ ${fmtMoney(x.amount)} · ${esc(x.reason || '')}` : `${esc(x.reason || 'معلوم التسجيل')}: معفى`}${role === 'admin' ? ` <button class="link danger" data-del-extra="${x.id}" aria-label="حذف">✕</button>` : ''}</span>`)
                           .join('')}${notes
                           .map((n) => `<span class="mc-tag">${n}</span>`)
                           .join('')}</div>`
+                      : ''
+                  }
+                  ${
+                    askReg && m.month === firstMonth
+                      ? `<div class="mc-reg"><span>🪪 معلوم التسجيل <small>(أول شهر)</small></span>
+                          <div class="mc-reg-opts">${[40, 30, 20].map((v) => `<button type="button" data-reg-set="${v}" data-kind="${kind}" data-month="${m.month}">${v}</button>`).join('')}
+                            <button type="button" data-reg-set="other" data-kind="${kind}" data-month="${m.month}">مبلغ آخر</button>
+                            <button type="button" class="ex" data-reg-set="0" data-kind="${kind}" data-month="${m.month}">معفى</button></div></div>`
                       : ''
                   }
                   ${
@@ -1874,6 +1887,29 @@ document.addEventListener('keydown', (e) => e.key === 'Escape' && document.query
 addEventListener('hashchange', closePaySheet);
 
 function bindFinance(el, f, { kind, id }, reload) {
+  el.querySelectorAll(`[data-reg-set][data-kind="${kind}"]`).forEach((b) =>
+    b.addEventListener('click', async () => {
+      let v = b.dataset.regSet;
+      if (v === 'other') {
+        v = prompt('مبلغ معلوم التسجيل (د.ت):', '40');
+        if (v === null) return;
+      }
+      const amount = Number(String(v).replace(',', '.')) || 0;
+      try {
+        await api('POST', '/api/fee-extras', {
+          [kind === 'support' ? 'student_id' : 'child_id']: id,
+          month: b.dataset.month,
+          amount,
+          exempt: !amount,
+          reason: 'معلوم التسجيل',
+        });
+        toast(amount ? `أُضيف معلوم التسجيل ${fmtMoney(amount)}` : 'معفى من معلوم التسجيل');
+        reload();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    })
+  );
   el.querySelectorAll(`[data-sell="${kind}"]`).forEach((b) =>
     b.addEventListener('click', () => sellProductModal(reload, kind === 'support' ? { student_id: id } : { child_id: id }).catch((err) => toast(err.message, true)))
   );
@@ -1895,7 +1931,7 @@ function bindFinance(el, f, { kind, id }, reload) {
          <label class="check"><input type="radio" name="kind" value="absent_days" ${a?.kind === 'absent_days' ? 'checked' : ''}> تغيّب جزءًا من الشهر</label>
          <label id="adj-days">عدد أيام الغياب<input name="days" inputmode="numeric" value="${a?.kind === 'absent_days' ? esc(a.value) : ''}" placeholder="مثال: 10"></label>
          <label class="check"><input type="radio" name="kind" value="amount" ${a?.kind === 'amount' ? 'checked' : ''}> مبلغ آخر</label>
-         <label class="check"><input type="radio" name="kind" value="extra"> إضافة مبلغ لهذا الشهر (مثلًا معلوم التسجيل)</label>
+         <label class="check"><input type="radio" name="kind" value="extra"> إضافة مبلغ لهذا الشهر (معلوم التسجيل أو غيره)</label>
          <div class="row" id="adj-extra"><label>المبلغ المضاف (د.ت)<input name="extra_amount" inputmode="decimal" value="40"></label>
            <label>البيان<input name="extra_reason" value="معلوم التسجيل"></label></div>
          <label id="adj-amount">المبلغ المطلوب لهذا الشهر (د.ت)<input name="amount" inputmode="decimal" value="${a?.kind === 'amount' ? esc(a.value) : ''}"></label>

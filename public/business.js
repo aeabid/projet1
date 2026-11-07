@@ -743,7 +743,7 @@ async function viewProgramChild(el, id) {
       ${childFollowUpSection(file, role)}
     </div>
     <div class="tab-panel" data-panel="pay">
-      ${finance ? financeSection(finance, role, 'program') : ''}
+      ${finance ? financeSection(finance, role, 'program', undefined, { registration: !c.student_id }) : ''}
     </div>
     ${
       role === 'admin'
