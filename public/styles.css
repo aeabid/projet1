@@ -1413,3 +1413,29 @@ body.sel-open { overflow: hidden; }
 .doc { display: inline-flex; align-items: center; gap: .3rem; background: var(--soft); border-radius: 999px; padding: .15rem .65rem; font-size: .82rem; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-row { display: flex; align-items: center; gap: .6rem; }
 .attach { cursor: pointer; font-size: 1rem; }
+
+/* ---------- الصندوق اليومي ---------- */
+.cash-today { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: .9rem 1rem; margin-bottom: 1rem; box-shadow: var(--shadow-sm); }
+.ct-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .6rem; }
+.ct-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; }
+.ct-grid > div { display: flex; flex-direction: column; gap: .1rem; padding: .6rem .7rem; border-radius: 14px; background: var(--soft-2); }
+.ct-grid small { font-size: .74rem; color: var(--muted); font-weight: 600; }
+.ct-grid b { font-family: 'Tajawal', sans-serif; font-size: 1.2rem; white-space: nowrap; }
+.ct-grid i { font-style: normal; font-size: .7rem; color: var(--muted); }
+.ct-grid .in b { color: var(--good); } .ct-grid .out b { color: #be185d; }
+.ct-grid .bal { background: linear-gradient(135deg, #f3e8ff, #fdf4ff); } .ct-grid .bal b { color: var(--feed-purple); }
+@media (max-width: 640px) { .ct-grid { grid-template-columns: 1fr 1fr; } }
+.cash-acts { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+.count-box { border-radius: 14px; padding: .65rem .9rem; margin-bottom: 1rem; background: var(--soft-2); font-size: .9rem; }
+.count-box.ok { background: #e7f8ef; color: #14532d; } .count-box.bad { background: #fde8f1; color: #9d174d; }
+.warn-box { background: #fff3df; color: #8a5a00; }
+.owner-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .5rem; margin-bottom: .5rem; }
+.owner-grid > div { display: flex; flex-direction: column; padding: .6rem .75rem; border-radius: 14px; background: var(--soft-2); }
+.owner-grid small { font-size: .74rem; color: var(--muted); font-weight: 600; }
+.owner-grid b { font-family: 'Tajawal', sans-serif; font-size: 1.15rem; }
+.owner-grid .ok { background: #e7f8ef; } .owner-grid .ok b { color: var(--good); }
+.owner-grid .neg { background: #fde8f1; } .owner-grid .neg b { color: #be185d; }
+@media (prefers-color-scheme: dark) {
+  .ct-grid .bal { background: #2e2147; } .count-box.ok, .owner-grid .ok { background: #16301f; color: #bbf7d0; }
+  .count-box.bad, .owner-grid .neg { background: #3a1a2b; color: #f9a8d4; } .warn-box { background: #3a2a12; color: #fde68a; }
+}

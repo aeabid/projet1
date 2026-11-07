@@ -1095,3 +1095,33 @@ test('admin permissions: restricted admin, account guards, accounting and docume
   // المعفى هذا الشهر
   assert.ok([200, 201].includes((await sup('PUT', '/api/fee-adjustments', { student_id: st.id, month: '2026-11', kind: 'exempt', reason: 'معفى' })).status));
 });
+
+test('cash box: daily in/out, owner withdrawal is not an expense, expense paid from the withdrawal', async () => {
+  const admin = await login('admin', 'admin123');
+  await admin('PUT', '/api/cash/opening', { date: '2026-11-01', amount: 100 });
+  const expNov = async () => (await admin('GET', '/api/dashboard/year?mode=school&year=2026')).body.months.find((m) => m.month === '2026-11').expense_total;
+  const before = await expNov();
+  const st = (await admin('POST', '/api/students', { full_name: 'صندوق', level: '7', monthly_fee: 200, start_date: '2026-11-01' })).body.student;
+  await admin('POST', '/api/pay-months', { kind: 'support', id: st.id, lines: [{ month: '2026-11', amount: 200 }], method: 'cash', paid_on: '2026-11-03' });
+  await admin('POST', '/api/ledger', { direction: 'expense', activity: 'general', category: 'supplies', amount: 30, date: '2026-11-03', paid_from: 'cash' });
+  await admin('POST', '/api/cash/moves', { kind: 'withdraw', amount: 150, date: '2026-11-03' });
+  // مصروف دفعه صاحب المشروع من المبلغ الذي سحبه: مصروف للمركز، لا يمسّ الصندوق
+  await admin('POST', '/api/ledger', { direction: 'expense', activity: 'general', category: 'supplies', amount: 50, date: '2026-11-04', paid_from: 'owner' });
+  const c = (await admin('GET', '/api/cash?month=2026-11')).body;
+  const i3 = c.days.findIndex((d) => d.date === '2026-11-03');
+  const d3 = c.days[i3];
+  const prev = i3 > 0 ? c.days[i3 - 1].balance : 100;
+  assert.strictEqual(d3.withdraw, 150);
+  assert.strictEqual(Math.round((d3.balance - prev) * 1000) / 1000, Math.round((d3.cash_in - d3.cash_out - d3.withdraw + d3.deposit) * 1000) / 1000);
+  assert.ok(d3.cash_in >= 200 && d3.cash_out >= 30);
+  assert.ok(!c.days.some((d) => d.date === '2026-11-04' && d.cash_out >= 50));
+  assert.deepStrictEqual([c.draws.withdrawn, c.draws.spent, c.draws.net], [150, 50, 100]);
+  // عدّ الصندوق
+  assert.strictEqual((await admin('POST', '/api/cash/moves', { kind: 'count', amount: 0, date: '2026-11-04' })).status, 201);
+  const c2 = (await admin('GET', '/api/cash?month=2026-11')).body;
+  assert.strictEqual(c2.last_count.amount, 0);
+  assert.ok(typeof c2.last_count.diff === 'number');
+  // السحب لا يدخل في المصاريف الشهرية
+  // السحب (150) لا يدخل في المصاريف، والمصروفان (30 + 50) يدخلان
+  assert.strictEqual(Math.round(((await expNov()) - before) * 1000) / 1000, 80);
+});

@@ -790,3 +790,133 @@ async function viewAccounting(el) {
   bindMonth('ac-month', load);
   await Promise.all([load(), loadCenter()]);
 }
+
+// ---------- الصندوق اليومي ----------
+const CASH_KIND = { withdraw: ['💼', 'سحب'], deposit: ['📥', 'إيداع في الصندوق'], count: ['🧮', 'عدّ الصندوق'] };
+// بطاقة «اليوم» (في الرئيسية وفي صفحة الصندوق)
+function cashTodayHtml(c, link = true) {
+  const t = c.today;
+  return `<section class="cash-today">
+    <div class="ct-head"><b>💵 صندوق اليوم · ${fmtDate(t.date)}</b>${link ? '<a class="link small" href="#/cash">التفاصيل ←</a>' : ''}</div>
+    <div class="ct-grid">
+      <div class="in"><small>دخل اليوم</small><b>${fmtMoney(t.cash_in)}</b></div>
+      <div class="out"><small>مصاريف اليوم</small><b>${fmtMoney(t.cash_out)}</b></div>
+      <div class="${t.net >= 0 ? 'in' : 'out'}"><small>صافي اليوم</small><b>${fmtMoney(t.net)}</b>${
+        t.withdraw || t.deposit ? `<i>${t.withdraw ? `سحب ${fmtMoney(t.withdraw)}` : ''}${t.withdraw && t.deposit ? ' · ' : ''}${t.deposit ? `إيداع ${fmtMoney(t.deposit)}` : ''} (ليس مصروفًا)</i>` : ''
+      }</div>
+      <div class="bal"><small>المفروض في الصندوق الآن</small><b>${c.balance_today === null ? '—' : fmtMoney(c.balance_today)}</b>${c.balance_today === null ? '<i>حدّد الرصيد الافتتاحي</i>' : ''}</div>
+    </div></section>`;
+}
+async function loadCashCard(box) {
+  if (!box || !can('cash')) return;
+  try {
+    const c = await api('GET', '/api/cash');
+    if (box.isConnected) box.innerHTML = cashTodayHtml(c);
+  } catch {}
+}
+
+async function viewCash(el) {
+  el.innerHTML = `
+    <div class="page-head"><div><h2>💵 الصندوق اليومي</h2>
+      <p class="muted">كل يوم: ما دخل نقدًا (دفوعات الأولياء، المبيعات) وما خرج من الصندوق (المصاريف، الأجور نقدًا)، والمبلغ المفروض أن يكون في الصندوق.
+        سحب صاحب المشروع ليس مصروفًا: يُحسب من نصيبه في المرابيح.</p></div>
+      <div class="actions">${monthPicker('cs-month')}</div></div>
+    <div class="cash-acts">
+      <button class="btn" data-move="count">🧮 عدّ الصندوق</button>
+      <button class="btn ghost" data-move="withdraw">💼 سحب صاحب المشروع</button>
+      <button class="btn ghost" data-move="deposit">📥 إيداع في الصندوق</button>
+      <button class="btn ghost" id="cs-exp">− مصروف</button>
+      <button class="btn ghost" id="cs-open">⚙️ الرصيد الافتتاحي</button>
+    </div>
+    <div id="cs-body"><p class="muted">جاري التحميل…</p></div>`;
+  let c;
+  const load = async () => {
+    c = await api('GET', '/api/cash?month=' + $('#cs-month').value);
+    const lc = c.last_count;
+    $('#cs-body').innerHTML = `
+      ${!c.opening ? `<div class="pf-sum warn-box">⚠️ باش نحسب المبلغ المفروض في الصندوق، حدّد مرة وحدة <b>الرصيد الافتتاحي</b> (قدّاش فما في الصندوق اليوم) من «⚙️ الرصيد الافتتاحي».</div>` : ''}
+      ${cashTodayHtml(c, false)}
+      ${
+        lc
+          ? `<div class="count-box ${lc.diff === null ? '' : Math.abs(lc.diff) < 0.5 ? 'ok' : 'bad'}">🧮 آخر عدّ (${fmtDate(lc.date)}): عدّيت <b>${fmtMoney(lc.amount)}</b>${
+              lc.expected === null ? '' : ` · المفروض <b>${fmtMoney(lc.expected)}</b> · ${Math.abs(lc.diff) < 0.5 ? 'مطابق ✓' : `الفرق <b>${lc.diff > 0 ? '+' : '−'}${fmtMoney(Math.abs(lc.diff))}</b>`}`
+            }</div>`
+          : ''
+      }
+      <section class="card"><div class="section-head"><h3>📅 أيام ${esc(monthLabel(c.month))}</h3>
+        <span class="muted small">دخل ${fmtMoney(c.month_totals.cash_in)} · خرج ${fmtMoney(c.month_totals.cash_out)} · سحب ${fmtMoney(c.month_totals.withdraw)}</span></div>
+        ${
+          c.days.length
+            ? `<div class="table-wrap"><table><thead><tr><th>اليوم</th><th>دخل نقدًا</th><th>خرج من الصندوق</th><th>سحب / إيداع</th><th>صافي اليوم</th><th>الرصيد</th></tr></thead><tbody>${[...c.days]
+                .reverse()
+                .map(
+                  (d) => `<tr><td class="nowrap"><b>${fmtDate(d.date)}</b></td><td class="in">${fmtMoney(d.cash_in)}</td><td class="out">${fmtMoney(d.cash_out)}</td>
+                    <td>${d.withdraw ? `<span class="out">− ${fmtMoney(d.withdraw)}</span>` : ''}${d.deposit ? ` <span class="in">+ ${fmtMoney(d.deposit)}</span>` : ''}${!d.withdraw && !d.deposit ? '—' : ''}</td>
+                    <td><b class="${d.net >= 0 ? 'in' : 'out'}">${fmtMoney(d.net)}</b></td><td><b>${d.balance === null ? '—' : fmtMoney(d.balance)}</b></td></tr>`
+                )
+                .join('')}</tbody></table></div>`
+            : '<p class="muted">لا حركة نقدية في هذا الشهر.</p>'
+        }
+      </section>
+      <section class="card"><div class="section-head"><h3>💼 ${esc(c.owner)}: السحب هذا الشهر</h3>${state.user.super_admin ? '<a class="link small" href="#/partners">الحساب الكامل مع الشريك ←</a>' : ''}</div>
+        <div class="owner-grid">
+          <div><small>سحب من الصندوق</small><b>${fmtMoney(c.draws.withdrawn)}</b></div>
+          <div><small>صرف منه على المركز</small><b class="in">− ${fmtMoney(c.draws.spent)}</b></div>
+          <div><small>أخذ فعلًا (من نصيبه)</small><b>${fmtMoney(c.draws.net)}</b></div>
+        </div>
+        <p class="muted small">مصروف دفعه من المبلغ الذي سحبه؟ سجّله بـ«− مصروف» واختر «دُفع من: من مبلغ سحبه صاحب المشروع». يُحسب مصروفًا للمركز، ولا يُطرح من الصندوق مرة ثانية.</p>
+      </section>
+      <section class="card"><h3>🔁 حركات الصندوق</h3>${
+        c.moves.length
+          ? `<ul class="levels">${c.moves
+              .map(
+                (m) => `<li><span>${fmtDate(m.date)} — ${CASH_KIND[m.kind][0]} <b>${CASH_KIND[m.kind][1]}</b>${m.person && m.kind === 'withdraw' ? ` (${esc(m.person)})` : ''}${m.note ? ` <span class="muted small">${esc(m.note)}</span>` : ''}${m.by_name ? ` <span class="muted small">· ${esc(m.by_name)}</span>` : ''}</span>
+                  <span><b>${fmtMoney(m.amount)}</b> <button class="link danger small" data-del-move="${m.id}">حذف</button></span></li>`
+              )
+              .join('')}</ul>`
+          : '<p class="muted">لا حركات.</p>'
+      }</section>`;
+    el.querySelectorAll('[data-del-move]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirmAction('حذف هذه الحركة؟')) return;
+        await api('DELETE', `/api/cash/moves/${b.dataset.delMove}`).catch((err) => toast(err.message, true));
+        load();
+      })
+    );
+  };
+  el.querySelectorAll('[data-move]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const k = b.dataset.move;
+      openModal(
+        `${CASH_KIND[k][0]} ${CASH_KIND[k][1]}`,
+        `${k === 'count' ? `<p class="muted small">عدّ الفلوس الموجودة في الصندوق واكتب المبلغ: التطبيقة تقارنو بالمفروض${c?.balance_today !== null && c?.balance_today !== undefined ? ` (<b>${fmtMoney(c.balance_today)}</b> اليوم)` : ''}.</p>` : ''}
+         ${k === 'withdraw' ? '<p class="muted small">مبلغ أخذه صاحب المشروع من الصندوق. ليس مصروفًا: يُحسب من نصيبه في المرابيح.</p>' : ''}
+         ${k === 'deposit' ? '<p class="muted small">مثلًا: رجّع مبلغ للصندوق، ولا جاب فلوس من البنك للصندوق.</p>' : ''}
+         <div class="row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" required></label>
+           <label>التاريخ<input type="date" name="date" value="${today()}"></label></div>
+         <label>ملاحظة<input name="note"></label>`,
+        async (data) => {
+          await api('POST', '/api/cash/moves', { ...data, kind: k });
+          toast('تم التسجيل');
+          load();
+        }
+      );
+    })
+  );
+  $('#cs-exp').addEventListener('click', () => ledgerForm(null, 'expense', load));
+  $('#cs-open').addEventListener('click', () =>
+    openModal(
+      '⚙️ الرصيد الافتتاحي للصندوق',
+      `<p class="muted small">قدّاش كان فما في الصندوق في تاريخ معيّن (مثلًا اليوم الصباح). من هالتاريخ تحسب التطبيقة الرصيد يومًا بيوم.</p>
+       <div class="row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(c?.opening?.amount ?? '')}" required></label>
+         <label>بتاريخ<input type="date" name="date" value="${esc(c?.opening?.date || today())}"></label></div>`,
+      async (data) => {
+        await api('PUT', '/api/cash/opening', data);
+        toast('تم الحفظ');
+        load();
+      }
+    )
+  );
+  bindMonth('cs-month', load);
+  await load();
+}

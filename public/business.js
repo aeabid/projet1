@@ -54,11 +54,14 @@ async function viewHome(el) {
       ['#/todo', '📌', 'المهام'],
     ].filter(Boolean);
     el.innerHTML = `${heroBanner({ sub: 'مرحبًا بك في فضاء إدارة مركز فيد.', art: '🌿' })}
+      <div id="home-cash"></div>
       <div class="home-links">${links.map(([h, i, l]) => `<a class="home-link" href="${h}"><span>${i}</span><b>${l}</b></a>`).join('')}</div>`;
+    loadCashCard($('#home-cash'));
     return;
   }
   el.innerHTML = `
     ${heroBanner({ sub: 'حوصلة مالية وإدارية لمركز فيد: دروس الدعم، البرنامج التربوي، الدورات والمصاريف.', art: '📊', actions: monthPicker('home-month') })}
+    <div id="home-cash"></div>
     <div id="home-db"></div>
     <div id="home-kpis"></div>
     <div id="home-alerts"></div>
@@ -159,6 +162,7 @@ async function viewHome(el) {
           ${top.map((a) => `<a class="alert-line ${a.level}" href="${a.link}">${a.level === 'urgent' ? '⛔' : '⚠️'} ${esc(a.text)}</a>`).join('')}</div>`
       : '';
   });
+  loadCashCard($('#home-cash'));
   bindMonth('home-month', load);
   $('#q-expense').addEventListener('click', () => ledgerForm(null, 'expense', load));
   $('#q-income').addEventListener('click', () => ledgerForm(null, 'income', load));
@@ -176,6 +180,7 @@ function unpaidNote(acc) {
 }
 
 // ---------- المداخيل والمصاريف ----------
+const PAID_FROM_LABELS = { cash: 'الصندوق (نقدًا)', bank: 'بنك الشركة', owner: 'من مبلغ سحبه صاحب المشروع' };
 async function ledgerForm(entry, direction, onDone, preset = {}) {
   const meta = await financeMeta();
   const dir = entry?.direction || direction;
@@ -198,7 +203,10 @@ async function ledgerForm(entry, direction, onDone, preset = {}) {
        <label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(entry?.amount ?? '')}" required></label>
        <label>التاريخ<input type="date" name="date" value="${esc(entry?.date || today())}"></label>
      </div>
-     <label>البيان<input name="description" value="${esc(entry?.description || '')}" placeholder="مثال: كراء المقر لشهر أكتوبر"></label>`,
+     <label>البيان<input name="description" value="${esc(entry?.description || '')}" placeholder="مثال: كراء المقر لشهر أكتوبر"></label>
+     <label>${dir === 'income' ? 'دخل إلى' : 'دُفع من'}<select name="paid_from">${Object.entries(dir === 'income' ? { cash: 'الصندوق (نقدًا)', bank: 'بنك الشركة' } : PAID_FROM_LABELS)
+       .map(([k, v]) => `<option value="${k}" ${(entry?.paid_from || preset.paid_from || 'cash') === k ? 'selected' : ''}>${v}</option>`)
+       .join('')}</select></label>`,
     async (data) => {
       if (entry) await api('PUT', `/api/ledger/${entry.id}`, data);
       else await api('POST', '/api/ledger', data);
@@ -1613,6 +1621,19 @@ async function viewPartners(el) {
         <div class="fb-kpi in"><span>التسبقات المدفوعة</span><b>${fmtMoney(s.paid)}</b><small>منذ ${esc(monthLabel(s.from))}</small></div>`
       )
       .join('')}</div>
+    ${
+      d.owner_summary
+        ? `<section class="card owner-card"><div class="section-head"><h3>👤 حساب ${esc(d.owner)} (صاحب المشروع)</h3><a class="link small" href="#/cash">الصندوق ←</a></div>
+            <div class="owner-grid">
+              <div><small>نصيبك من المرابيح</small><b>${fmtMoney(d.owner_summary.due)}</b></div>
+              <div><small>سحبت من الصندوق</small><b>${fmtMoney(d.owner_summary.withdrawn)}</b></div>
+              <div><small>صرفت منه على المركز</small><b class="in">− ${fmtMoney(d.owner_summary.spent)}</b></div>
+              <div><small>أخذت فعلًا</small><b>${fmtMoney(d.owner_summary.taken)}</b></div>
+              <div class="${d.owner_summary.balance >= 0 ? 'ok' : 'neg'}"><small>${d.owner_summary.balance >= 0 ? 'الباقي لك' : 'أخذت أكثر من نصيبك'}</small><b>${fmtMoney(Math.abs(d.owner_summary.balance))}</b></div>
+            </div>
+            <p class="muted small">السحب من الصندوق ليس مصروفًا: يُحسب مما أخذته من نصيبك. وما تصرفه منه على المركز (تسجّله مصروفًا «من مبلغ سحبته») يُطرح منه.</p></section>`
+        : ''
+    }
     <section class="card"><h3>📆 المرابيح شهرًا بشهر</h3>
       <div class="table-wrap"><table class="fin">
         <thead><tr><th>الشهر</th><th>المداخيل</th><th>المصاريف</th><th>المرابيح</th>${names.map((n) => `<th>${esc(n)}</th>`).join('')}</tr></thead>

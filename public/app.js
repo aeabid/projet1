@@ -320,6 +320,7 @@ const routes = [
   [/^#\/my-receipts$/, (el) => viewMyReceipts(el)],
   [/^#\/permissions$/, (el) => viewPermissions(el)],
   [/^#\/accounting$/, (el) => viewAccounting(el)],
+  [/^#\/cash$/, (el) => viewCash(el)],
   [/^#\/receipt\/(support|program|course|registration)\/(\d+)$/, (el, kind, id) => viewReceipt(el, kind, Number(id))],
   [/^#\/todo$/, (el) => viewTodo(el)],
   [/^#\/meetings$/, (el) => viewMeetings(el)],
@@ -398,7 +399,7 @@ const can = (perm) => !state.user || state.user.role !== 'admin' || state.user.s
 const HASH_PERM = {
   '#/board': 'stats', '#/finance': 'stats', '#/general': 'stats', '#/dashboard': 'school', '#/program/board': 'school',
   '#/payroll': 'salaries', '#/program/pay': 'salaries', '#/salaries': 'salaries', '#/staff': 'salaries',
-  '#/fees': 'fees', '#/accounting': 'accounting', '#/support/teachers': 'accounts', '#/ledger': 'expenses',
+  '#/fees': 'fees', '#/accounting': 'accounting', '#/cash': 'cash', '#/support/teachers': 'accounts', '#/ledger': 'expenses',
   '#/partners': 'super', '#/permissions': 'super', '#/admins': 'super', '#/center-debts': 'expenses',
 };
 const GROUP_PERM = { 'دروس الدعم': 'school', 'البرنامج التربوي': 'school' };
@@ -463,6 +464,7 @@ const NAV = {
         ['#/receipts', 'الوصولات'],
         ['#/ledger', 'المداخيل والمصاريف'],
         ['#/accounting', 'فضاء المحاسبة'],
+        ['#/cash', 'الصندوق اليومي'],
         ['#/fees', 'التعريفات والتخفيضات'],
         ['#/products', 'المنتجات (كتب ومراجع)'],
         ['#/salaries', 'الأجور (كل الإطار)'],
