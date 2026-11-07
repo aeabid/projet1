@@ -436,15 +436,13 @@ async function viewProgram(el) {
               <div class="sc-stats">
                 <div class="sc-stat"><b>${ageOf(c.birth_date) || '—'}</b><span>العمر</span></div>
                 <div class="sc-stat"><b>${c.free ? '—' : fmtMoney(c.monthly_fee)}</b><span>${c.sibling_pct ? `شهريًا · إخوة −${c.sibling_pct}%` : 'شهريًا'}</span></div>
-                ${money}
               </div>
-              <div class="sc-actions"><a class="btn ghost small" href="#/program/child/${c.id}">الملف</a>
-                <button class="btn ghost small" data-edit="${c.id}">تعديل</button></div>
+              <div class="sc-actions"><a class="btn ghost small" href="#/program/child/${c.id}">الملف</a>${payButton('program', c)}</div>
             </article>`;
           })
           .join('')}</div>`
       : `<div class="table-wrap as-table"><table>
-          <thead><tr><th>الاسم</th><th>القسم</th><th>تاريخ الدخول</th><th>العمر</th><th>الولي</th><th>المبلغ الشهري</th><th>الباقي</th><th></th></tr></thead>
+          <thead><tr><th>الاسم</th><th>القسم</th><th>تاريخ الدخول</th><th>العمر</th><th>الولي</th><th>المبلغ الشهري</th><th>الخلاص</th></tr></thead>
           <tbody>${list
             .map(
               (c) => `<tr class="${c.status === 'left' ? 'planned' : ''}">
@@ -454,14 +452,11 @@ async function viewProgram(el) {
                 <td class="nowrap">${ageOf(c.birth_date) || '—'}</td>
                 <td>${esc(c.contact_name || '—')}${c.family_parent_id ? ' <span title="له حساب ولي">👤</span>' : ''}${c.contact_phone ? `<div class="muted small phone-line"><span dir="ltr">${esc(c.contact_phone)}</span>${waButton(c.contact_phone)}</div>` : ''}</td>
                 <td>${feeCell(c)}</td>
-                <td>${owedCell(c)}</td>
-                <td class="row-actions"><button class="btn ghost small" data-edit="${c.id}">تعديل</button></td>
+                <td>${payButton('program', c)}</td>
               </tr>`
             )
             .join('')}</tbody></table></div>`;
-    $('#prog-list').querySelectorAll('[data-edit]').forEach((b) =>
-      b.addEventListener('click', () => childForm(children.find((c) => c.id === Number(b.dataset.edit)), lists, reload))
-    );
+    bindPayButtons($('#prog-list'), reload);
   };
   const reload = () => viewProgram(el);
 
@@ -603,7 +598,8 @@ function childForm(c, { classes, parents, students, children }, onDone) {
     if (!confirmAction('حذف الطفل وكل دفعاته؟ (لخروجه من البرنامج استعمل الحالة «خرج»)')) return;
     await api('DELETE', `/api/program/children/${c.id}`);
     $('#modal').close();
-    onDone();
+    if (location.hash.startsWith('#/program/child/')) location.hash = '#/program';
+    else onDone();
   });
 }
 
@@ -741,13 +737,46 @@ async function viewProgramChild(el, id) {
         ${c.notes && role === 'admin' ? `<p class="remarks">📝 ${esc(c.notes)}</p>` : ''}
       </div>
     </div>
-    ${classPostsSection(file.posts)}
-    ${childFollowUpSection(file, role)}
-    ${finance ? financeSection(finance, role, 'program') : ''}
-    ${c.student_id && finance ? '<p class="muted small">معلوم التسجيل السنوي في ملف دروس الدعم (يُدفع مرة واحدة).</p>' : ''}`;
+    ${fileTabs([['follow', 'المتابعة'], finance ? ['pay', 'الخلاص'] : null, role === 'admin' ? ['info', 'المعلومات'] : null])}
+    <div class="tab-panel" data-panel="follow">
+      ${classPostsSection(file.posts)}
+      ${childFollowUpSection(file, role)}
+    </div>
+    <div class="tab-panel" data-panel="pay">
+      ${finance ? financeSection(finance, role, 'program') : ''}
+    </div>
+    ${
+      role === 'admin'
+        ? `<div class="tab-panel" data-panel="info"><section class="card info-card">
+            <div class="section-head"><h3>🪪 معلومات الطفل</h3></div>
+            ${infoGrid([
+              { icon: 'school', label: 'القسم', value: c.class_name },
+              { icon: 'calendar', label: 'تاريخ الدخول للمركز', value: c.start_date && fmtDate(c.start_date), sub: c.end_date ? `خرج في ${fmtDate(c.end_date)}` : '' },
+              { icon: 'cake', label: 'تاريخ الولادة', value: c.birth_date && fmtDate(c.birth_date), sub: c.birth_date ? yearsOld(c.birth_date) : '' },
+              { icon: 'user', label: 'الولي', value: c.contact_name && esc(c.contact_name), raw: true,
+                sub: c.contact_phone ? `<a href="tel:${esc(c.contact_phone)}" dir="ltr">${esc(c.contact_phone)}</a>` : '' },
+              finance ? { icon: 'coin', label: 'المبلغ الشهري', value: c.free ? 'مجاني' : finance.monthly_fee ? fmtMoney(finance.monthly_fee) : '', strong: true, raw: true,
+                sub: finance.sibling_pct ? `تخفيض الإخوة ${finance.sibling_pct}%` : '' } : null,
+              c.notes ? { icon: 'book', label: 'ملاحظات', value: c.notes, wide: true } : null,
+            ])}
+          </section>
+          <div class="info-acts"><button class="btn" id="child-edit">✏️ تعديل المعطيات</button></div></div>`
+        : ''
+    }`;
   const reload = () => viewProgramChild(el, id);
   bindChildFollowUp(el, file, reload);
   if (finance) bindFinance(el, finance, { kind: 'program', id }, reload);
+  $('#child-edit')?.addEventListener('click', async () => {
+    const [{ classes, children }, { users: parents }, { users: teachers }, { students }] = await Promise.all([
+      api('GET', '/api/program'),
+      api('GET', '/api/users?role=parent'),
+      api('GET', '/api/users?role=teacher'),
+      api('GET', '/api/students'),
+    ]);
+    const full = children.find((x) => x.id === id) || c;
+    childForm(full, { classes, parents, teachers, students, children }, reload);
+  });
+  bindFileTabs(el);
 }
 
 // المنشط: أقسامه وأطفالها

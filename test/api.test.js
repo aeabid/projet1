@@ -987,3 +987,24 @@ const round = (n) => Math.round(n * 1000) / 1000;
 function currentMonthForTest() {
   return new Date().toISOString().slice(0, 7);
 }
+
+test('multi-month payment: one receipt number for all months, visible to the parent', async () => {
+  const admin = await login('admin', 'admin123');
+  const par = (await admin('POST', '/api/users', { role: 'parent', username: 'mm-parent', full_name: 'ولي', password: 'secret1' })).body.user;
+  const st = (await admin('POST', '/api/students', { full_name: 'تلميذ أشهر', level: '7', parent_id: par.id, monthly_fee: 100, start_date: '2026-09-01' })).body.student;
+  const r = await admin('POST', '/api/pay-months', { kind: 'support', id: st.id, lines: [{ month: '2026-09', amount: 100 }, { month: '2026-10', amount: 100 }], method: 'cash' });
+  assert.strictEqual(r.status, 201);
+  assert.strictEqual(r.body.payment.total, 200);
+  const rc = await admin('GET', `/api/receipts/support/${r.body.payment.id}`);
+  assert.strictEqual(rc.body.receipt.lines.length, 2);
+  assert.strictEqual(rc.body.receipt.total, 200);
+  assert.ok(rc.body.receipt.lines.every((l) => l.amount === 100));
+  const bad = await admin('POST', '/api/pay-months', { kind: 'support', id: st.id, lines: [] });
+  assert.strictEqual(bad.status, 400);
+  const parent = await login('mm-parent', 'secret1');
+  const mine = await parent('GET', '/api/my-receipts');
+  assert.strictEqual(mine.body.receipts.length, 1);
+  assert.deepStrictEqual(mine.body.receipts[0].months, ['2026-09', '2026-10']);
+  assert.strictEqual(mine.body.receipts[0].total, 200);
+  assert.strictEqual((await parent('GET', `/api/receipts/support/${r.body.payment.id}`)).status, 200);
+});

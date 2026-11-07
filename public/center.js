@@ -158,16 +158,20 @@ async function viewReceipts(el) {
 
 async function viewReceipt(el, kind, id) {
   const { receipt: r } = await api('GET', `/api/receipts/${kind}/${id}`);
-  const back = state.user.role === 'admin' ? '#/receipts' : '#/students';
-  const waText = `وصل خلاص رقم ${r.receipt_no} — مركز فيد\nالتاريخ: ${fmtDate(r.paid_on)}\nالمستفيد: ${r.beneficiary}\n${r.program}${
-    r.month ? ` — شهر ${monthLabel(r.month)}` : ''
-  }\nالمبلغ: ${fmtMoney(r.amount)}\nشكرًا لكم.`;
+  const parent = state.user.role === 'parent';
+  const back = state.user.role === 'admin' ? ['#/receipts', 'الوصولات'] : ['#/my-receipts', 'وصولاتي'];
+  const lines = r.lines?.length ? r.lines : [{ month: r.month, amount: r.amount, beneficiary: r.beneficiary, program: r.program }];
+  const multi = lines.length > 1;
+  const oneKid = new Set(lines.map((l) => `${l.beneficiary}|${l.program}`)).size === 1;
+  const months = [...new Set(lines.map((l) => l.month).filter(Boolean))];
+  const total = r.total ?? r.amount;
+  const wa = receiptWaText({ ...r, kind, id, total, months, beneficiary: [...new Set(lines.map((l) => l.beneficiary))].join(' و') });
   el.innerHTML = `
     <div class="page-head no-print">
-      <a href="${back}" class="muted small">→ رجوع</a>
+      <a href="${back[0]}" class="muted small">→ ${back[1]}</a>
       <div class="actions">
-        ${waNumber(r.phone) && state.user.role === 'admin' ? `<a class="btn wa" target="_blank" rel="noopener" href="${esc(waUrl(r.phone, waText))}">${WA_ICON} إرسال للولي</a>` : ''}
-        <button class="btn" id="rc-print">🖨 طباعة</button>
+        ${!parent && waNumber(r.phone) ? `<a class="btn wa" target="_blank" rel="noopener" href="${esc(waUrl(r.phone, wa))}">${WA_ICON} إرسال للولي</a>` : ''}
+        <button class="btn" id="rc-print">🖨 طباعة / PDF</button>
       </div>
     </div>
     <div class="receipt print-area">
@@ -179,15 +183,48 @@ async function viewReceipt(el, kind, id) {
       <dl class="receipt-body">
         <dt>التاريخ</dt><dd>${fmtDate(r.paid_on)}</dd>
         <dt>تسلّمنا من</dt><dd>${esc(r.payer || '—')}</dd>
-        <dt>لفائدة</dt><dd><b>${esc(r.beneficiary)}</b>${r.level ? ` — ${esc(levelLabel(r.level))}` : ''}</dd>
-        <dt>البرنامج</dt><dd>${esc(r.program)}${r.month ? ` — شهر ${esc(monthLabel(r.month))}` : ''}</dd>
+        ${
+          multi && !oneKid
+            ? ''
+            : `<dt>لفائدة</dt><dd><b>${esc(r.beneficiary)}</b>${r.level ? ` — ${esc(levelLabel(r.level))}` : ''}</dd>
+               <dt>البرنامج</dt><dd>${esc(r.program)}${r.month && !multi ? ` — شهر ${esc(monthLabel(r.month))}` : ''}</dd>`
+        }
         <dt>طريقة الدفع</dt><dd>${esc(PAYMENT_LABELS[r.method] || r.method || '—')}</dd>
         ${r.note ? `<dt>ملاحظة</dt><dd>${esc(r.note)}</dd>` : ''}
       </dl>
-      <div class="receipt-amount">المبلغ: <b>${fmtMoney(r.amount)}</b></div>
+      ${
+        multi
+          ? `<table class="receipt-lines"><thead><tr>${oneKid ? '' : '<th>لفائدة</th><th>البرنامج</th>'}<th>الشهر</th><th>المبلغ</th></tr></thead>
+             <tbody>${lines
+               .map((l) => `<tr>${oneKid ? '' : `<td>${esc(l.beneficiary)}</td><td>${esc(l.program)}</td>`}<td>${l.month ? esc(monthLabel(l.month)) : '—'}</td><td><b>${fmtMoney(l.amount)}</b></td></tr>`)
+               .join('')}</tbody></table>`
+          : ''
+      }
+      <div class="receipt-amount">${multi ? `المجموع (${lines.length} أشهر)` : 'المبلغ'}: <b>${fmtMoney(total)}</b></div>
       <div class="receipt-sign"><span>الإمضاء والختم</span></div>
     </div>`;
   $('#rc-print').addEventListener('click', () => window.print());
+}
+
+// الولي: كل وصولات أبنائه
+async function viewMyReceipts(el) {
+  const { receipts } = await api('GET', '/api/my-receipts');
+  const total = receipts.reduce((t, r) => t + r.total, 0);
+  el.innerHTML = `
+    <div class="page-head"><div><h2>🧾 وصولاتي</h2><p class="muted">كل وصل خلاص لأبنائك يظهر هنا وحدو. اضغط عليه باش تشوفو ولا تطبعو.</p></div></div>
+    ${
+      receipts.length
+        ? `<div class="stats compact"><div class="stat good"><b>${fmtMoney(total)}</b><span>${receipts.length} وصل</span></div></div>
+          <div class="rcpts">${receipts
+            .map(
+              (r) => `<a class="rcpt" href="#/receipt/${r.kind}/${r.id}">
+                <span class="rcpt-no">🧾<b>${r.receipt_no ?? '—'}</b></span>
+                <span class="rcpt-main"><b>${esc(r.children.join(' و'))}</b><small>${r.months.map((m) => esc(monthLabel(m))).join('، ')} · ${fmtDate(r.paid_on)}</small></span>
+                <b class="rcpt-amt">${fmtMoney(r.total)}</b></a>`
+            )
+            .join('')}</div>`
+        : '<div class="card muted">لا توجد وصولات بعد.</div>'
+    }`;
 }
 
 // ---------- التعريفات والتخفيضات ----------

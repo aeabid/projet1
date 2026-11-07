@@ -95,6 +95,16 @@ async function viewParentHome(el) {
       art: '👨‍👩‍👧',
       actions: '<a class="btn" href="#/messages">مراسلة المعلمين</a>',
     })}
+    ${(() => {
+      // وصل جديد (آخر 7 أيام): يظهر في أعلى الصفحة
+      const since = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+      const fresh = h.payments.filter((x) => x.paid_on >= since);
+      if (!fresh.length) return '';
+      const last = fresh[0];
+      const sum = fresh.filter((x) => x.receipt_no === last.receipt_no).reduce((t, x) => t + x.amount, 0);
+      return `<a class="new-receipt" href="#/receipt/${last.kind}/${last.id}"><span class="nr-ico">🧾</span>
+        <span><b>وصل خلاص جديد · رقم ${last.receipt_no ?? ''}</b><small>${esc(last.child)} · ${fmtMoney(sum)} · ${fmtDate(last.paid_on)}</small></span><span class="nr-go">عرض ←</span></a>`;
+    })()}
     ${h.kids.length ? `<div class="cards">${h.kids.map(kidCard).join('')}</div>` : '<div class="card muted">لم يتم ربط أي ابن بحسابك بعد. اتصل بالإدارة.</div>'}
     <section class="card">
       <h3>📝 آخر ملاحظات المعلمين</h3>
@@ -111,7 +121,7 @@ async function viewParentHome(el) {
       }
     </section>
     <section class="card">
-      <h3>💳 الدفعات</h3>
+      <div class="section-head"><h3>💳 الدفعات</h3><a class="link small" href="#/my-receipts">كل الوصولات ←</a></div>
       ${
         h.payments.length
           ? `<ul class="levels">${h.payments

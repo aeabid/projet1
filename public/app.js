@@ -317,6 +317,7 @@ const routes = [
   [/^#\/people$/, (el) => viewPeople(el)],
   [/^#\/debts$/, (el) => viewDebts(el)],
   [/^#\/receipts$/, (el) => viewReceipts(el)],
+  [/^#\/my-receipts$/, (el) => viewMyReceipts(el)],
   [/^#\/receipt\/(support|program|course|registration)\/(\d+)$/, (el, kind, id) => viewReceipt(el, kind, Number(id))],
   [/^#\/todo$/, (el) => viewTodo(el)],
   [/^#\/meetings$/, (el) => viewMeetings(el)],
@@ -489,6 +490,7 @@ const NAV = {
   parent: [
     ['#/home', 'الرئيسية'],
     ['#/students', 'أبنائي'],
+    ['#/my-receipts', 'وصولاتي'],
     ['#/timetable', 'جدول الأوقات'],
     ['#/messages', 'الرسائل'],
     ['#/account', 'حسابي'],
@@ -888,6 +890,28 @@ function levelHue(level) {
   const n = parseInt(level, 10);
   return { 5: 262, 6: 200, 7: 152, 8: 28, 9: 330 }[n] ?? 262;
 }
+// زر الخلاص في القوائم: لونه يقول الحالة (أخضر خالص، وردي باقي، رمادي مجاني أو بلا معلوم)
+function payButton(kind, x) {
+  const [cls, top, sub] = x.free
+    ? ['free', 'مجاني', '']
+    : x.balance > 0
+    ? ['due', fmtMoney(x.balance), 'باقي']
+    : x.monthly_fee
+    ? ['ok', 'خالص', x.balance < 0 ? `رصيد ${fmtMoney(-x.balance)}` : '✓']
+    : ['none', '—', 'بلا معلوم'];
+  return `<button type="button" class="pay-btn ${cls}" data-pay="${kind}:${x.id}" title="الخلاص"><span class="pb-ico">💰</span><span class="pb-txt"><b>${top}</b>${sub ? `<i>${sub}</i>` : ''}</span></button>`;
+}
+function bindPayButtons(root, reload) {
+  root.querySelectorAll('[data-pay]').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const [kind, id] = b.dataset.pay.split(':');
+      paySheet(kind, Number(id), reload).catch((err) => toast(err.message, true));
+    })
+  );
+}
+
 function studentCards(students, role) {
   const admin = role === 'admin';
   return `<div class="scards">${students
@@ -917,15 +941,8 @@ function studentCards(students, role) {
         <div class="sc-stats">
           <div class="sc-stat ${s.unjustified_count ? 'warn' : ''}"><b>${s.absence_count}</b><span>غيابات${s.unjustified_count ? ` · ${s.unjustified_count} غير مبرر` : ''}</span></div>
           <div class="sc-stat"><b>${s.note_count}</b><span>ملاحظات</span></div>
-          ${money}
         </div>
-        ${
-          admin
-            ? `<div class="sc-actions"><a class="btn ghost small" href="#/students/${s.id}">الملف</a>
-                <button class="btn ghost small" data-edit="${s.id}">تعديل</button>
-                <button class="btn link danger small" data-del="${s.id}" title="حذف">حذف</button></div>`
-            : ''
-        }
+        ${admin ? `<div class="sc-actions"><a class="btn ghost small" href="#/students/${s.id}">الملف</a>${payButton('support', s)}</div>` : ''}
       </article>`;
     })
     .join('')}</div>`;
@@ -986,7 +1003,7 @@ async function viewStudents(el) {
       ? studentCards(students, role)
       : `<div class="table-wrap as-table"><table>
           <thead><tr><th>الاسم</th><th>المستوى</th><th>تاريخ الدخول</th><th>المواد</th><th>الولي</th><th>الغيابات</th><th>الملاحظات</th>${
-            role === 'admin' ? '<th>الباقي</th><th></th>' : ''
+            role === 'admin' ? '<th>الخلاص</th>' : ''
           }</tr></thead>
           <tbody>${students
             .map(
@@ -1003,28 +1020,12 @@ async function viewStudents(el) {
                 }</td>
                 <td>${s.absence_count}${s.unjustified_count ? ` <span class="badge weak">${s.unjustified_count} غير مبرر</span>` : ''}</td>
                 <td>${s.note_count}</td>
-                ${role === 'admin' ? `<td>${s.free ? '<span class="badge free">مجاني</span>' : s.balance > 0 ? `<b class="owed">${fmtMoney(s.balance)}</b>` : s.monthly_fee ? '<span class="badge good">خالص</span>' : '—'}</td>` : ''}
-                ${
-                  role === 'admin'
-                    ? `<td class="row-actions"><button class="btn ghost small" data-edit="${s.id}">تعديل</button>
-                       <button class="btn danger small" data-del="${s.id}">حذف</button></td>`
-                    : ''
-                }
+                ${role === 'admin' ? `<td>${payButton('support', s)}</td>` : ''}
               </tr>`
             )
             .join('')}</tbody></table></div>`;
 
-    $('#students-list').querySelectorAll('[data-edit]').forEach((b) =>
-      b.addEventListener('click', () => studentForm(students.find((s) => s.id === Number(b.dataset.edit)), load))
-    );
-    $('#students-list').querySelectorAll('[data-del]').forEach((b) =>
-      b.addEventListener('click', async () => {
-        if (!confirmAction('حذف التلميذ مع كل غياباته وملاحظاته؟')) return;
-        await api('DELETE', `/api/students/${b.dataset.del}`);
-        toast('تم الحذف');
-        load();
-      })
-    );
+    bindPayButtons($('#students-list'), load);
   };
 
   bindViewToggle(el, 'studentsView', () => view, (v) => (view = v), render);
@@ -1219,6 +1220,29 @@ function infoGrid(items) {
     .join('')}</div>`;
 }
 
+// ---------- تبويبات الملف (التلميذ والطفل) ----------
+function fileTabs(tabs) {
+  const list = tabs.filter(Boolean);
+  return `<div class="file-tabs" role="tablist">${list.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}">${l}</button>`).join('')}</div>`;
+}
+function bindFileTabs(el) {
+  const tabs = [...el.querySelectorAll('[data-tab]')];
+  const show = (k) => {
+    if (!tabs.some((t) => t.dataset.tab === k)) k = tabs[0]?.dataset.tab;
+    tabs.forEach((t) => t.classList.toggle('on', t.dataset.tab === k));
+    el.querySelectorAll('[data-panel]').forEach((p) => p.classList.toggle('on', p.dataset.panel === k));
+    sessionStorage.setItem('fileTab:' + location.hash, k);
+  };
+  tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.tab)));
+  el.querySelectorAll('[data-goto]').forEach((b) =>
+    b.addEventListener('click', () => {
+      show(b.dataset.goto);
+      el.querySelector('.file-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    })
+  );
+  show(sessionStorage.getItem('fileTab:' + location.hash) || tabs[0]?.dataset.tab);
+}
+
 // ---------- أزرار الإجراءات السريعة (ملف التلميذ) ----------
 const QA_ICONS = {
   note: '<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="m13.5 7.5 3 3"/>',
@@ -1302,6 +1326,15 @@ async function viewStudent(el, id) {
         ${student.remarks ? `<p class="remarks">📝 ${esc(student.remarks)}</p>` : ''}
         </div>
       </div>
+    </div>
+
+    ${fileTabs([
+      ['home', 'نظرة عامة'],
+      finance || program?.finance ? ['pay', 'الخلاص'] : null,
+      ['follow', 'المتابعة'],
+      ['info', 'المعلومات'],
+    ])}
+    <div class="tab-panel" data-panel="home">
       ${quickActions(
         role === 'parent'
           ? [
@@ -1313,40 +1346,19 @@ async function viewStudent(el, id) {
               { id: 'add-absence', icon: 'absent', label: 'غياب', tone: 'pink', plus: true },
               role === 'admin' && waNumber(student.parent_phone) ? { id: 'wa-parent', icon: 'wa', label: 'واتساب', tone: 'green' } : null,
               { id: 'new-thread', icon: 'mail', label: 'مراسلة الولي', tone: 'sky' },
-              { href: `#/report/${student.id}`, icon: 'report', label: 'بطاقة التقييم', tone: 'blue' },
-              role === 'admin' ? { id: 'edit-student', icon: 'edit', label: 'تعديل', tone: 'gray' } : null,
             ]
       )}
-    </div>
-
-    <div class="stats">
-      <div class="stat"><b>${absences.length}</b><span>مجموع الغيابات</span></div>
-      <div class="stat warn"><b>${unjustified}</b><span>غيابات غير مبررة</span></div>
-      <div class="stat"><b>${teacherNotes.length}</b><span>ملاحظات المعلمين</span></div>
-      <div class="stat"><b>${adminNotes.length}</b><span>ملاحظات الإدارة</span></div>
-    </div>
-
-    <section class="card info-card">
-      <div class="section-head"><h3>🪪 معلومات التلميذ</h3>${role === 'admin' ? '<button class="link small" id="info-edit">✏️ تعديل</button>' : ''}</div>
-      ${infoGrid([
-        { icon: 'school', label: 'المؤسسة التربوية', value: student.school },
-        { icon: 'calendar', label: 'تاريخ الدخول للمركز', value: student.start_date && fmtDate(student.start_date),
-          sub: student.end_date ? `${STATUS_LABELS[student.status]} في ${fmtDate(student.end_date)}` : '' },
-        { icon: 'cake', label: 'تاريخ الولادة', value: student.birth_date && fmtDate(student.birth_date), sub: student.birth_date ? yearsOld(student.birth_date) : '' },
-        { icon: 'pin', label: 'العنوان', value: [student.address, student.city].filter(Boolean).join('، ') },
-        { icon: 'user', label: 'الولي', value: student.parent_name && esc(student.parent_name),
-          sub: student.parent_phone ? `<a href="tel:${esc(student.parent_phone)}" dir="ltr">${esc(student.parent_phone)}</a>` : '', raw: true },
-        finance
-          ? { icon: 'coin', label: 'المبلغ الشهري', value: student.free ? 'مجاني' : finance.monthly_fee ? fmtMoney(finance.monthly_fee) : '',
-              sub: student.discount ? `تخفيض ${fmtMoney(student.discount)}${student.discount_reason ? ' · ' + esc(student.discount_reason) : ''}` : '', strong: true, raw: true }
-          : null,
-        { icon: 'book', label: 'المواد المسجّل فيها', wide: true, raw: true,
-          value: (student.pack ? '<span class="badge pack">باقة كاملة</span>' : '') +
-            student.subjects.map((x) => `<span class="info-chip">${esc(SUBJECT_SHORT[x.name] || x.name)}</span>`).join('') },
-      ])}
-    </section>
-${finance ? financeSection(finance, role, 'support', program ? '💰 الوضعية المالية — دروس الدعم' : '💰 الوضعية المالية') : ''}
-    ${program ? childProgramSections(program, role) : ''}
+      <div class="ov-grid">
+        ${finance ? `<button type="button" class="ov-card ov-pay ${finance.free ? '' : finance.balance > 0 ? 'due' : 'ok'}" data-goto="pay">
+          <small>الخلاص</small><b>${finance.free ? 'مجاني' : finance.balance > 0 ? `${fmtMoney(finance.balance)} باقي` : 'خالص ✓'}</b>
+          <span>${role === 'admin' ? '💰 تسجيل دفعة ←' : 'التفاصيل ←'}</span></button>` : ''}
+        <button type="button" class="ov-card" data-goto="follow"><small>الغيابات</small><b>${absences.length}</b>
+          <span>${unjustified ? `${unjustified} غير مبرر` : 'كلها مبررة'}</span></button>
+        <button type="button" class="ov-card" data-goto="follow"><small>آخر ملاحظة</small>
+          <b class="ov-text">${notes[0] ? esc(notes[0].content || CATEGORY_LABELS[notes[0].category] || '') : '—'}</b>
+          <span>${notes[0] ? fmtDate(notes[0].date) : 'لا توجد ملاحظات'}</span></button>
+        <a class="ov-card" href="#/report/${student.id}"><small>بطاقة التقييم</small><b>📄 الشهرية</b><span>فتح ←</span></a>
+      </div>
     ${
       whatsapp_groups.length
         ? `<section class="card wa-groups"><h3>💬 مجموعة واتساب</h3>${whatsapp_groups
@@ -1358,6 +1370,13 @@ ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضع�
             .join(' ')}</section>`
         : ''
     }
+    </div>
+    <div class="tab-panel" data-panel="pay">
+      ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضعية المالية — دروس الدعم' : '💰 الوضعية المالية') : ''}
+      ${program?.finance ? financeSection(program.finance, role, 'program', '💰 الوضعية المالية — البرنامج التربوي') : ''}
+    </div>
+    <div class="tab-panel" data-panel="follow">
+      ${program ? classPostsSection(program.posts) + childFollowUpSection(program, role) : ''}
     <section class="card">
       <h3>🗓 جدول الأوقات</h3>
       ${weekView(timetable, { showTeacher: true })}
@@ -1415,7 +1434,30 @@ ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضع�
                 .join('')}</tbody></table></div>`
           : '<p class="muted">لا توجد غيابات 👏</p>'
       }
-    </section>`;
+    </section>    </div>
+    <div class="tab-panel" data-panel="info">
+    <section class="card info-card">
+      <div class="section-head"><h3>🪪 معلومات التلميذ</h3>${role === 'admin' ? '<button class="link small" id="info-edit">✏️ تعديل</button>' : ''}</div>
+      ${infoGrid([
+        { icon: 'school', label: 'المؤسسة التربوية', value: student.school },
+        { icon: 'calendar', label: 'تاريخ الدخول للمركز', value: student.start_date && fmtDate(student.start_date),
+          sub: student.end_date ? `${STATUS_LABELS[student.status]} في ${fmtDate(student.end_date)}` : '' },
+        { icon: 'cake', label: 'تاريخ الولادة', value: student.birth_date && fmtDate(student.birth_date), sub: student.birth_date ? yearsOld(student.birth_date) : '' },
+        { icon: 'pin', label: 'العنوان', value: [student.address, student.city].filter(Boolean).join('، ') },
+        { icon: 'user', label: 'الولي', value: student.parent_name && esc(student.parent_name),
+          sub: student.parent_phone ? `<a href="tel:${esc(student.parent_phone)}" dir="ltr">${esc(student.parent_phone)}</a>` : '', raw: true },
+        finance
+          ? { icon: 'coin', label: 'المبلغ الشهري', value: student.free ? 'مجاني' : finance.monthly_fee ? fmtMoney(finance.monthly_fee) : '',
+              sub: student.discount ? `تخفيض ${fmtMoney(student.discount)}${student.discount_reason ? ' · ' + esc(student.discount_reason) : ''}` : '', strong: true, raw: true }
+          : null,
+        { icon: 'book', label: 'المواد المسجّل فيها', wide: true, raw: true,
+          value: (student.pack ? '<span class="badge pack">باقة كاملة</span>' : '') +
+            student.subjects.map((x) => `<span class="info-chip">${esc(SUBJECT_SHORT[x.name] || x.name)}</span>`).join('') },
+      ])}
+    </section>
+      ${role === 'admin' ? `<div class="info-acts"><button class="btn" id="info-edit2">✏️ تعديل المعطيات</button>
+        <button class="btn danger ghost" id="del-student">حذف التلميذ</button></div>` : ''}
+    </div>`;
 
   const reload = () => viewStudent(el, id);
 
@@ -1458,6 +1500,14 @@ ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضع�
   });
   $('#edit-student')?.addEventListener('click', () => studentForm(student, reload));
   $('#info-edit')?.addEventListener('click', () => studentForm(student, reload));
+  $('#info-edit2')?.addEventListener('click', () => studentForm(student, reload));
+  $('#del-student')?.addEventListener('click', async () => {
+    if (!confirmAction(`حذف ${student.full_name} مع كل غياباته وملاحظاته ودفوعاته؟`)) return;
+    await api('DELETE', `/api/students/${id}`).catch((err) => toast(err.message, true));
+    toast('تم الحذف');
+    location.hash = '#/students';
+  });
+  bindFileTabs(el);
 
   $('#photo-input')?.addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -1687,6 +1737,142 @@ function financeSection(f, role, kind = 'support', title = '💰 الوضعية 
 const adjLabel = (a) =>
   a.kind === 'exempt' ? 'معفى (غياب الشهر كاملًا)' : a.kind === 'absent_days' ? `غياب ${a.value} ${a.value >= 3 && a.value <= 10 ? 'أيام' : 'يوم'}` : `مبلغ معدّل ${fmtMoney(a.value)}`;
 
+// ---------- لوحة الخلاص: تُفتح من القائمة أو من الملف، دفعة لشهر أو أكثر ووصل واحد ----------
+function closePaySheet() {
+  document.querySelectorAll('.pay-sheet, .pay-bg').forEach((x) => x.remove());
+  document.body.classList.remove('sel-open');
+}
+function receiptWaText(r) {
+  const link = `${location.origin}${location.pathname}#/receipt/${r.kind}/${r.id}`;
+  return `السلام عليكم ${r.payer || ''}،\nتسلّمنا خلاصكم — مركز فيد 🌿\nوصل رقم ${r.receipt_no} · ${fmtDate(r.paid_on)}\n${r.beneficiary}: ${r.months
+    .map(monthLabel)
+    .join('، ')}\nالمبلغ: ${fmtMoney(r.total)}\n\nالوصل في حسابكم على التطبيقة:\n${link}\nشكرًا لكم.`;
+}
+async function paySheet(kind, id, onDone) {
+  closePaySheet();
+  const file = await api('GET', kind === 'support' ? `/api/students/${id}` : `/api/program/children/${id}`);
+  const person = kind === 'support' ? file.student : file.child;
+  const f = file.finance;
+  if (!f) return toast('لا توجد معطيات مالية', true);
+  const phone = kind === 'support' ? person.parent_phone : person.contact_phone;
+  const payer = kind === 'support' ? person.parent_name : person.contact_name;
+  const level = kind === 'support' ? levelLabel(person.level) : person.class_name || 'البرنامج التربوي';
+  const skip = kind === 'support' ? ['07', '08'] : ['06', '07', '08'];
+  const monthFee = f.free ? 0 : f.sibling_pct ? Math.round(f.net_fee * (100 - f.sibling_pct)) / 100 : f.net_fee;
+  // الأشهر: المستحقة (من الأقدم) ثم 4 أشهر قادمة للدفع المسبق
+  const past = [...f.months].sort((a, b) => a.month.localeCompare(b.month));
+  const chips = past.map((m) => ({ month: m.month, due: m.due, paid: m.paid, rest: m.remaining }));
+  let next = past.length ? past[past.length - 1].month : today().slice(0, 7);
+  for (let n = 0; n < 4 && monthFee > 0; ) {
+    next = shiftMonth(next, 1);
+    if (skip.includes(next.slice(5))) continue;
+    if (!chips.some((c) => c.month === next)) chips.push({ month: next, due: monthFee, paid: 0, rest: monthFee, future: true }), n++;
+  }
+  const firstDue = chips.find((c) => c.rest > 0);
+  const selected = new Set(firstDue ? [firstDue.month] : []);
+  const bg = document.createElement('div');
+  bg.className = 'pay-bg';
+  bg.addEventListener('click', closePaySheet);
+  const sh = document.createElement('div');
+  sh.className = 'pay-sheet';
+  document.body.append(bg, sh);
+  document.body.classList.add('sel-open');
+  const head = `<div class="ps-grip"></div>
+    <div class="ps-head">${kind === 'support' ? avatar(person, 'md') : avatar({ full_name: person.full_name }, 'md')}
+      <div class="ps-who"><b>${esc(person.full_name)}</b><span>${esc(level)}${f.free ? ' · مجاني' : monthFee ? ` · ${fmtMoney(monthFee)} في الشهر` : ''}</span></div>
+      <button type="button" class="ps-x" aria-label="إغلاق">✕</button></div>`;
+  const render = () => {
+    const lines = chips.filter((c) => selected.has(c.month)).map((c) => ({ month: c.month, amount: c.rest }));
+    const total = lines.reduce((t, l) => t + l.amount, 0);
+    sh.innerHTML = `${head}
+      <div class="ps-kpis"><div><b>${fmtMoney(f.total_due)}</b><small>المستحق</small></div><div><b class="in">${fmtMoney(f.total_paid)}</b><small>المدفوع</small></div>
+        <div><b class="${f.balance > 0 ? 'owed' : 'in'}">${f.balance > 0 ? fmtMoney(f.balance) : '✓'}</b><small>${f.balance > 0 ? 'الباقي' : f.balance < 0 ? `رصيد ${fmtMoney(-f.balance)}` : 'خالص'}</small></div></div>
+      <p class="ps-hint">اختر شهرًا أو أكثر (تنجم تخلّص أشهر قادمة مسبقًا):</p>
+      <div class="ps-months">${chips
+        .map((c) => {
+          const st = c.future ? 'fut' : c.rest <= 0 ? 'ok' : c.paid > 0 ? 'part' : 'due';
+          const can = c.rest > 0;
+          return `<button type="button" class="ps-m ${st} ${selected.has(c.month) ? 'sel' : ''}" data-m="${c.month}" ${can ? '' : 'disabled'}>
+            <span>${MONTHS_AR[Number(c.month.slice(5)) - 1]}</span><b>${st === 'ok' ? '✓' : fmtMoney(c.rest)}</b>${st === 'part' ? '<i>جزئي</i>' : c.future ? '<i>مسبق</i>' : ''}</button>`;
+        })
+        .join('')}</div>
+      <form class="ps-form">
+        <div class="ps-row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${total || ''}" required></label>
+          <label>طريقة الدفع<select name="method">${Object.entries(PAYMENT_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label></div>
+        <p class="ps-split" id="ps-split"></p>
+        <details class="ps-more"><summary>التاريخ وملاحظة</summary>
+          <div class="ps-row"><label>تاريخ الدفع<input type="date" name="paid_on" value="${today()}"></label><label>ملاحظة<input name="note"></label></div></details>
+        <button class="btn block ps-go" ${lines.length ? '' : 'disabled'}>✓ تسجيل الدفعة + الوصل</button>
+      </form>
+      <div class="ps-links"><a href="${kind === 'support' ? `#/students/${id}` : `#/program/child/${id}`}" data-tab-pay>فتح الملف ←</a></div>`;
+    const amountIn = sh.querySelector('[name=amount]');
+    // توزيع المبلغ على الأشهر المختارة من الأقدم، والزائد على آخر شهر
+    const split = () => {
+      let left = Number(String(amountIn.value).replace(',', '.')) || 0;
+      const out = lines.map((l, i) => {
+        const a = i === lines.length - 1 ? left : Math.min(l.amount, left);
+        left = Math.round((left - a) * 1000) / 1000;
+        return { month: l.month, amount: Math.max(Math.round(a * 1000) / 1000, 0) };
+      });
+      sh.querySelector('#ps-split').innerHTML = out.length > 1 || (out[0] && out[0].amount !== lines[0].amount)
+        ? out.map((l) => `<span>${esc(monthLabel(l.month))}: <b>${fmtMoney(l.amount)}</b></span>`).join('')
+        : '';
+      return out.filter((l) => l.amount > 0);
+    };
+    amountIn.addEventListener('input', split);
+    split();
+    sh.querySelectorAll('[data-m]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const m = b.dataset.m;
+        if (selected.has(m)) selected.delete(m);
+        else selected.add(m);
+        render();
+      })
+    );
+    sh.querySelector('.ps-x').addEventListener('click', closePaySheet);
+    sh.querySelector('[data-tab-pay]').addEventListener('click', () => {
+      sessionStorage.setItem('fileTab:' + (kind === 'support' ? `#/students/${id}` : `#/program/child/${id}`), 'pay');
+      closePaySheet();
+    });
+    sh.querySelector('.ps-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = formData(e.target);
+      const parts = split();
+      if (!parts.length) return toast('المبلغ إجباري', true);
+      const btn = sh.querySelector('.ps-go');
+      btn.disabled = true;
+      try {
+        const { payment } = await api('POST', '/api/pay-months', { kind, id, lines: parts, method: data.method, paid_on: data.paid_on, note: data.note });
+        done({ ...payment, kind, paid_on: data.paid_on || today(), months: parts.map((p) => p.month), beneficiary: person.full_name, payer });
+      } catch (err) {
+        btn.disabled = false;
+        toast(err.message, true);
+      }
+    });
+  };
+  // بعد الدفع: الوصل جاهز للطباعة وللإرسال، ويظهر في حساب الولي
+  const done = (r) => {
+    onDone?.();
+    const hasParent = kind === 'support' ? !!person.parent_id : !!(person.family_parent_id || person.parent_id);
+    sh.innerHTML = `${head}
+      <div class="ps-done"><div class="ps-check">✓</div>
+        <h3>تم تسجيل الدفعة</h3>
+        <p>وصل رقم <b>${r.receipt_no}</b> · ${fmtMoney(r.total)}<br><span class="muted small">${r.months.map((m) => esc(monthLabel(m))).join('، ')}</span></p>
+        ${hasParent ? '<p class="ps-note">🧾 الوصل وصل لحساب الولي في التطبيقة</p>' : '<p class="ps-note warn">الولي ما عندوش حساب في التطبيقة: ابعثلو الوصل بواتساب</p>'}
+        <div class="ps-acts">
+          <a class="btn" href="#/receipt/${r.kind}/${r.id}" id="ps-open">🖨 الوصل / طباعة</a>
+          ${waNumber(phone) ? `<a class="btn wa" target="_blank" rel="noopener" href="${esc(waUrl(phone, receiptWaText(r)))}">${WA_ICON} واتساب الولي</a>` : ''}
+        </div>
+        <button type="button" class="link" id="ps-close">إغلاق</button></div>`;
+    sh.querySelector('.ps-x').addEventListener('click', closePaySheet);
+    sh.querySelector('#ps-close').addEventListener('click', closePaySheet);
+    sh.querySelector('#ps-open').addEventListener('click', closePaySheet);
+  };
+  render();
+}
+document.addEventListener('keydown', (e) => e.key === 'Escape' && document.querySelector('.pay-sheet') && closePaySheet());
+addEventListener('hashchange', closePaySheet);
+
 function bindFinance(el, f, { kind, id }, reload) {
   el.querySelectorAll(`[data-sell="${kind}"]`).forEach((b) =>
     b.addEventListener('click', () => sellProductModal(reload, kind === 'support' ? { student_id: id } : { child_id: id }).catch((err) => toast(err.message, true)))
@@ -1763,22 +1949,7 @@ function bindFinance(el, f, { kind, id }, reload) {
     if (confirmAction(`تم تسجيل الدفعة (وصل رقم ${payment.receipt_no}). فتح الوصل للطباعة؟`)) location.hash = `#/receipt/${receiptKind}/${payment.id}`;
     else reload();
   };
-  el.querySelector(`[data-add-pay="${kind}"]`)?.addEventListener('click', () => {
-    const current = f.months.find((m) => m.remaining > 0) || { month: today().slice(0, 7), remaining: f.net_fee || f.monthly_fee || '' };
-    openModal(
-      'تسجيل دفعة',
-      `<div class="row">
-         <label>الشهر<input type="month" name="month" value="${esc(current.month)}" required></label>
-         <label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(current.remaining || '')}" required></label>
-       </div>
-       <div class="row">
-         <label>تاريخ الدفع<input type="date" name="paid_on" value="${today()}"></label>
-         <label>طريقة الدفع<select name="method">${methods()}</select></label>
-       </div>
-       <label>ملاحظة<input name="note" placeholder="مثال: رقم الوصل"></label>`,
-      async (data) => afterPay(kind, (await api('POST', urls.pay, data)).payment)
-    );
-  });
+  el.querySelector(`[data-add-pay="${kind}"]`)?.addEventListener('click', () => paySheet(kind, id, reload).catch((err) => toast(err.message, true)));
   el.querySelector(`[data-add-reg="${kind}"]`)?.addEventListener('click', () => {
     const r = f.registration.find((x) => x.remaining > 0);
     openModal(
