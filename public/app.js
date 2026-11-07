@@ -1188,6 +1188,27 @@ async function viewMyChildren(el) {
     }`;
 }
 
+// ---------- أزرار الإجراءات السريعة (ملف التلميذ) ----------
+const QA_ICONS = {
+  note: '<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="m13.5 7.5 3 3"/>',
+  absent: '<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M10 13.5l4 4M14 13.5l-4 4"/>',
+  wa: '<path d="M3.5 20.5 5 16a8.5 8.5 0 1 1 3.2 3.2Z"/><path d="M9 9.5c0 2.8 2.2 5 5 5l1.2-1.3-1.7-1-1 .7a3.6 3.6 0 0 1-2-2l.7-1-1-1.7Z"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/>',
+  report: '<path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+  edit: '<path d="M12 20h8"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+};
+function quickActions(items) {
+  const list = items.filter(Boolean);
+  return `<div class="qa qa-${list.length}">${list
+    .map((a) => {
+      const inner = `<span class="qa-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${QA_ICONS[a.icon]}</svg>${a.plus ? '<i>+</i>' : ''}</span><span class="qa-label">${esc(a.label)}</span>`;
+      return a.href
+        ? `<a class="qa-btn tone-${a.tone}" href="${a.href}">${inner}</a>`
+        : `<button type="button" class="qa-btn tone-${a.tone}" id="${a.id}">${inner}</button>`;
+    })
+    .join('')}</div>`;
+}
+
 // ---------- ملف التلميذ ----------
 async function viewStudent(el, id) {
   const role = state.user.role;
@@ -1250,22 +1271,21 @@ async function viewStudent(el, id) {
         ${student.remarks ? `<p class="remarks">📝 ${esc(student.remarks)}</p>` : ''}
         </div>
       </div>
-      ${
+      ${quickActions(
         role === 'parent'
-          ? `<div class="actions"><a class="btn ghost" href="#/report/${student.id}">📄 بطاقة التقييم</a>
-             <button class="btn" id="new-thread">✉️ مراسلة</button></div>`
-          : ''
-      }
-      ${
-        role !== 'parent'
-          ? `<div class="actions"><a class="btn ghost" href="#/report/${student.id}">📄 بطاقة التقييم</a>
-             <button class="btn ghost" id="new-thread">✉️ مراسلة الولي</button>
-             <button class="btn" id="add-note">+ ملاحظة</button>
-             <button class="btn warn" id="add-absence">+ غياب</button>
-             ${role === 'admin' ? '<button class="btn ghost" id="edit-student">✏️ تعديل</button>' : ''}
-             ${role === 'admin' && waNumber(student.parent_phone) ? `<button class="btn wa" id="wa-parent">${WA_ICON} واتساب الولي</button>` : ''}</div>`
-          : ''
-      }
+          ? [
+              { id: 'new-thread', icon: 'mail', label: 'مراسلة', tone: 'purple' },
+              { href: `#/report/${student.id}`, icon: 'report', label: 'بطاقة التقييم', tone: 'blue' },
+            ]
+          : [
+              { id: 'add-note', icon: 'note', label: 'ملاحظة', tone: 'purple', plus: true },
+              { id: 'add-absence', icon: 'absent', label: 'غياب', tone: 'pink', plus: true },
+              role === 'admin' && waNumber(student.parent_phone) ? { id: 'wa-parent', icon: 'wa', label: 'واتساب', tone: 'green' } : null,
+              { id: 'new-thread', icon: 'mail', label: 'مراسلة الولي', tone: 'sky' },
+              { href: `#/report/${student.id}`, icon: 'report', label: 'بطاقة التقييم', tone: 'blue' },
+              role === 'admin' ? { id: 'edit-student', icon: 'edit', label: 'تعديل', tone: 'gray' } : null,
+            ]
+      )}
     </div>
 
     <div class="stats">
