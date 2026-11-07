@@ -156,6 +156,25 @@ async function viewReceipts(el) {
   await load();
 }
 
+// ختم المركز (مرسوم بـ SVG ليبقى واضحًا عند الطباعة) وإمضاء المسؤول
+const CENTER_STAMP = `<svg class="stamp" viewBox="0 0 300 300" aria-label="ختم Feed Education Center" role="img">
+  <defs>
+    <path id="stTop" d="M 40 150 A 110 110 0 0 1 260 150"/>
+    <path id="stBot" d="M 46 150 A 104 104 0 0 0 254 150"/>
+  </defs>
+  <g fill="none" stroke="currentColor">
+    <circle cx="150" cy="150" r="146" stroke-width="2.2"/><circle cx="150" cy="150" r="140" stroke-width="1.4"/><circle cx="150" cy="150" r="135" stroke-width="1.4"/>
+    <circle cx="150" cy="150" r="86" stroke-width="2.2"/><circle cx="150" cy="150" r="81" stroke-width="1.4"/>
+  </g>
+  <g fill="currentColor" font-family="Oswald, 'Arial Narrow', Impact, sans-serif" font-weight="600">
+    <text font-size="30" letter-spacing="1.5"><textPath href="#stTop" startOffset="50%" text-anchor="middle">FEED EDUCATION CENTER</textPath></text>
+    <text font-size="28" letter-spacing="2"><textPath href="#stBot" startOffset="50%" text-anchor="middle" dominant-baseline="hanging">NOUVELLE ARIANA</textPath></text>
+    <text x="150" y="146" font-size="25" text-anchor="middle">TEL: 93 400 219</text>
+    <text x="150" y="176" font-size="23" text-anchor="middle">MF: 1816760 / C</text>
+  </g>
+</svg>`;
+const CENTER_SIGNATURE = `<div class="signature"><span class="sig-hand">Alaa Abid</span><small>علاء عبيد · المدير</small></div>`;
+
 async function viewReceipt(el, kind, id) {
   const { receipt: r } = await api('GET', `/api/receipts/${kind}/${id}`);
   const parent = state.user.role === 'parent';
@@ -177,7 +196,7 @@ async function viewReceipt(el, kind, id) {
     <div class="receipt print-area">
       <div class="receipt-head">
         <img src="feed-logo.png" alt="فيد">
-        <div><h2>وصل خلاص</h2><p class="muted">مركز فيد التربوي</p></div>
+        <div><h2>وصل خلاص</h2><p class="muted">مركز فيد التربوي · Feed Education Center</p><p class="muted small" dir="ltr">Nouvelle Ariana · Tél 93 400 219 · MF 1816760/C</p></div>
         <div class="receipt-no">رقم<b>${r.receipt_no}</b></div>
       </div>
       <dl class="receipt-body">
@@ -202,7 +221,9 @@ async function viewReceipt(el, kind, id) {
           : ''
       }
       <div class="receipt-amount">${multi ? `المجموع (${lines.length} أشهر)` : 'المبلغ'}: <b>${fmtMoney(total)}</b></div>
-      <div class="receipt-sign"><span>الإمضاء والختم</span></div>
+      <div class="receipt-sign">
+        <div class="sign-box"><small>الإمضاء والختم</small>${CENTER_SIGNATURE}${CENTER_STAMP}</div>
+      </div>
     </div>`;
   $('#rc-print').addEventListener('click', () => window.print());
 }

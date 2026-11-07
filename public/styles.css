@@ -1678,3 +1678,16 @@ body.kb-dragging { cursor: grabbing; user-select: none; }
 
 .ak span, .ak small { color: rgba(255,255,255,.88) !important; }
 .acc-list li:not(:has(.al-del)) { grid-template-columns: 3.2rem 1fr auto auto; }
+
+/* ===== الختم والإمضاء على الوصل ===== */
+.receipt-head img { height: 56px; }
+.receipt-sign { margin-top: 1.4rem; display: block; }
+.sign-box { display: grid; grid-template-columns: 1fr auto; grid-template-areas: 'l l' 's t'; align-items: center; gap: .2rem .5rem; }
+.sign-box > small { grid-area: l; color: var(--muted); border-bottom: 1px dashed #ccc; padding-bottom: .3rem; text-align: start; }
+.signature { grid-area: s; display: flex; flex-direction: column; align-items: center; transform: rotate(-4deg); margin-inline-start: auto; margin-inline-end: -1.2rem; z-index: 1; }
+.sig-hand { font-family: 'Great Vibes', cursive; font-size: 2.7rem; line-height: 1.1; color: #0b2a6b; direction: ltr; }
+.signature small { font-size: .72rem; color: var(--muted); }
+.stamp { grid-area: t; width: 140px; height: 140px; color: #1e3a8a; opacity: .85; transform: rotate(-10deg); mix-blend-mode: multiply; }
+@media print { .stamp { color: #1e3a8a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .sig-hand { color: #0b2a6b !important; } }
+.receipt-sign .sig-hand { border: 0; padding: 0; min-width: 0; color: #0b2a6b; }
+.receipt-head p.small { font-size: .74rem; }
