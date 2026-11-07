@@ -917,6 +917,7 @@ test('program facilitators paid monthly, class formulas, partners share (super a
   assert.strictEqual((await fac('GET', '/api/program/staff-pay')).body.staff.length, 1);
 
   // الشركاء: للمشرف العام فقط
+  await pool.query(`UPDATE users SET super_admin = false WHERE username = 'admin'`);
   assert.strictEqual((await admin('GET', '/api/partners')).status, 403);
   await pool.query(`UPDATE users SET super_admin = true WHERE username = 'admin'`);
   const p = (await admin('GET', '/api/partners')).body;
@@ -925,7 +926,7 @@ test('program facilitators paid monthly, class formulas, partners share (super a
   assert.strictEqual((await admin('POST', '/api/partners/payments', { partner: 'Aymen', amount: 100, paid_on: '2026-06-10', note: 'avant' })).status, 201);
   const s = (await admin('GET', '/api/partners')).body.summary.find((x) => x.name === 'Aymen');
   assert.strictEqual(s.paid_before, 100);
-  await pool.query(`UPDATE users SET super_admin = false WHERE username = 'admin'`);
+  await pool.query(`UPDATE users SET super_admin = true WHERE username = 'admin'`);
 });
 
 test('center debts: a simple record, payments reduce the remaining and never touch income or expenses', async () => {
@@ -974,6 +975,7 @@ test('salaries overview: support teachers, program staff, admin and cleaning sta
 
 test('each amount counts in the month it belongs to: a January fee paid in March updates January and the partner share', async () => {
   const admin = await login('admin', 'admin123');
+  await pool.query(`UPDATE users SET super_admin = false WHERE username = 'admin'`);
   assert.strictEqual((await admin('GET', '/api/dashboard/year')).status, 403);
   await pool.query(`UPDATE users SET super_admin = true WHERE username = 'admin'`);
   try {
@@ -993,7 +995,7 @@ test('each amount counts in the month it belongs to: a January fee paid in March
     // لا تسكير: يمكن دائمًا تسجيل دفعة عن شهر قديم
     assert.strictEqual((await admin('POST', `/api/students/${st.id}/payments`, { month: '2026-02', amount: 50, paid_on: '2026-03-20' })).status, 201);
   } finally {
-    await pool.query(`UPDATE users SET super_admin = false WHERE username = 'admin'`);
+    await pool.query(`UPDATE users SET super_admin = true WHERE username = 'admin'`);
   }
 });
 const round = (n) => Math.round(n * 1000) / 1000;
@@ -1051,4 +1053,45 @@ test('changing the monthly fee from a month keeps earlier months at the old fee'
   await put(180, 'all');
   d = await dues();
   assert.deepStrictEqual([d['2026-09'], d['2026-10'], d['2026-11']], [180, 180, 180]);
+});
+
+test('admin permissions: restricted admin, account guards, accounting and documents', async () => {
+  const sup = await login('admin', 'admin123');
+  const a = (await sup('POST', '/api/users', { role: 'admin', username: 'acc1', full_name: 'المحاسبة', password: 'secret1' })).body.user;
+  assert.deepStrictEqual(a.perms.stats, false);
+  const acc = await login('acc1', 'secret1');
+  // افتراضيًا: لا إحصائيات، لا تعديل دفعات، لا محاسبة
+  assert.strictEqual((await acc('GET', '/api/dashboard/year')).status, 403);
+  assert.strictEqual((await acc('GET', '/api/accounting?month=2026-11')).status, 403);
+  assert.strictEqual((await acc('PUT', '/api/payments/1', { month: '2026-11', amount: 1 })).status, 403);
+  // لا يستطيع تعديل حساب المشرف العام ولا إنشاء إداري
+  assert.strictEqual((await acc('PUT', '/api/users/1', { full_name: 'x', username: 'admin', password: 'hacked1' })).status, 403);
+  assert.strictEqual((await acc('POST', '/api/users', { role: 'admin', username: 'x2', full_name: 'x', password: 'secret1' })).status, 403);
+  assert.strictEqual((await acc('PUT', `/api/users/${a.id}/permissions`, { perms: { stats: true } })).status, 403);
+  // المشرف العام يمنحه المحاسبة والإحصائيات
+  assert.strictEqual((await sup('PUT', `/api/users/${a.id}/permissions`, { perms: { accounting: true, stats: true } })).status, 200);
+  const me = (await acc('GET', '/api/me')).body.user;
+  assert.deepStrictEqual([me.perms.accounting, me.perms.stats, me.perms.school], [true, true, false]);
+  const board = await acc('GET', '/api/dashboard/year');
+  assert.strictEqual(board.status, 200);
+  assert.deepStrictEqual(board.body.totals.shares, {});
+  // دفعة عبر بنك الشركة تظهر في المحاسبة، والنقدية لا
+  const st = (await sup('POST', '/api/students', { full_name: 'بنك', level: '7', monthly_fee: 100, start_date: '2026-11-01' })).body.student;
+  await sup('POST', '/api/pay-months', { kind: 'support', id: st.id, lines: [{ month: '2026-11', amount: 100 }], method: 'bank', paid_on: '2026-11-05' });
+  await sup('POST', '/api/pay-months', { kind: 'support', id: st.id, lines: [{ month: '2026-12', amount: 50 }], method: 'cash', paid_on: '2026-11-06' });
+  const book = (await acc('GET', '/api/accounting?month=2026-11')).body;
+  assert.strictEqual(book.bank_total, 100);
+  assert.strictEqual(book.bank.length, 1);
+  assert.strictEqual(book.by_method.cash >= 50, true);
+  const exp = await acc('POST', '/api/accounting/expenses', { category: 'tax_office', amount: 120, date: '2026-11-10' });
+  assert.strictEqual(exp.status, 201);
+  assert.strictEqual((await acc('POST', '/api/accounting/expenses', { category: 'acc_other', amount: 5 })).status, 400);
+  const doc = await acc('POST', '/api/documents', { folder: 'month', month: '2026-11', ledger_id: exp.body.id, filename: 'وصل.pdf', data: 'data:application/pdf;base64,JVBERi0xLjQ=' });
+  assert.strictEqual(doc.status, 201);
+  const book2 = (await acc('GET', '/api/accounting?month=2026-11')).body;
+  assert.strictEqual(book2.expenses.find((x) => x.id === exp.body.id).files, 1);
+  const f = await handle(new Request(`http://localhost/api/documents/${doc.body.id}/file`, { headers: { cookie: (await call('POST', '/api/login', { username: 'acc1', password: 'secret1' })).headers.get('set-cookie').split(';')[0] } }));
+  assert.strictEqual(f.headers.get('content-type'), 'application/pdf');
+  // المعفى هذا الشهر
+  assert.ok([200, 201].includes((await sup('PUT', '/api/fee-adjustments', { student_id: st.id, month: '2026-11', kind: 'exempt', reason: 'معفى' })).status));
 });

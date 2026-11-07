@@ -41,6 +41,22 @@ function bindMonth(id, load) {
 
 // ---------- الرئيسية: حوصلة الشهر ثم أيقونات الدخول ----------
 async function viewHome(el) {
+  // إداري بلا صلاحية الإحصائيات: رئيسية بالروابط فقط (دون أرقام مالية)
+  if (!can('stats')) {
+    const links = [
+      can('school') && ['#/students', '📚', 'تلاميذ الدعم'],
+      can('school') && ['#/program', '🎨', 'البرنامج التربوي'],
+      can('school') && ['#/attendance', '✅', 'الغيابات'],
+      ['#/receipts', '🧾', 'الوصولات'],
+      can('expenses') && ['#/ledger', '💸', 'المداخيل والمصاريف'],
+      can('accounting') && ['#/accounting', '🏦', 'فضاء المحاسبة'],
+      ['#/messages', '✉️', 'الرسائل'],
+      ['#/todo', '📌', 'المهام'],
+    ].filter(Boolean);
+    el.innerHTML = `${heroBanner({ sub: 'مرحبًا بك في فضاء إدارة مركز فيد.', art: '🌿' })}
+      <div class="home-links">${links.map(([h, i, l]) => `<a class="home-link" href="${h}"><span>${i}</span><b>${l}</b></a>`).join('')}</div>`;
+    return;
+  }
   el.innerHTML = `
     ${heroBanner({ sub: 'حوصلة مالية وإدارية لمركز فيد: دروس الدعم، البرنامج التربوي، الدورات والمصاريف.', art: '📊', actions: monthPicker('home-month') })}
     <div id="home-db"></div>
@@ -398,6 +414,7 @@ async function viewProgram(el) {
   const hueOf = (classId) => [262, 330, 200, 152, 28, 290, 175, 45][Math.max(0, classes.findIndex((k) => k.id === classId)) % 8];
 
   const render = () => {
+    if (!$('#prog-list')) return; // الصفحة تبدّلت قبل اكتمال التحميل
     const f = $('#pf-class').value;
     const st = $('#pf-status').value;
     const q = $('#pf-q').value.trim().toLowerCase();

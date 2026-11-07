@@ -1383,3 +1383,33 @@ body.sel-open { overflow: hidden; }
 .fee-from { background: #fff7e6; border: 1px dashed #f3d08a; border-radius: 14px; padding: .6rem .8rem .2rem; margin-bottom: .7rem; }
 .fee-from label { margin-bottom: .3rem; font-weight: 600; color: #8a5a00; }
 @media (prefers-color-scheme: dark) { .fee-from { background: #2e2412; border-color: #6b4e1a; } .fee-from label { color: #fcd34d; } }
+.home-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .7rem; }
+.home-link { display: flex; flex-direction: column; align-items: center; gap: .4rem; padding: 1.1rem .6rem; background: var(--card); border: 1px solid var(--border); border-radius: 18px; color: var(--text); text-decoration: none !important; box-shadow: var(--shadow-sm); }
+.home-link span { font-size: 1.7rem; } .home-link b { font-size: .92rem; }
+.home-link:hover { border-color: #d8c6f3; transform: translateY(-2px); }
+
+/* ---------- الصلاحيات ---------- */
+.perm-card { margin-bottom: 1rem; }
+.perm-head { display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: .6rem; }
+.perm-head > div:first-child { display: flex; flex-direction: column; text-align: start; }
+.perm-presets { display: flex; gap: .3rem; }
+.perm-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: .4rem; }
+.perm-row { display: flex; align-items: center; justify-content: space-between; gap: .8rem; padding: .55rem .75rem; border-radius: 12px; background: var(--soft-2); margin: 0; cursor: pointer; font-size: .9rem; }
+.switch { position: relative; flex: none; width: 42px; height: 24px; }
+.switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.switch i { position: absolute; inset: 0; border-radius: 99px; background: #cbd5e1; transition: background .15s; pointer-events: none; }
+.switch i::after { content: ''; position: absolute; top: 3px; inset-inline-start: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.switch input:checked + i { background: var(--feed-purple); }
+.switch input:checked + i::after { transform: translateX(-18px); }
+[dir=ltr] .switch input:checked + i::after { transform: translateX(18px); }
+.perm-foot { margin-top: .7rem; display: flex; justify-content: flex-end; }
+/* ---------- المحاسبة ---------- */
+.acc-form { display: grid; grid-template-columns: 1.2fr 1.6fr .8fr 1fr auto auto; gap: .5rem; align-items: center; margin-bottom: .8rem; }
+.acc-form input, .acc-form select { margin: 0; }
+.acc-form label.btn { margin: 0; }
+@media (max-width: 760px) { .acc-form { grid-template-columns: 1fr 1fr; } }
+.docs { display: flex; flex-direction: column; gap: .35rem; }
+.docs.inline { flex-direction: row; flex-wrap: wrap; align-items: center; gap: .3rem; }
+.doc { display: inline-flex; align-items: center; gap: .3rem; background: var(--soft); border-radius: 999px; padding: .15rem .65rem; font-size: .82rem; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-row { display: flex; align-items: center; gap: .6rem; }
+.attach { cursor: pointer; font-size: 1rem; }

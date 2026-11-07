@@ -34,7 +34,7 @@ function today() {
 }
 
 const MONTHS_AR = ['جانفي', 'فيفري', 'مارس', 'أفريل', 'ماي', 'جوان', 'جويلية', 'أوت', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-const PAYMENT_LABELS = { cash: 'نقدًا', transfer: 'تحويل بنكي', cheque: 'صك', d17: 'D17', other: 'أخرى' };
+const PAYMENT_LABELS = { cash: 'نقدًا', bank: 'بنك الشركة', transfer: 'تحويل بنكي', cheque: 'صك', d17: 'D17', other: 'أخرى' };
 
 function monthLabel(m) {
   if (!m) return '';
@@ -318,6 +318,8 @@ const routes = [
   [/^#\/debts$/, (el) => viewDebts(el)],
   [/^#\/receipts$/, (el) => viewReceipts(el)],
   [/^#\/my-receipts$/, (el) => viewMyReceipts(el)],
+  [/^#\/permissions$/, (el) => viewPermissions(el)],
+  [/^#\/accounting$/, (el) => viewAccounting(el)],
   [/^#\/receipt\/(support|program|course|registration)\/(\d+)$/, (el, kind, id) => viewReceipt(el, kind, Number(id))],
   [/^#\/todo$/, (el) => viewTodo(el)],
   [/^#\/meetings$/, (el) => viewMeetings(el)],
@@ -342,6 +344,8 @@ const routes = [
 ];
 
 function homeFor(user) {
+  // إداري بلا إحصائيات ولا تلاميذ (مثلًا المحاسبة): يبدأ من فضاء المحاسبة
+  if (user?.role === 'admin' && !user.super_admin && !user.perms?.stats && !user.perms?.school && user.perms?.accounting) return '#/accounting';
   return '#/home';
 }
 
@@ -375,13 +379,36 @@ async function router() {
         await view(el, ...m.slice(1));
       } catch (err) {
         // خطأ صفحة غادرها المستعمل قبل أن تكتمل: لا يُكتب فوق الصفحة الجديدة
-        if (nav === navCount) el.innerHTML = `<div class="card"><p class="error">${esc(err.message)}</p></div>`;
+        if (nav === navCount) {
+          // خطأ برمجي: نُظهر مكانه (سطر صغير) لتسهيل إصلاحه
+          const where = err instanceof TypeError || err instanceof ReferenceError ? (err.stack || '').split('\n').find((l) => /\.js:\d+/.test(l)) || '' : '';
+          el.innerHTML = `<div class="card"><p class="error">${esc(err.message)}</p>${
+            where ? `<p class="muted small" dir="ltr">${esc(where.trim().replace(location.origin + '/', ''))} · ${esc(hash)}</p>` : ''
+          }<p><button class="btn small ghost" onclick="location.reload()">إعادة تحميل الصفحة</button></p></div>`;
+        }
       }
       return;
     }
   }
   location.hash = state.user ? homeFor(state.user) : '#/login';
 }
+
+// ---------- الصلاحيات: الإداري يرى ما سُمح له به فقط (المشرف العام يرى كل شيء) ----------
+const can = (perm) => !state.user || state.user.role !== 'admin' || state.user.super_admin || !!state.user.perms?.[perm];
+const HASH_PERM = {
+  '#/board': 'stats', '#/finance': 'stats', '#/general': 'stats', '#/dashboard': 'school', '#/program/board': 'school',
+  '#/payroll': 'salaries', '#/program/pay': 'salaries', '#/salaries': 'salaries', '#/staff': 'salaries',
+  '#/fees': 'fees', '#/accounting': 'accounting', '#/support/teachers': 'accounts', '#/ledger': 'expenses',
+  '#/partners': 'super', '#/permissions': 'super', '#/admins': 'super', '#/center-debts': 'expenses',
+};
+const GROUP_PERM = { 'دروس الدعم': 'school', 'البرنامج التربوي': 'school' };
+const navAllowed = (h) => {
+  const p = HASH_PERM[h];
+  if (!p || state.user?.role !== 'admin') return true;
+  return p === 'super' ? !!state.user.super_admin : can(p);
+};
+// عناوين فرعية بلا عناصر تحتها تُحذف
+const tidyItems = (items) => items.filter(([h], i) => h || (items[i + 1] && items[i + 1][0]));
 
 // القائمة: عناصر أساسية، وبعضها مجموعات بعناصر فرعية
 const NAV = {
@@ -435,6 +462,7 @@ const NAV = {
         ['#/debts', 'المتخلّد بذمتهم'],
         ['#/receipts', 'الوصولات'],
         ['#/ledger', 'المداخيل والمصاريف'],
+        ['#/accounting', 'فضاء المحاسبة'],
         ['#/fees', 'التعريفات والتخفيضات'],
         ['#/products', 'المنتجات (كتب ومراجع)'],
         ['#/salaries', 'الأجور (كل الإطار)'],
@@ -458,6 +486,7 @@ const NAV = {
         ['#/parents', 'الأولياء'],
         ['#/parent-requests', 'طلبات أولياء Google'],
         ['#/admins', 'الإدارة'],
+        ['#/permissions', 'الصلاحيات'],
         ['#/account', 'حسابي'],
       ],
     },
@@ -566,8 +595,8 @@ function renderTopbar() {
   // «البرنامج التربوي» للمعلم فقط إن كان منشّطًا لقسم
   const nav = NAV[navKey]
     .filter((e) => !(navKey === 'teacher' && String(e[0]).startsWith('#/program') && !state.user.program_classes))
-    .filter((e) => !(Array.isArray(e) && e[0] === '#/board' && !state.user.super_admin))
-    .map((e) => (Array.isArray(e) || state.user.super_admin ? e : { ...e, items: e.items.filter(([h]) => h !== '#/partners') }));
+    .map((e) => (Array.isArray(e) ? e : { ...e, items: tidyItems(e.items.filter(([h]) => !h || navAllowed(h))) }))
+    .filter((e) => (Array.isArray(e) ? navAllowed(e[0]) && !(e[0] === '#/courses' && !can('school')) : e.items.length && !(GROUP_PERM[e.label] && !can(GROUP_PERM[e.label]))));
   $('#nav').innerHTML = nav
     .map((entry, i) =>
       Array.isArray(entry)
@@ -1017,6 +1046,7 @@ async function viewStudents(el) {
   };
 
   const render = () => {
+    if (!$('#students-list')) return; // الصفحة تبدّلت قبل اكتمال التحميل
     const students = applyPayFilter(current, $('#f-pay')?.value);
     $('#students-list').innerHTML = payFilterSummary(students, $('#f-pay')?.value) + (!students.length
       ? '<div class="card muted">لا يوجد تلاميذ.</div>'
@@ -1817,8 +1847,11 @@ function receiptWaText(r) {
     .map(monthLabel)
     .join('، ')}\nالمبلغ: ${fmtMoney(r.total)}\n\nالوصل في حسابكم على التطبيقة:\n${link}\nشكرًا لكم.`;
 }
-async function paySheet(kind, id, onDone) {
+async function paySheet(kind, id, onDone0) {
   closePaySheet();
+  // التحديث بعد الدفع: فقط إن بقي المستعمل في نفس الصفحة
+  const fromHash = location.hash;
+  const onDone = () => location.hash === fromHash && onDone0?.();
   const file = await api('GET', kind === 'support' ? `/api/students/${id}` : `/api/program/children/${id}`);
   const person = kind === 'support' ? file.student : file.child;
   const f = file.finance;
@@ -1996,7 +2029,8 @@ function bindFinance(el, f, { kind, id }, reload) {
       openModal(
         `تعديل مبلغ ${monthLabel(m.month)}`,
         `<p class="muted small">المبلغ العادي لهذا الشهر: <b>${fmtMoney(a ? a.original : m.due)}</b></p>
-         <label class="check"><input type="radio" name="kind" value="exempt" ${!a || a.kind === 'exempt' ? 'checked' : ''}> تغيّب الشهر كاملًا (لا شيء عليه)</label>
+         <label class="check"><input type="radio" name="kind" value="free_month" ${!a || (a.kind === 'exempt' && a.reason === 'معفى') ? 'checked' : ''}> معفى هذا الشهر (لا يدفع شيئًا)</label>
+         <label class="check"><input type="radio" name="kind" value="exempt" ${a?.kind === 'exempt' && a.reason !== 'معفى' ? 'checked' : ''}> تغيّب الشهر كاملًا (لا شيء عليه)</label>
          <label class="check"><input type="radio" name="kind" value="absent_days" ${a?.kind === 'absent_days' ? 'checked' : ''}> تغيّب جزءًا من الشهر</label>
          <label id="adj-days">عدد أيام الغياب<input name="days" inputmode="numeric" value="${a?.kind === 'absent_days' ? esc(a.value) : ''}" placeholder="مثال: 10"></label>
          <label class="check"><input type="radio" name="kind" value="amount" ${a?.kind === 'amount' ? 'checked' : ''}> مبلغ آخر</label>
@@ -2016,6 +2050,10 @@ function bindFinance(el, f, { kind, id }, reload) {
             });
             toast('تمت إضافة المبلغ إلى الشهر');
             return reload();
+          }
+          if (data.kind === 'free_month') {
+            data.kind = 'exempt';
+            data.reason = 'معفى';
           }
           await api('PUT', '/api/fee-adjustments', {
             [kind === 'support' ? 'student_id' : 'child_id']: id,

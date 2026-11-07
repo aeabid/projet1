@@ -575,3 +575,218 @@ async function viewAlerts(el) {
     }
     <p class="muted small">التنبيهات: المهام المتأخرة والعاجلة، القرارات المتأخرة، العائلات المتخلّدة، التسجيلات الجديدة، الغيابات المتكرّرة، خلاص المعلمين، والأنشطة القريبة.</p>`;
 }
+
+// ---------- الصلاحيات (للمشرف العام) ----------
+const PERM_PRESETS = {
+  'إداري': { school: true, expenses: true },
+  'محاسبة': { accounting: true, stats: true },
+};
+async function viewPermissions(el) {
+  if (!state.user.super_admin) {
+    el.innerHTML = '<div class="card muted">هذه الصفحة للمشرف العام فقط.</div>';
+    return;
+  }
+  const { permissions, admins } = await api('GET', '/api/permissions');
+  el.innerHTML = `
+    <div class="page-head"><div><h2>🔐 الصلاحيات</h2>
+      <p class="muted">حدّد ما يراه ويفعله كل حساب إداري. المشرف العام له كل الصلاحيات دائمًا، ونصيب الشركاء لا يراه غيره.
+      لإضافة حساب جديد (مثلًا للمحاسبة): <a href="#/admins">الإدارة ← + حساب</a>، ثم ارجع هنا.</p></div></div>
+    ${admins
+      .map((a) =>
+        a.super_admin
+          ? `<section class="card perm-card"><div class="perm-head"><div><b>${esc(a.full_name)}</b><span class="muted small" dir="ltr">${esc(a.google_email || a.email || a.username)}</span></div>
+              <span class="badge pack">المشرف العام · كل الصلاحيات</span></div></section>`
+          : `<section class="card perm-card" data-id="${a.id}">
+              <div class="perm-head"><div><b>${esc(a.full_name)}</b><span class="muted small" dir="ltr">${esc(a.email || a.username)}${
+                a.google_email ? ' · Google ✓' : a.email ? ' · يدخل بـ Google بهذا البريد' : ''
+              }</span></div>
+                <div class="perm-presets">${Object.keys(PERM_PRESETS).map((n) => `<button type="button" class="chip" data-preset="${esc(n)}">${esc(n)}</button>`).join('')}</div></div>
+              <div class="perm-list">${Object.entries(permissions)
+                .map(
+                  ([k, l]) => `<label class="perm-row"><span>${esc(l)}</span>
+                    <span class="switch"><input type="checkbox" data-perm="${k}" ${a.perms[k] ? 'checked' : ''}><i></i></span></label>`
+                )
+                .join('')}</div>
+              <div class="perm-foot"><button class="btn small" data-save>حفظ الصلاحيات</button></div>
+            </section>`
+      )
+      .join('')}`;
+  el.querySelectorAll('.perm-card[data-id]').forEach((card) => {
+    card.querySelectorAll('[data-preset]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const p = PERM_PRESETS[b.dataset.preset];
+        card.querySelectorAll('[data-perm]').forEach((c) => (c.checked = !!p[c.dataset.perm]));
+      })
+    );
+    card.querySelector('[data-save]').addEventListener('click', async () => {
+      const perms = Object.fromEntries([...card.querySelectorAll('[data-perm]')].map((c) => [c.dataset.perm, c.checked]));
+      try {
+        await api('PUT', `/api/users/${card.dataset.id}/permissions`, { perms });
+        toast('تم حفظ الصلاحيات');
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  });
+}
+
+// ---------- فضاء المحاسبة: مداخيل البنك، مصاريف المحاسبة، الوصولات والملفات ----------
+const readFileData = (file) =>
+  new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+async function uploadDocs(files, extra) {
+  for (const f of files) {
+    if (f.size > 4 * 1024 * 1024) {
+      toast(`${f.name}: أكبر من 4 ميغا`, true);
+      continue;
+    }
+    await api('POST', '/api/documents', { ...extra, filename: f.name, data: await readFileData(f) });
+  }
+}
+const docLink = (d) =>
+  `<a class="doc" href="/api/documents/${d.id}/file" target="_blank" rel="noopener">${/pdf/.test(d.mime) ? '📄' : /image/.test(d.mime) ? '🖼️' : '📎'} ${esc(d.title || d.filename)}</a>`;
+
+async function viewAccounting(el) {
+  el.innerHTML = `
+    <div class="page-head"><div><h2>🏦 فضاء المحاسبة</h2>
+      <p class="muted">كل شهر: المداخيل عبر بنك الشركة، مصاريف المحاسبة، ووصولات كل معاملة. وملفات المركز الدائمة في الأسفل.</p></div>
+      <div class="actions">${monthPicker('ac-month')}<button class="btn ghost" id="ac-csv">⬇ تصدير البنك (Excel)</button></div></div>
+    <div id="ac-body"><p class="muted">جاري التحميل…</p></div>
+    <section class="card"><div class="section-head"><h3>🗂 ملفات المركز</h3>
+      <label class="btn small ghost">+ إضافة ملف<input type="file" id="ac-center-file" multiple hidden></label></div>
+      <p class="muted small">وثائق دائمة: السجل التجاري، العقود، الشهادات، التصاريح…</p>
+      <div id="ac-center" class="docs"></div></section>`;
+  let data;
+  const loadCenter = async () => {
+    const { documents } = await api('GET', '/api/documents?folder=center');
+    $('#ac-center').innerHTML = documents.length
+      ? documents.map((d) => `<span class="doc-row">${docLink(d)}<span class="muted small">${fmtDate(d.created)}</span><button class="link danger small" data-del-doc="${d.id}">✕</button></span>`).join('')
+      : '<p class="muted">لا ملفات بعد.</p>';
+  };
+  const load = async () => {
+    const month = $('#ac-month').value;
+    data = await api('GET', '/api/accounting?month=' + month);
+    const docsFor = (pred) => data.documents.filter(pred);
+    const cats = { ...data.expense_categories };
+    $('#ac-body').innerHTML = `
+      <div class="fb-kpis">
+        <div class="fb-kpi in"><span>🏦 عبر بنك الشركة</span><b>${fmtMoney(data.bank_total)}</b><small>${data.bank.length} معاملة · ${esc(monthLabel(month))}</small></div>
+        <div class="fb-kpi net"><span>💵 نقدًا</span><b>${fmtMoney(data.by_method.cash || 0)}</b><small>لا يدخل البنك</small></div>
+        <div class="fb-kpi out"><span>كل المداخيل</span><b>${fmtMoney(data.total)}</b><small>${Object.entries(data.by_method).map(([k, v]) => `${PAYMENT_LABELS[k] || k}: ${fmtMoney(v)}`).join(' · ')}</small></div>
+      </div>
+      <section class="card"><div class="section-head"><h3>🏦 المداخيل عبر البنك</h3><span class="muted small">بنك الشركة، تحويل، صك</span></div>
+        ${
+          data.bank.length
+            ? `<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>وصل</th><th>المستفيد</th><th>البرنامج</th><th>الطريقة</th><th>المبلغ</th><th>المرفقات</th></tr></thead><tbody>${data.bank
+                .map((l) => {
+                  const docs = docsFor((d) => d.receipt_no === l.receipt_no);
+                  return `<tr><td class="nowrap">${fmtDate(l.paid_on)}</td><td><a href="#/receipt/${l.kind}/${l.id}">🧾 ${l.receipt_no ?? ''}</a></td>
+                    <td>${esc(l.beneficiary)}</td><td class="muted small">${esc(l.program)}</td><td>${esc(PAYMENT_LABELS[l.method] || l.method)}</td>
+                    <td><b>${fmtMoney(l.amount)}</b></td>
+                    <td><div class="docs inline">${docs.map(docLink).join('')}<label class="link small attach">📎<input type="file" data-attach-receipt="${l.receipt_no}" multiple hidden></label></div></td></tr>`;
+                })
+                .join('')}</tbody></table></div>`
+            : '<p class="muted">لا مداخيل عبر البنك في هذا الشهر. (اختر «بنك الشركة» كطريقة دفع عند تسجيل الدفعة.)</p>'
+        }
+      </section>
+      <section class="card"><div class="section-head"><h3>🧾 مصاريف المحاسبة</h3></div>
+        <form class="acc-form" id="ac-exp">
+          <select name="category" aria-label="النوع">${Object.entries(cats).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select>
+          <input name="description" placeholder="البيان (إجباري لـ«أخرى»)">
+          <input name="amount" inputmode="decimal" placeholder="المبلغ" required>
+          <input type="date" name="date" value="${month === today().slice(0, 7) ? today() : month + '-01'}">
+          <label class="btn small ghost">📎 وصل<input type="file" name="file" hidden></label>
+          <button class="btn small">+ إضافة</button>
+        </form>
+        ${
+          data.expenses.length
+            ? `<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th>المبلغ</th><th>الوصولات</th><th></th></tr></thead><tbody>${data.expenses
+                .map(
+                  (x) => `<tr><td class="nowrap">${fmtDate(x.date)}</td><td>${esc(cats[x.category] || x.category)}</td><td>${esc(x.description || '—')}</td>
+                    <td><b>${fmtMoney(x.amount)}</b></td>
+                    <td><div class="docs inline">${docsFor((d) => d.ledger_id === x.id).map(docLink).join('')}<label class="link small attach">📎<input type="file" data-attach-ledger="${x.id}" multiple hidden></label></div></td>
+                    <td><button class="link danger small" data-del-exp="${x.id}">حذف</button></td></tr>`
+                )
+                .join('')}</tbody></table></div>
+              <p class="muted small">المجموع: <b>${fmtMoney(data.expenses.reduce((t, x) => t + x.amount, 0))}</b></p>`
+            : '<p class="muted">لا مصاريف محاسبة في هذا الشهر.</p>'
+        }
+      </section>
+      <section class="card"><div class="section-head"><h3>📁 وصولات ووثائق ${esc(monthLabel(month))}</h3>
+        <label class="btn small ghost">+ إضافة ملفات<input type="file" id="ac-month-file" multiple hidden></label></div>
+        <div class="docs">${
+          docsFor((d) => !d.ledger_id && !d.receipt_no).length
+            ? docsFor((d) => !d.ledger_id && !d.receipt_no)
+                .map((d) => `<span class="doc-row">${docLink(d)}<span class="muted small">${fmtDate(d.created)}</span><button class="link danger small" data-del-doc="${d.id}">✕</button></span>`)
+                .join('')
+            : '<p class="muted">لا وثائق لهذا الشهر.</p>'
+        }</div>
+      </section>`;
+    const up = async (files, extra) => {
+      if (!files.length) return;
+      try {
+        await uploadDocs(files, { folder: 'month', month, ...extra });
+        toast('تم رفع الملف');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      load();
+    };
+    $('#ac-month-file').addEventListener('change', (e) => up([...e.target.files], {}));
+    el.querySelectorAll('[data-attach-receipt]').forEach((i) => i.addEventListener('change', () => up([...i.files], { receipt_no: i.dataset.attachReceipt })));
+    el.querySelectorAll('[data-attach-ledger]').forEach((i) => i.addEventListener('change', () => up([...i.files], { ledger_id: i.dataset.attachLedger })));
+    $('#ac-exp').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = formData(e.target);
+      const file = e.target.querySelector('input[type=file]').files[0];
+      try {
+        const { id } = await api('POST', '/api/accounting/expenses', { category: f.category, description: f.description, amount: f.amount, date: f.date });
+        if (file) await uploadDocs([file], { folder: 'month', month, ledger_id: id });
+        toast('تمت الإضافة');
+        load();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+    el.querySelectorAll('[data-del-exp]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirmAction('حذف هذا المصروف؟')) return;
+        await api('DELETE', `/api/accounting/expenses/${b.dataset.delExp}`).catch((err) => toast(err.message, true));
+        load();
+      })
+    );
+  };
+  el.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-del-doc]');
+    if (!b) return;
+    if (!confirmAction('حذف هذا الملف؟')) return;
+    await api('DELETE', `/api/documents/${b.dataset.delDoc}`).catch((err) => toast(err.message, true));
+    load();
+    loadCenter();
+  });
+  $('#ac-center-file').addEventListener('change', async (e) => {
+    try {
+      await uploadDocs([...e.target.files], { folder: 'center' });
+      toast('تم رفع الملف');
+    } catch (err) {
+      toast(err.message, true);
+    }
+    loadCenter();
+  });
+  $('#ac-csv').addEventListener('click', () => {
+    if (!data) return;
+    const rows = [['التاريخ', 'رقم الوصل', 'المستفيد', 'البرنامج', 'الطريقة', 'المبلغ'], ...data.bank.map((l) => [l.paid_on, l.receipt_no ?? '', l.beneficiary, l.program, PAYMENT_LABELS[l.method] || l.method, l.amount])];
+    rows.push([], ['المجموع عبر البنك', '', '', '', '', data.bank_total]);
+    const csv = '﻿' + rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = `bank-${data.month}.csv`;
+    a.click();
+  });
+  bindMonth('ac-month', load);
+  await Promise.all([load(), loadCenter()]);
+}
