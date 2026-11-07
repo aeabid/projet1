@@ -1092,6 +1092,7 @@ async function viewStudents(el) {
   const render = () => {
     if (!$('#students-list')) return; // الصفحة تبدّلت قبل اكتمال التحميل
     const students = applyPayFilter(current, $('#f-pay')?.value);
+    rememberList('support', students);
     $('#students-list').innerHTML = payFilterSummary(students, $('#f-pay')?.value) + (!students.length
       ? '<div class="card muted">لا يوجد تلاميذ.</div>'
       : view === 'cards'
@@ -1405,6 +1406,68 @@ function fileTabs(tabs) {
   const list = tabs.filter(Boolean);
   return `<div class="file-tabs" role="tablist">${list.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}">${l}</button>`).join('')}</div>`;
 }
+// ---------- التنقّل بين الملفات (التلميذ السابق / التالي) حسب آخر قائمة معروضة ----------
+function rememberList(key, items) {
+  try {
+    sessionStorage.setItem('navList:' + key, JSON.stringify(items.map((x) => [x.id, x.full_name])));
+  } catch {}
+}
+async function fileNavList(key) {
+  try {
+    const l = JSON.parse(sessionStorage.getItem('navList:' + key) || 'null');
+    if (Array.isArray(l) && l.length) return l;
+  } catch {}
+  // فتح الملف مباشرة: القائمة الافتراضية (يدرسون، حسب الاسم)
+  const list =
+    key === 'support'
+      ? (await api('GET', '/api/students?status=studying').catch(() => ({ students: [] }))).students
+      : (await api('GET', '/api/program').catch(() => ({ children: [] }))).children.filter((c) => c.status === 'active');
+  rememberList(key, list);
+  return list.map((x) => [x.id, x.full_name]);
+}
+// شريط ‹ السابق | 3 / 70 | التالي › ، ويُحفظ التبويب المفتوح عند الانتقال
+async function mountFileNav(el, key, id, hrefOf) {
+  const box = el.querySelector('#file-nav');
+  if (!box) return;
+  const list = await fileNavList(key);
+  const i = list.findIndex(([x]) => x === Number(id));
+  if (i < 0 || !box.isConnected) return (box.hidden = true);
+  const prev = list[i - 1], next = list[i + 1];
+  const go = (it) => {
+    if (!it) return;
+    const tab = el.querySelector('.file-tabs [data-tab].on')?.dataset.tab;
+    if (tab) sessionStorage.setItem('fileTab:' + hrefOf(it[0]), tab);
+    location.hash = hrefOf(it[0]);
+  };
+  box.innerHTML = `
+    <button type="button" class="fn-btn" data-dir="-1" ${prev ? '' : 'disabled'} title="السابق">${navArrow('prev')}<span>${prev ? esc(prev[1]) : ''}</span></button>
+    <span class="fn-pos" dir="ltr">${i + 1} / ${list.length}</span>
+    <button type="button" class="fn-btn next" data-dir="1" ${next ? '' : 'disabled'} title="التالي"><span>${next ? esc(next[1]) : ''}</span>${navArrow('next')}</button>`;
+  box.hidden = false;
+  box.querySelector('[data-dir="-1"]').addEventListener('click', () => go(prev));
+  box.querySelector('[data-dir="1"]').addEventListener('click', () => go(next));
+  fileNavKeys = (dir) => go(dir < 0 ? prev : next);
+  // سحب أفقي في الهاتف
+  let sx = null, sy = 0;
+  el.addEventListener('touchstart', (e) => ((sx = e.touches[0].clientX), (sy = e.touches[0].clientY)), { passive: true });
+  el.addEventListener('touchend', (e) => {
+    if (sx === null || e.target.closest('.table-wrap, .kanban, .file-tabs, input, textarea')) return;
+    const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+    sx = null;
+    if (Math.abs(dx) > 90 && Math.abs(dy) < 50) go(dx > 0 ? next : prev); // RTL: السحب لليمين = التالي
+  });
+}
+const navArrow = (d) =>
+  `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d === 'prev' ? 'm9 6 6 6-6 6' : 'm15 6-6 6 6 6'}"/></svg>`;
+let fileNavKeys = null;
+addEventListener('hashchange', () => (fileNavKeys = null));
+document.addEventListener('keydown', (e) => {
+  if (!fileNavKeys || !['ArrowLeft', 'ArrowRight'].includes(e.key) || e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.target.closest?.('input, textarea, select, [contenteditable]') || $('#modal').open) return;
+  if (!$('#file-nav') || $('#file-nav').hidden) return;
+  fileNavKeys(e.key === 'ArrowRight' ? -1 : 1); // RTL: اليمين = السابق
+});
+
 function bindFileTabs(el) {
   const tabs = [...el.querySelectorAll('[data-tab]')];
   const show = (k) => {
@@ -1477,6 +1540,7 @@ async function viewStudent(el, id) {
     </li>`;
 
   el.innerHTML = `
+    ${role !== 'parent' ? '<nav class="file-nav" id="file-nav" hidden></nav>' : ''}
     <div class="page-head">
       <div class="student-head">
         <div class="photo-wrap">
@@ -1703,6 +1767,7 @@ async function viewStudent(el, id) {
     location.hash = '#/students';
   });
   bindFileTabs(el);
+  if (role !== 'parent') mountFileNav(el, 'support', id, (x) => `#/students/${x}`);
 
   $('#photo-input')?.addEventListener('change', async (e) => {
     const file = e.target.files[0];

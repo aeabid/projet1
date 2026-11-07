@@ -558,6 +558,7 @@ async function viewProgram(el) {
       (c) => (!f || String(c.class_id) === f) && (!st || c.status === st) && (!q || c.full_name.toLowerCase().includes(q) || String(c.contact_name || '').toLowerCase().includes(q))
     );
     const list = applyPayFilter(list0, $('#pf-pay').value);
+    rememberList('program', list);
     const owedCell = (c) => (c.free ? '<span class="badge free">مجاني</span>' : c.balance > 0 ? `<b class="owed">${fmtMoney(c.balance)}</b>` : c.monthly_fee && !c.free ? '<span class="badge good">خالص</span>' : '—');
     const feeCell = (c) => `${c.free ? '<span class="muted">—</span>' : fmtMoney(c.monthly_fee)}${c.sibling_pct ? `<div class="muted small">إخوة −${c.sibling_pct}%</div>` : ''}`;
     const badges = (c) => `${c.status === 'left' ? ' <span class="badge status-left">خرج</span>' : ''}${c.student_id ? ' <span class="badge level">+ دروس الدعم</span>' : ''}`;
@@ -877,6 +878,7 @@ async function viewProgramChild(el, id) {
   const { child: c, finance } = file;
   const back = role === 'parent' ? ['#/students', 'أبنائي'] : ['#/program', 'البرنامج التربوي'];
   el.innerHTML = `
+    ${role === 'admin' ? '<nav class="file-nav" id="file-nav" hidden></nav>' : ''}
     <a href="${back[0]}" class="muted small">→ ${back[1]}</a>
     <div class="page-head">
       <div><h2>${esc(c.full_name)}</h2>
@@ -929,6 +931,7 @@ async function viewProgramChild(el, id) {
     childForm(full, { classes, parents, teachers, students, children }, reload);
   });
   bindFileTabs(el);
+  if (role === 'admin') mountFileNav(el, 'program', id, (x) => `#/program/child/${x}`);
   $('#to-support')?.addEventListener('click', () => studentForm(null, () => viewProgramChild(el, id), Number(id)));
 }
 
