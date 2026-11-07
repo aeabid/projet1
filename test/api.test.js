@@ -1204,3 +1204,86 @@ test('new student or child: registration 40 due on the first month by default, a
     await pool.query(`UPDATE settings SET value = '0' WHERE key = 'registration_default'`);
   }
 });
+
+test('task board: drag to another column, order, checklist; teacher ticks own checklist', async () => {
+  const admin = await login('admin', 'admin123');
+  const a = (await admin('POST', '/api/todo', { title: 'بطاقة أ', priority: 'high', checklist: [{ text: 'خطوة 1' }, { text: 'خطوة 2', done: true }, { text: '' }] })).body.task;
+  const b = (await admin('POST', '/api/todo', { title: 'بطاقة ب' })).body.task;
+  let t = (await admin('GET', '/api/todo')).body.tasks.find((x) => x.id === a.id);
+  assert.deepStrictEqual(t.checklist, [{ text: 'خطوة 1', done: false }, { text: 'خطوة 2', done: true }]);
+  // السحب إلى «بصدد الإنجاز» ثم ترتيب العمود
+  assert.strictEqual((await admin('POST', '/api/todo/reorder', { id: a.id, status: 'doing', ids: [b.id, a.id] })).status, 200);
+  await admin('POST', '/api/todo/reorder', { id: b.id, status: 'doing', ids: [b.id, a.id] });
+  const doing = (await admin('GET', '/api/todo')).body.tasks.filter((x) => x.status === 'doing').map((x) => x.id);
+  assert.ok(doing.indexOf(b.id) < doing.indexOf(a.id));
+  // إلى «أُنجزت»: تظهر في عمود المنجزة (آخر 14 يومًا)
+  await admin('POST', '/api/todo/reorder', { id: a.id, status: 'done', ids: [a.id] });
+  t = (await admin('GET', '/api/todo')).body.tasks.find((x) => x.id === a.id);
+  assert.strictEqual(t.status, 'done');
+  // المعلم المسؤول يشطّب قائمة التحقق، وغيره لا
+  const tch = (await admin('POST', '/api/users', { role: 'teacher', username: 'kb-t', full_name: 'مدرّس لوحة', password: 'secret1' })).body.user;
+  const c = (await admin('POST', '/api/todo', { title: 'مهمة المدرّس', assignee_user_id: tch.id, checklist: [{ text: 'x' }] })).body.task;
+  const teacher = await login('kb-t', 'secret1');
+  assert.strictEqual((await teacher('PATCH', `/api/todo/${c.id}/checklist`, { checklist: [{ text: 'x', done: true }] })).status, 200);
+  assert.strictEqual((await teacher('PATCH', `/api/todo/${b.id}/checklist`, { checklist: [] })).status, 404);
+  assert.strictEqual((await teacher('POST', '/api/todo/reorder', { id: b.id, status: 'done', ids: [] })).status, 404);
+});
+
+test('a 1:45 session counts 2 hours when the admin turns it on for a teacher', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const math = meta.subjects.find((x) => x.name === 'الرياضيات').id;
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'rh-t', full_name: 'مدرّس 1:45', password: 'secret1', subject_ids: [math], hourly_rate: 10 })).body.user;
+  const slot = await admin('POST', '/api/timetable', { level: '8', day: 2, start_time: '14:00', end_time: '15:45', subject_id: math, teacher_id: t.id });
+  await pool.query(`UPDATE timetable SET valid_from = '2026-09-01' WHERE id = $1`, [slot.body.slot.id]);
+  const before = (await admin('GET', `/api/payroll/${t.id}?month=2026-10`)).body;
+  const n = before.sessions.filter((x) => x.status === 'done').length;
+  assert.strictEqual(before.hours_done, n * 1.75);
+  assert.strictEqual(before.teacher.round_hours, false);
+  assert.strictEqual((await admin('PUT', `/api/payroll/${t.id}/round-hours`, { on: true })).status, 200);
+  const after = (await admin('GET', `/api/payroll/${t.id}?month=2026-10`)).body;
+  assert.strictEqual(after.hours_done, n * 2);
+  assert.strictEqual(after.teacher.round_hours, true);
+  await admin('PUT', `/api/payroll/${t.id}/round-hours`, { on: false });
+  assert.strictEqual((await admin('GET', `/api/payroll/${t.id}?month=2026-10`)).body.hours_done, n * 1.75);
+});
+
+test('program child registered in support; parent sign-up gets a price and waits for activation', async () => {
+  const admin = await login('admin', 'admin123');
+  await pool.query(`UPDATE settings SET value = '40' WHERE key = 'registration_default'`);
+  try {
+    const ch = (await admin('POST', '/api/program/children', { full_name: 'طفل للدعم', monthly_fee: 100, start_date: '2026-10-01' })).body.child;
+    const st = (await admin('POST', '/api/students', { full_name: 'طفل للدعم', level: '6', monthly_fee: 120, start_date: '2026-11-01', from_child_id: ch.id })).body.student;
+    assert.strictEqual((await pool.query('SELECT student_id FROM program_children WHERE id = $1', [ch.id])).rows[0].student_id, st.id);
+    assert.strictEqual((await pool.query('SELECT COUNT(*)::int AS n FROM fee_extras WHERE student_id = $1', [st.id])).rows[0].n, 0);
+
+    await admin('PUT', '/api/settings/fees', { pricing: { steps: { 1: 60, 2: 110, 3: 150, 4: 190 }, units: {} } });
+    const meta = (await call('GET', '/api/public/meta')).body;
+    assert.ok(meta.pricing);
+    const math = meta.subjects.find((s) => s.name === 'الرياضيات').id;
+    const res = await call('POST', '/api/register', {
+      parent: { full_name: 'ولي انتظار', cin: '11223344', phone: '55667788', password: 'secret1' },
+      children: [{ full_name: 'ابن انتظار', level: '7', subject_ids: [math] }],
+    });
+    assert.strictEqual(res.status, 201);
+    assert.strictEqual(res.body.user.waiting, true);
+    const kid = (await pool.query(`SELECT id, monthly_fee::float8 AS fee, status FROM students WHERE full_name = 'ابن انتظار'`)).rows[0];
+    assert.deepStrictEqual([kid.fee, kid.status], [60, 'waiting']);
+    // التفعيل: يُطلب معلوم التسجيل، والولي يرى المنصة
+    await admin('PATCH', `/api/students/${kid.id}/status`, { status: 'studying' });
+    assert.strictEqual((await pool.query('SELECT COUNT(*)::int AS n FROM fee_extras WHERE student_id = $1', [kid.id])).rows[0].n, 1);
+    const parent = await login('55667788', 'secret1');
+    assert.strictEqual((await parent('GET', '/api/me')).body.user.waiting, false);
+  } finally {
+    await pool.query(`UPDATE settings SET value = '0' WHERE key = 'registration_default'`);
+  }
+});
+
+test('alerts: the bell number clears once the alerts page is opened', async () => {
+  const admin = await login('admin', 'admin123');
+  await admin('POST', '/api/todo', { title: 'تنبيه عاجل', kind: 'problem', priority: 'urgent' });
+  const a = (await admin('GET', '/api/alerts')).body;
+  assert.ok(a.count > 0);
+  await admin('POST', '/api/alerts/seen');
+  assert.strictEqual((await admin('GET', '/api/alerts')).body.count, 0);
+});

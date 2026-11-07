@@ -336,40 +336,43 @@ async function viewTodo(el) {
     : [];
   const now = today();
   const late = (t) => t.status !== 'done' && t.due_date && t.due_date < now;
-  const columns = isAdmin ? ['todo', 'doing', 'done'] : ['todo', 'doing', 'done'];
+  const canMove = (t) => isAdmin || t.assignee_user_id === state.user.id;
+  const progress = (t) => {
+    const list = t.checklist || [];
+    if (!list.length) return '';
+    const done = list.filter((x) => x.done).length;
+    return `<div class="kb-check ${done === list.length ? 'full' : ''}"><span>☑ ${done}/${list.length}</span><i><b style="width:${Math.round((done / list.length) * 100)}%"></b></i></div>`;
+  };
+  const card = (t) => `<article class="kb-card prio-${t.priority} ${t.kind} ${late(t) ? 'late' : ''} ${t.status === 'done' ? 'is-done' : ''}" data-id="${t.id}" ${canMove(t) ? 'data-drag' : ''} tabindex="0">
+      <div class="kb-tags">
+        ${t.kind === 'problem' ? '<span class="kb-tag problem">⚠️ مشكلة</span>' : ''}
+        <span class="kb-tag prio ${t.priority}">${PRIORITY_LABELS[t.priority][0]}</span>
+        ${t.decision_id ? '<span class="kb-tag">📌 قرار</span>' : ''}
+      </div>
+      <h4>${esc(t.title)}</h4>
+      ${progress(t)}
+      <div class="kb-foot">
+        ${t.due_date ? `<span class="kb-due ${late(t) ? 'late' : ''}">📅 ${fmtDate(t.due_date)}</span>` : '<span></span>'}
+        <span class="kb-who" title="${esc(t.assignee || 'غير مُسند')}">${t.assignee ? avatar({ full_name: t.assignee }, 'sm') : '<span class="muted small">غير مُسند</span>'}</span>
+      </div>
+    </article>`;
+  const cols = ['todo', 'doing', 'done'];
   el.innerHTML = `
     <div class="page-head">
-      <h2>${isAdmin ? '🗂️ المهام والمشاكل' : '🗂️ مهامي'}</h2>
+      <div><h2>${isAdmin ? '🗂️ المهام والمشاكل' : '🗂️ مهامي'}</h2>
+        <p class="muted small">اسحب البطاقة من عمود لآخر (في الهاتف: اضغط عليها مطوّلًا ثم اسحب). اضغط على البطاقة لفتحها.</p></div>
       <div class="actions">
-        <label class="check small"><input type="checkbox" id="td-done" ${showDone ? 'checked' : ''}> عرض المنجزة</label>
+        <label class="check small"><input type="checkbox" id="td-done" ${showDone ? 'checked' : ''}> كل المنجزة</label>
         ${isAdmin ? '<button class="btn warn" id="add-problem">+ مشكلة عاجلة</button><button class="btn" id="add-task">+ مهمة</button>' : ''}
       </div>
     </div>
-    <div class="board">${columns
-      .filter((c) => c !== 'done' || showDone)
+    <div class="kanban">${cols
       .map(
-        (col) => `<div class="board-col"><h4>${TODO_STATUS[col]} <span class="muted">(${tasks.filter((t) => t.status === col).length})</span></h4>
-          ${tasks
-            .filter((t) => t.status === col)
-            .map(
-              (t) => `<div class="task-card ${t.kind} ${late(t) ? 'late' : ''}">
-                <div class="note-head">
-                  ${t.kind === 'problem' ? '<span class="badge weak">⚠️ مشكلة</span>' : ''}
-                  <span class="badge ${PRIORITY_LABELS[t.priority][1]}">${PRIORITY_LABELS[t.priority][0]}</span>
-                  ${t.due_date ? `<span class="small ${late(t) ? 'out' : 'muted'}">📅 ${fmtDate(t.due_date)}${late(t) ? ' — متأخرة' : ''}</span>` : ''}
-                </div>
-                <b>${esc(t.title)}</b>
-                ${t.description ? `<p class="small">${esc(t.description)}</p>` : ''}
-                <div class="muted small">👤 ${esc(t.assignee || 'غير مُسند')}${t.decision_id ? ' · 📌 من قرار' : ''}</div>
-                <div class="task-actions">
-                  ${col !== 'doing' && col !== 'done' ? `<button class="link" data-st="doing" data-id="${t.id}">بدأت</button>` : ''}
-                  ${col !== 'done' ? `<button class="link" data-st="done" data-id="${t.id}">✔ أُنجزت</button>` : `<button class="link" data-st="todo" data-id="${t.id}">إعادة فتح</button>`}
-                  ${isAdmin ? `<button class="link" data-edit="${t.id}">تعديل</button><button class="link danger" data-del="${t.id}">حذف</button>` : ''}
-                </div>
-              </div>`
-            )
-            .join('') || '<p class="muted small">—</p>'}
-        </div>`
+        (col) => `<section class="kb-col col-${col}" data-col="${col}">
+          <header><b>${TODO_STATUS[col]}</b><span class="kb-count">${tasks.filter((t) => t.status === col).length}</span></header>
+          <div class="kb-list" data-col="${col}">${tasks.filter((t) => t.status === col).map(card).join('')}</div>
+          ${isAdmin && col === 'todo' ? '<button class="kb-add" id="kb-add">+ إضافة بطاقة</button>' : ''}
+        </section>`
       )
       .join('')}</div>`;
   const reload = () => viewTodo(el);
@@ -377,12 +380,54 @@ async function viewTodo(el) {
     sessionStorage.setItem('todoDone', e.target.checked ? '1' : '');
     reload();
   });
-  const form = (t, kind = 'task') =>
+
+  // ---- نافذة البطاقة: التفاصيل، الأولوية، الحالة، قائمة التحقق ----
+  const checklistEditor = (list) => `<div class="cl-box">
+      <div class="cl-head"><b>☑ قائمة التحقق</b><span class="muted small" id="cl-sum"></span></div>
+      <div class="cl-bar"><b id="cl-bar"></b></div>
+      <ul class="cl-list" id="cl-list">${list.map((x, i) => clItem(x, i)).join('')}</ul>
+      <div class="cl-new"><input id="cl-input" placeholder="عنصر جديد… ثم Enter"><button type="button" class="btn small ghost" id="cl-add">إضافة</button></div>
+    </div>`;
+  const clItem = (x) => `<li class="${x.done ? 'done' : ''}"><label><input type="checkbox" ${x.done ? 'checked' : ''}><span>${esc(x.text)}</span></label><button type="button" class="link danger small" aria-label="حذف">✕</button></li>`;
+  const readCl = () => [...$('#cl-list').children].map((li) => ({ text: li.querySelector('span').textContent, done: li.querySelector('input').checked }));
+  const bindCl = (onChange) => {
+    const sync = () => {
+      const l = readCl();
+      const d = l.filter((x) => x.done).length;
+      $('#cl-sum').textContent = l.length ? `${d}/${l.length}` : '';
+      $('#cl-bar').style.width = l.length ? `${Math.round((d / l.length) * 100)}%` : '0';
+      [...$('#cl-list').children].forEach((li) => li.classList.toggle('done', li.querySelector('input').checked));
+    };
+    const add = () => {
+      const v = $('#cl-input').value.trim();
+      if (!v) return;
+      $('#cl-list').insertAdjacentHTML('beforeend', clItem({ text: v, done: false }));
+      $('#cl-input').value = '';
+      sync();
+      onChange?.();
+    };
+    $('#cl-add').addEventListener('click', add);
+    $('#cl-input').addEventListener('keydown', (e) => e.key === 'Enter' && (e.preventDefault(), add()));
+    $('#cl-list').addEventListener('change', () => (sync(), onChange?.()));
+    $('#cl-list').addEventListener('click', (e) => {
+      if (!e.target.closest('button')) return;
+      e.target.closest('li').remove();
+      sync();
+      onChange?.();
+    });
+    sync();
+  };
+  const form = (t, kind = 'task') => {
+    const k = t?.kind || kind;
     openModal(
-      t ? 'تعديل' : kind === 'problem' ? 'مشكلة عاجلة' : 'مهمة جديدة',
-      `<input type="hidden" name="kind" value="${t?.kind || kind}">
-       <label>${(t?.kind || kind) === 'problem' ? 'المشكلة' : 'المهمة'}<input name="title" value="${esc(t?.title || '')}" required></label>
+      t ? (k === 'problem' ? '⚠️ مشكلة' : '🗂️ مهمة') : k === 'problem' ? 'مشكلة عاجلة' : 'مهمة جديدة',
+      `<input type="hidden" name="kind" value="${k}">
+       <label>${k === 'problem' ? 'المشكلة' : 'المهمة'}<input name="title" value="${esc(t?.title || '')}" required></label>
        <label>التفاصيل<textarea name="description" rows="3">${esc(t?.description || '')}</textarea></label>
+       <div class="prio-pick">${Object.entries(PRIORITY_LABELS)
+         .map(([p, [v]]) => `<label class="pp ${p}"><input type="radio" name="priority" value="${p}" ${(t?.priority || (k === 'problem' ? 'urgent' : 'normal')) === p ? 'checked' : ''}><span>${v}</span></label>`)
+         .join('')}</div>
+       ${checklistEditor(t?.checklist || [])}
        <div class="row">
          <label>المسؤول<select name="assignee_user_id"><option value="">— آخر (اكتب الاسم) —</option>${staffUsers
            .map((u) => `<option value="${u.id}" ${t?.assignee_user_id === u.id ? 'selected' : ''}>${esc(u.full_name)} (${ROLE_LABELS[u.role]})</option>`)
@@ -390,15 +435,14 @@ async function viewTodo(el) {
          <label>أو اسم المسؤول<input name="assignee_name" value="${esc(t?.assignee_name || '')}" placeholder="مثال: المربية نادية"></label>
        </div>
        <div class="row">
-         <label>الأولوية<select name="priority">${Object.entries(PRIORITY_LABELS)
-           .map(([k, [v]]) => `<option value="${k}" ${(t?.priority || (kind === 'problem' ? 'urgent' : 'normal')) === k ? 'selected' : ''}>${v}</option>`)
-           .join('')}</select></label>
          <label>آجال الإنجاز<input type="date" name="due_date" value="${esc(t?.due_date || '')}"></label>
+         <label>الحالة<select name="status">${Object.entries(TODO_STATUS)
+           .map(([s, v]) => `<option value="${s}" ${(t?.status || 'todo') === s ? 'selected' : ''}>${v}</option>`)
+           .join('')}</select></label>
        </div>
-       <label>الحالة<select name="status">${Object.entries(TODO_STATUS)
-         .map(([k, v]) => `<option value="${k}" ${(t?.status || 'todo') === k ? 'selected' : ''}>${v}</option>`)
-         .join('')}</select></label>`,
+       ${t ? '<button type="button" class="link danger small" id="kb-del">🗑 حذف البطاقة</button>' : ''}`,
       async (data) => {
+        data.checklist = readCl();
         if (t) await api('PUT', `/api/todo/${t.id}`, data);
         else await api('POST', '/api/todo', data);
         toast('تم الحفظ');
@@ -406,23 +450,126 @@ async function viewTodo(el) {
         reload();
       }
     );
+    bindCl();
+    $('#kb-del')?.addEventListener('click', async () => {
+      if (!confirmAction('حذف هذه البطاقة؟')) return;
+      await api('DELETE', `/api/todo/${t.id}`).catch((err) => toast(err.message, true));
+      $('#modal').close();
+      reload();
+    });
+  };
+  // المعلم: يرى البطاقة ويشطّب قائمة التحقق فقط
+  const viewCard = (t) => {
+    openModal(
+      esc(t.title),
+      `<div class="kb-tags"><span class="kb-tag prio ${t.priority}">${PRIORITY_LABELS[t.priority][0]}</span>${t.due_date ? `<span class="kb-due ${late(t) ? 'late' : ''}">📅 ${fmtDate(t.due_date)}</span>` : ''}</div>
+       ${t.description ? `<p>${esc(t.description)}</p>` : ''}
+       ${checklistEditor(t.checklist || [])}`,
+      async () => {
+        await api('PATCH', `/api/todo/${t.id}/checklist`, { checklist: readCl() });
+        reload();
+      }
+    );
+    bindCl();
+  };
   $('#add-task')?.addEventListener('click', () => form(null, 'task'));
+  $('#kb-add')?.addEventListener('click', () => form(null, 'task'));
   $('#add-problem')?.addEventListener('click', () => form(null, 'problem'));
-  el.querySelectorAll('[data-st]').forEach((b) =>
-    b.addEventListener('click', async () => {
-      await api('PATCH', `/api/todo/${b.dataset.id}`, { status: b.dataset.st }).catch((err) => toast(err.message, true));
+  const open = (id) => {
+    const t = tasks.find((x) => x.id === Number(id));
+    if (t) (isAdmin ? form(t) : viewCard(t));
+  };
+  el.querySelectorAll('.kb-card').forEach((c) => c.addEventListener('keydown', (e) => e.key === 'Enter' && open(c.dataset.id)));
+
+  // ---- السحب والإفلات (فأرة ولمس) ----
+  let drag = null;
+  const listAt = (x, y) => document.elementsFromPoint(x, y).map((n) => n.closest?.('.kb-col')).find(Boolean)?.querySelector('.kb-list');
+  const after = (list, y) =>
+    [...list.querySelectorAll('.kb-card:not(.ghost-src)')].find((c) => {
+      const r = c.getBoundingClientRect();
+      return y < r.top + r.height / 2;
+    });
+  const startDrag = (cardEl, e) => {
+    const r = cardEl.getBoundingClientRect();
+    const ghost = cardEl.cloneNode(true);
+    ghost.classList.add('kb-ghost');
+    Object.assign(ghost.style, { width: r.width + 'px', left: r.left + 'px', top: r.top + 'px' });
+    document.body.append(ghost);
+    const ph = document.createElement('div');
+    ph.className = 'kb-ph';
+    ph.style.height = r.height + 'px';
+    cardEl.after(ph);
+    cardEl.classList.add('ghost-src');
+    document.body.classList.add('kb-dragging');
+    navigator.vibrate?.(15);
+    drag = { cardEl, ghost, ph, dx: e.clientX - r.left, dy: e.clientY - r.top };
+  };
+  const moveDrag = (e) => {
+    const { ghost, ph, dx, dy } = drag;
+    ghost.style.left = e.clientX - dx + 'px';
+    ghost.style.top = e.clientY - dy + 'px';
+    const list = listAt(e.clientX, e.clientY);
+    el.querySelectorAll('.kb-col').forEach((c) => c.classList.toggle('over', c.contains(list)));
+    if (list) {
+      const ref = after(list, e.clientY);
+      ref ? list.insertBefore(ph, ref) : list.append(ph);
+    }
+    // تمرير تلقائي قرب الحواف (الهاتف: الأعمدة أفقية)
+    const board = el.querySelector('.kanban');
+    const br = board.getBoundingClientRect();
+    if (e.clientX < br.left + 40) board.scrollLeft -= 12;
+    else if (e.clientX > br.right - 40) board.scrollLeft += 12;
+    if (e.clientY < 80) scrollBy(0, -12);
+    else if (e.clientY > innerHeight - 90) scrollBy(0, 12);
+  };
+  const endDrag = async () => {
+    const { cardEl, ghost, ph } = drag;
+    drag = null;
+    const list = ph.parentElement;
+    ph.replaceWith(cardEl);
+    cardEl.classList.remove('ghost-src');
+    ghost.remove();
+    document.body.classList.remove('kb-dragging');
+    el.querySelectorAll('.kb-col').forEach((c) => c.classList.remove('over'));
+    const status = list.dataset.col;
+    const ids = [...list.querySelectorAll('.kb-card')].map((c) => Number(c.dataset.id));
+    try {
+      await api('POST', '/api/todo/reorder', { id: Number(cardEl.dataset.id), status, ids });
       bellAt = 0;
-      reload();
-    })
-  );
-  el.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => form(tasks.find((t) => t.id === Number(b.dataset.edit)))));
-  el.querySelectorAll('[data-del]').forEach((b) =>
-    b.addEventListener('click', async () => {
-      if (!confirmAction('حذف هذه المهمة؟')) return;
-      await api('DELETE', `/api/todo/${b.dataset.del}`).catch((err) => toast(err.message, true));
-      reload();
-    })
-  );
+    } catch (err) {
+      toast(err.message, true);
+    }
+    reload();
+  };
+  el.querySelectorAll('.kb-card').forEach((c) => {
+    c.addEventListener('pointerdown', (e) => {
+      if (e.button) return;
+      const sx = e.clientX, sy = e.clientY;
+      const touch = e.pointerType !== 'mouse';
+      let started = false, timer = null;
+      const can = c.hasAttribute('data-drag');
+      if (can && touch) timer = setTimeout(() => { started = true; startDrag(c, e); }, 280);
+      const mv = (ev) => {
+        if (started) { ev.preventDefault(); return moveDrag(ev); }
+        const far = Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 8;
+        if (far && touch) clearTimeout(timer); // تمرير عادي
+        else if (far && can) { started = true; startDrag(c, ev); moveDrag(ev); }
+      };
+      const up = () => {
+        clearTimeout(timer);
+        removeEventListener('pointermove', mv);
+        removeEventListener('pointerup', up);
+        removeEventListener('pointercancel', up);
+        if (started) endDrag();
+        else open(c.dataset.id);
+      };
+      addEventListener('pointermove', mv, { passive: false });
+      addEventListener('pointerup', up);
+      addEventListener('pointercancel', up);
+    });
+    c.addEventListener('touchmove', (e) => drag && e.preventDefault(), { passive: false });
+    c.addEventListener('contextmenu', (e) => e.preventDefault());
+  });
 }
 
 // ---------- الاجتماعات والقرارات ----------
@@ -556,8 +703,9 @@ async function viewMeetings(el) {
 // ---------- التنبيهات ----------
 async function viewAlerts(el) {
   const { alerts } = await api('GET', '/api/alerts');
-  bellAt = 0;
-  refreshBell(true);
+  // فتح الصفحة = قراءة التنبيهات: يختفي الرقم من الجرس
+  $('#bell-count').hidden = true;
+  api('POST', '/api/alerts/seen').catch(() => {});
   const icon = { urgent: '⛔', warning: '⚠️', info: 'ℹ️' };
   el.innerHTML = `
     <h2>🔔 التنبيهات</h2>
@@ -566,7 +714,7 @@ async function viewAlerts(el) {
         ? alerts
             .map(
               (a) => `<a class="card alert ${a.level}" href="${a.link}">
-                <b>${icon[a.level]} ${esc(a.text)}</b>
+                <b>${icon[a.level]} ${esc(a.text)}${a.new ? ' <span class="badge weak">جديد</span>' : ''}</b>
                 ${a.items.length ? `<ul>${a.items.slice(0, 8).map((x) => `<li>${esc(x)}</li>`).join('')}${a.items.length > 8 ? `<li>… و${a.items.length - 8} أخرى</li>` : ''}</ul>` : ''}
               </a>`
             )
@@ -804,7 +952,7 @@ function cashTodayHtml(c, link = true) {
       <div class="${t.net >= 0 ? 'in' : 'out'}"><small>صافي اليوم</small><b>${fmtMoney(t.net)}</b>${
         t.withdraw || t.deposit ? `<i>${t.withdraw ? `سحب ${fmtMoney(t.withdraw)}` : ''}${t.withdraw && t.deposit ? ' · ' : ''}${t.deposit ? `إيداع ${fmtMoney(t.deposit)}` : ''} (ليس مصروفًا)</i>` : ''
       }</div>
-      <div class="bal"><small>المفروض في الصندوق الآن</small><b>${c.balance_today === null ? '—' : fmtMoney(c.balance_today)}</b>${c.balance_today === null ? '<i>حدّد الرصيد الافتتاحي</i>' : ''}</div>
+      <div class="bal"><small>المفروض في الصندوق الآن</small><b>${c.balance_today === null ? '—' : fmtMoney(c.balance_today)}</b></div>
     </div></section>`;
 }
 async function loadCashCard(box) {
@@ -820,6 +968,7 @@ const TX_SRC = {
   support: ['📚', 'دروس الدعم'], program: ['🎨', 'البرنامج التربوي'], courses: ['🏕️', 'دورة'], product: ['📦', 'منتج'],
   ledger: ['🧾', ''], salary: ['👩‍🏫', 'أجر'], move: ['💼', ''],
 };
+const txTime = (ts) => new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Tunis' });
 function dayTxHtml(r) {
   const t = r.totals;
   const method = (m) => (m === 'owner' ? 'من سحب صاحب المشروع' : PAYMENT_LABELS[m] || m);
@@ -840,7 +989,7 @@ function dayTxHtml(r) {
       <span class="tx-ico">${ico}</span>
       <span class="tx-main"><b>${who || what}</b><small>${who ? what + (x.src === 'move' ? '' : ' · ') : ''}${x.src === 'move' ? '' : esc(method(x.method))}${x.receipt_no ? ` · وصل ${x.receipt_no}` : ''}${
         x.note && x.src !== 'ledger' ? ` · ${esc(x.note)}` : ''}</small></span>
-      <span class="tx-amt ${cls}">${x.dir === 'in' ? '+' : x.dir === 'out' ? '−' : ''}${fmtMoney(x.amount)}</span></li>`;
+      <span class="tx-end"><span class="tx-amt ${cls}">${x.dir === 'in' ? '+' : x.dir === 'out' ? '−' : ''}${fmtMoney(x.amount)}</span>${x.created_at ? `<time>${txTime(x.created_at)}</time>` : ''}</span></li>`;
   });
   return `<div class="tx-sum">
       <div class="in"><small>المداخيل (${fmtDate(r.date)})</small><b>${fmtMoney(t.in_all)}</b><i>نقدًا ${fmtMoney(t.in_cash)} · بنك ${fmtMoney(t.in_bank)}</i></div>
@@ -853,16 +1002,8 @@ function dayTxHtml(r) {
 async function viewCash(el) {
   el.innerHTML = `
     <div class="page-head"><div><h2>💵 الصندوق اليومي</h2>
-      <p class="muted">كل يوم: ما دخل نقدًا (دفوعات الأولياء، المبيعات) وما خرج من الصندوق (المصاريف، الأجور نقدًا)، والمبلغ المفروض أن يكون في الصندوق.
-        سحب صاحب المشروع ليس مصروفًا: يُحسب من نصيبه في المرابيح.</p></div>
+      <p class="muted">كل يوم: ما دخل نقدًا (دفوعات الأولياء، المبيعات) وما خرج من الصندوق (المصاريف، الأجور نقدًا)، وكل المعاملات بتوقيتها.</p></div>
       <div class="actions">${monthPicker('cs-month')}</div></div>
-    <div class="cash-acts">
-      <button class="btn" data-move="count">🧮 عدّ الصندوق</button>
-      <button class="btn ghost" data-move="withdraw">💼 سحب صاحب المشروع</button>
-      <button class="btn ghost" data-move="deposit">📥 إيداع في الصندوق</button>
-      <button class="btn ghost" id="cs-exp">− مصروف</button>
-      <button class="btn ghost" id="cs-open">⚙️ الرصيد الافتتاحي</button>
-    </div>
     <div id="cs-body"><p class="muted">جاري التحميل…</p></div>`;
   let c;
   let dayTxDate = today();
@@ -881,7 +1022,6 @@ async function viewCash(el) {
     c = await api('GET', '/api/cash?month=' + $('#cs-month').value);
     const lc = c.last_count;
     $('#cs-body').innerHTML = `
-      ${!c.opening ? `<div class="pf-sum warn-box">⚠️ باش نحسب المبلغ المفروض في الصندوق، حدّد مرة وحدة <b>الرصيد الافتتاحي</b> (قدّاش فما في الصندوق اليوم) من «⚙️ الرصيد الافتتاحي».</div>` : ''}
       ${cashTodayHtml(c, false)}
       ${
         lc
@@ -894,7 +1034,7 @@ async function viewCash(el) {
         <input type="date" id="dt-date" value="${esc(dayTxDate)}" aria-label="اليوم"></div>
         <div id="dt-body"><p class="muted">جاري التحميل…</p></div></section>
       <section class="card"><div class="section-head"><h3>📅 أيام ${esc(monthLabel(c.month))}</h3>
-        <span class="muted small">دخل ${fmtMoney(c.month_totals.cash_in)} · خرج ${fmtMoney(c.month_totals.cash_out)} · سحب ${fmtMoney(c.month_totals.withdraw)}</span></div>
+        <span class="muted small">دخل ${fmtMoney(c.month_totals.cash_in)} · خرج ${fmtMoney(c.month_totals.cash_out)}</span></div>
         ${
           c.days.length
             ? `<div class="table-wrap"><table><thead><tr><th>اليوم</th><th>دخل نقدًا</th><th>خرج من الصندوق</th><th>سحب / إيداع</th><th>صافي اليوم</th><th>الرصيد</th></tr></thead><tbody>${[...c.days]
@@ -907,25 +1047,7 @@ async function viewCash(el) {
                 .join('')}</tbody></table></div>`
             : '<p class="muted">لا حركة نقدية في هذا الشهر.</p>'
         }
-      </section>
-      <section class="card"><div class="section-head"><h3>💼 ${esc(c.owner)}: السحب هذا الشهر</h3>${state.user.super_admin ? '<a class="link small" href="#/partners">الحساب الكامل مع الشريك ←</a>' : ''}</div>
-        <div class="owner-grid">
-          <div><small>سحب من الصندوق</small><b>${fmtMoney(c.draws.withdrawn)}</b></div>
-          <div><small>صرف منه على المركز</small><b class="in">− ${fmtMoney(c.draws.spent)}</b></div>
-          <div><small>أخذ فعلًا (من نصيبه)</small><b>${fmtMoney(c.draws.net)}</b></div>
-        </div>
-        <p class="muted small">مصروف دفعه من المبلغ الذي سحبه؟ سجّله بـ«− مصروف» واختر «دُفع من: من مبلغ سحبه صاحب المشروع». يُحسب مصروفًا للمركز، ولا يُطرح من الصندوق مرة ثانية.</p>
-      </section>
-      <section class="card"><h3>🔁 حركات الصندوق</h3>${
-        c.moves.length
-          ? `<ul class="levels">${c.moves
-              .map(
-                (m) => `<li><span>${fmtDate(m.date)} — ${CASH_KIND[m.kind][0]} <b>${CASH_KIND[m.kind][1]}</b>${m.person && m.kind === 'withdraw' ? ` (${esc(m.person)})` : ''}${m.note ? ` <span class="muted small">${esc(m.note)}</span>` : ''}${m.by_name ? ` <span class="muted small">· ${esc(m.by_name)}</span>` : ''}</span>
-                  <span><b>${fmtMoney(m.amount)}</b> <button class="link danger small" data-del-move="${m.id}">حذف</button></span></li>`
-              )
-              .join('')}</ul>`
-          : '<p class="muted">لا حركات.</p>'
-      }</section>`;
+      </section>`;
     $('#dt-date').addEventListener('change', () => loadDay($('#dt-date').value));
     el.querySelectorAll('[data-day]').forEach((r) =>
       r.addEventListener('click', () => {
@@ -935,47 +1057,7 @@ async function viewCash(el) {
       })
     );
     loadDay(dayTxDate);
-    el.querySelectorAll('[data-del-move]').forEach((b) =>
-      b.addEventListener('click', async () => {
-        if (!confirmAction('حذف هذه الحركة؟')) return;
-        await api('DELETE', `/api/cash/moves/${b.dataset.delMove}`).catch((err) => toast(err.message, true));
-        load();
-      })
-    );
   };
-  el.querySelectorAll('[data-move]').forEach((b) =>
-    b.addEventListener('click', () => {
-      const k = b.dataset.move;
-      openModal(
-        `${CASH_KIND[k][0]} ${CASH_KIND[k][1]}`,
-        `${k === 'count' ? `<p class="muted small">عدّ الفلوس الموجودة في الصندوق واكتب المبلغ: التطبيقة تقارنو بالمفروض${c?.balance_today !== null && c?.balance_today !== undefined ? ` (<b>${fmtMoney(c.balance_today)}</b> اليوم)` : ''}.</p>` : ''}
-         ${k === 'withdraw' ? '<p class="muted small">مبلغ أخذه صاحب المشروع من الصندوق. ليس مصروفًا: يُحسب من نصيبه في المرابيح.</p>' : ''}
-         ${k === 'deposit' ? '<p class="muted small">مثلًا: رجّع مبلغ للصندوق، ولا جاب فلوس من البنك للصندوق.</p>' : ''}
-         <div class="row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" required></label>
-           <label>التاريخ<input type="date" name="date" value="${today()}"></label></div>
-         <label>ملاحظة<input name="note"></label>`,
-        async (data) => {
-          await api('POST', '/api/cash/moves', { ...data, kind: k });
-          toast('تم التسجيل');
-          load();
-        }
-      );
-    })
-  );
-  $('#cs-exp').addEventListener('click', () => ledgerForm(null, 'expense', load));
-  $('#cs-open').addEventListener('click', () =>
-    openModal(
-      '⚙️ الرصيد الافتتاحي للصندوق',
-      `<p class="muted small">قدّاش كان فما في الصندوق في تاريخ معيّن (مثلًا اليوم الصباح). من هالتاريخ تحسب التطبيقة الرصيد يومًا بيوم.</p>
-       <div class="row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(c?.opening?.amount ?? '')}" required></label>
-         <label>بتاريخ<input type="date" name="date" value="${esc(c?.opening?.date || today())}"></label></div>`,
-      async (data) => {
-        await api('PUT', '/api/cash/opening', data);
-        toast('تم الحفظ');
-        load();
-      }
-    )
-  );
   bindMonth('cs-month', load);
   await load();
 }

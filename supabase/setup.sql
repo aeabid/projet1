@@ -804,3 +804,12 @@ CREATE TABLE payroll_pauses (
   CHECK (date_from <= date_to)
 );
 ALTER TABLE payroll_pauses ENABLE ROW LEVEL SECURITY;
+
+-- ===== 20261120090000_round_hours.sql =====
+-- حصة 1:45 تُحتسب ساعتين للمدرّس (بقرار من الإدارة)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS round_hours BOOLEAN NOT NULL DEFAULT false;
+
+-- ===== 20261120100000_task_board.sql =====
+-- لوحة المهام: ترتيب البطاقات في كل عمود، وقائمة تحقق (checklist) لكل مهمة
+ALTER TABLE center_tasks ADD COLUMN IF NOT EXISTS position INTEGER;
+ALTER TABLE center_tasks ADD COLUMN IF NOT EXISTS checklist JSONB NOT NULL DEFAULT '[]'::jsonb;

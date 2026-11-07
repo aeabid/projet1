@@ -373,6 +373,11 @@ async function router() {
     location.hash = homeFor(state.user);
     return;
   }
+  // ولي سجّل أبناءه بالرابط: المنصة تفتح، لكن لا يرى شيئًا حتى تفعّل الإدارة التسجيل
+  if (state.user?.role === 'parent' && state.user.waiting && !['#/account', '#/password'].includes(hash)) {
+    viewWaiting($('#view'));
+    return;
+  }
   const nav = ++navCount;
   for (const [re, view] of routes) {
     const m = hash.match(re);
@@ -462,18 +467,25 @@ const NAV = {
         ['#/todo', 'المهام والمشاكل'],
         ['#/meetings', 'الاجتماعات والقرارات'],
         ['#/people', 'كل تلاميذ المركز'],
-        ['', 'المالية'],
-        ['#/general', 'المصاريف العامة للمركز'],
-        ['#/finance', 'المردودية المالية'],
-        ['#/debts', 'المتخلّد بذمتهم'],
-        ['#/receipts', 'الوصولات'],
-        ['#/ledger', 'المداخيل والمصاريف'],
-        ['#/accounting', 'فضاء المحاسبة'],
+      ],
+    },
+    {
+      label: 'المالية والمحاسبة',
+      items: [
+        ['', 'اليومي'],
         ['#/cash', 'الصندوق اليومي'],
-        ['#/fees', 'التعريفات والتخفيضات'],
-        ['#/products', 'المنتجات (كتب ومراجع)'],
-        ['#/salaries', 'الأجور (كل الإطار)'],
+        ['#/ledger', 'المداخيل والمصاريف'],
+        ['#/receipts', 'الوصولات'],
+        ['', 'المستحقات'],
+        ['#/debts', 'المتخلّد بذمّة الأولياء'],
+        ['#/salaries', 'الأجور'],
         ['#/center-debts', 'ديون المركز'],
+        ['', 'الأسعار'],
+        ['#/fees', 'التعريفات والتخفيضات'],
+        ['#/products', 'المنتجات'],
+        ['', 'المحاسبة'],
+        ['#/accounting', 'فضاء المحاسبة'],
+        ['#/finance', 'المردودية المالية'],
         ['#/partners', 'الشركاء والمرابيح'],
       ],
     },
@@ -569,7 +581,7 @@ const ICON_PATHS = {
 };
 const icon = (name) =>
   `<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name] || ICON_PATHS.grid}</svg>`;
-const GROUP_ICONS = { 'دروس الدعم': 'book', 'البرنامج التربوي': 'spark', 'إدارة المركز': 'building', 'التواصل': 'chat', 'الحسابات': 'users' };
+const GROUP_ICONS = { 'دروس الدعم': 'book', 'البرنامج التربوي': 'spark', 'إدارة المركز': 'building', 'المالية والمحاسبة': 'wallet', 'التواصل': 'chat', 'الحسابات': 'users' };
 const LINK_ICONS = {
   '#/home': 'home', '#/courses': 'flag', '#/students': 'users', '#/timetable': 'calendar', '#/program/timetable': 'calendar',
   '#/attendance': 'check', '#/program/attendance': 'check', '#/messages': 'chat', '#/my-pay': 'wallet', '#/program/pay': 'wallet',
@@ -1017,7 +1029,7 @@ function studentCards(students, role) {
           ${admin && s.parent_phone ? waButton(s.parent_phone) : ''}
         </div>
         <div class="sc-stats">
-          <div class="sc-stat ${s.unjustified_count ? 'warn' : ''}"><b>${s.absence_count}</b><span>غيابات${s.unjustified_count ? ` · ${s.unjustified_count} غير مبرر` : ''}</span></div>
+          <div class="sc-stat"><b>${s.absence_count}</b><span>غيابات</span></div>
           <div class="sc-stat"><b>${s.note_count}</b><span>ملاحظات</span></div>
         </div>
         ${admin ? `<div class="sc-actions"><a class="btn ghost small" href="#/students/${s.id}">الملف</a>${payButton('support', s)}</div>` : ''}
@@ -1095,7 +1107,7 @@ async function viewStudents(el) {
                 <td class="nowrap">${s.start_date ? fmtDate(s.start_date) : '<span class="muted">—</span>'}</td>
                 <td>${subjectsCell(s)}</td>
                 <td>${parentCell(s.parent_name, s.parent_phone, s.parent_id, role === 'admin')}</td>
-                <td>${s.absence_count}${s.unjustified_count ? ` <span class="badge weak">${s.unjustified_count} غير مبرر</span>` : ''}</td>
+                <td>${s.absence_count}</td>
                 <td>${s.note_count}</td>
                 ${role === 'admin' ? `<td>${payButton('support', s)}</td>` : ''}
               </tr>`
@@ -1136,12 +1148,12 @@ async function loadSupportStats() {
 }
 
 // السعر حسب التسعيرة: عدد حصص المواد المختارة في الأسبوع، أو الباقة
-function suggestFee(level, pack, subjectIds) {
-  const pr = state.meta.pricing;
-  const packFee = Number(state.meta.pack_fees?.[level]) || null;
+function suggestFee(level, pack, subjectIds, meta = state.meta) {
+  const pr = meta.pricing;
+  const packFee = Number(meta.pack_fees?.[level]) || null;
   if (!pr) return null;
   if (pack) return packFee ? { fee: packFee, label: 'الباقة' } : null;
-  const subs = state.meta.subjects.filter((s) => subjectIds.includes(s.id) && (!s.levels || s.levels.includes(level)));
+  const subs = meta.subjects.filter((s) => subjectIds.includes(s.id) && (!s.levels || s.levels.includes(level)));
   if (!subs.length) return null;
   const n = subs.reduce((t, s) => t + (Number(pr.units?.[s.id]) || 1), 0);
   const step = n >= 5 ? packFee : Number(pr.steps?.[String(n)]) || null;
@@ -1177,7 +1189,7 @@ function parentLabel(p) {
   return `${p.full_name}${tel ? ` · \u2066${tel}\u2069` : ''}`;
 }
 
-async function studentForm(student, onDone) {
+async function studentForm(student, onDone, preChild = null) {
   // معطيات القائمة تكفي (لا حاجة لتحميل ملف التلميذ كاملًا)، والأولياء يُحمّلون مرة واحدة
   const listed = student && ('subject_ids' in student || student.subjects);
   const [parents, s] = await Promise.all([
@@ -1188,9 +1200,14 @@ async function studentForm(student, onDone) {
     !student ? {} : listed ? student : api('GET', `/api/students/${student.id}`).then((r) => r.student),
   ]);
   const enrolled = new Set(s.pack ? [] : s.subjects ? s.subjects.map((x) => x.id) : s.subject_ids || []);
+  // تلميذ جديد: إمكانية أخذه مباشرة من أطفال البرنامج التربوي (غير المسجّلين في الدعم)
+  const kids = student ? [] : await api('GET', '/api/program').then((r) => r.children.filter((c) => c.status === 'active' && !c.student_id)).catch(() => []);
   openModal(
     student ? 'تعديل تلميذ' : 'تلميذ جديد',
-    `<label>الاسم واللقب<input name="full_name" value="${esc(s.full_name)}" required></label>
+    `${kids.length ? `<label class="from-prog">🎨 من البرنامج التربوي (اختياري)<select name="from_child_id"><option value="">— تلميذ جديد تمامًا —</option>${kids
+      .map((c) => `<option value="${c.id}">${esc(c.full_name)}${c.class_name ? ` — ${esc(c.class_name)}` : ''}</option>`)
+      .join('')}</select><small class="muted">يعبّي الاسم وتاريخ الولادة والولي وحدو، ويربط الملفّين. معلوم التسجيل ما يتعاودش.</small></label>` : ''}
+    <label>الاسم واللقب<input name="full_name" value="${esc(s.full_name)}" required></label>
      <div class="row">
        <label>المستوى<select name="level">${levelOptions(s.level || sessionStorage.getItem('levelFilter') || '5')}</select></label>
        ${s.group_name ? `<label>الفوج<input name="group_name" value="${esc(s.group_name)}"></label>` : ''}
@@ -1298,6 +1315,19 @@ async function studentForm(student, onDone) {
       toast(err.status === 409 || /مستعمل/.test(err.message) ? 'هذا الرقم عنده حساب: ابحث عنه في قائمة الأولياء' : err.message, true);
     }
   });
+  $('#modal select[name=from_child_id]')?.addEventListener('change', (e) => {
+    const c = kids.find((x) => x.id === Number(e.target.value));
+    if (!c) return;
+    const f = $('#modal');
+    f.querySelector('input[name=full_name]').value = c.full_name;
+    if (c.birth_date) f.querySelector('input[name=birth_date]').value = c.birth_date.slice(0, 10);
+    const ps = f.querySelector('select[name=parent_id]');
+    if (c.parent_id && ps.querySelector(`option[value="${c.parent_id}"]`)) ps.value = String(c.parent_id);
+  });
+  if (preChild && $('#modal select[name=from_child_id]')) {
+    $('#modal select[name=from_child_id]').value = String(preChild);
+    $('#modal select[name=from_child_id]').dispatchEvent(new Event('change'));
+  }
   const statusSel = $('#modal select[name=status]');
   const syncStatus = () => ($('#end-date-field').hidden = !['left', 'stopped'].includes(statusSel.value));
   statusSel.addEventListener('change', syncStatus);
@@ -2669,10 +2699,43 @@ async function viewAttendance(el) {
       <select id="a-level"></select>
       <input type="date" id="a-date" value="${today()}">
     </div>
+    <p class="muted small" id="a-hint"></p>
     <div id="att-list"></div>`;
   bindSubjectLevel($('#a-subject'), $('#a-level'), sessionStorage.getItem('attLevel') || sessionStorage.getItem('levelFilter'));
 
+  // المواد المعروضة: فقط التي تُدرَّس في يوم التاريخ المختار (حسب جدول الأوقات)
+  const { slots } = await api('GET', '/api/timetable').catch(() => ({ slots: [] }));
+  const dayOf = (d) => new Date(d + 'T12:00:00').getDay() || 7;
+  const filterByDay = () => {
+    const day = dayOf($('#a-date').value);
+    const todays = slots.filter((x) => Number(x.day) === day);
+    const ids = new Set(todays.map((x) => x.subject_id));
+    const list = subjects.filter((x) => ids.has(x.id));
+    const hint = $('#a-hint');
+    if (!slots.length) return (hint.textContent = '');
+    const cur = Number($('#a-subject').value);
+    if (!list.length) {
+      hint.textContent = `لا حصص في جدول الأوقات يوم ${DAYS_AR[day - 1]}.`;
+      $('#a-subject').innerHTML = '';
+      $('#a-level').innerHTML = '';
+      return;
+    }
+    hint.textContent = `المواد التي تُدرَّس يوم ${DAYS_AR[day - 1]}`;
+    $('#a-subject').innerHTML = subjectOptions(list, list.some((x) => x.id === cur) ? cur : list[0].id);
+    // المستويات: التي تدرس هذه المادة ذلك اليوم
+    const lv = new Set(todays.filter((x) => x.subject_id === Number($('#a-subject').value)).map((x) => x.level));
+    const keep = $('#a-level').value || sessionStorage.getItem('attLevel');
+    const subject = subjects.find((x) => x.id === Number($('#a-subject').value));
+    const levels = subjectLevels(subject).filter((l) => lv.has(l.code));
+    $('#a-level').innerHTML = levels.map((l) => `<option value="${esc(l.code)}" ${l.code === keep ? 'selected' : ''}>${esc(l.label)}</option>`).join('');
+  };
+  filterByDay();
+
   const load = async () => {
+    if (!$('#a-subject').value || !$('#a-level').value) {
+      $('#att-list').innerHTML = '<div class="card muted">لا توجد حصة في هذا اليوم. اختر تاريخًا آخر.</div>';
+      return;
+    }
     const params = new URLSearchParams({ subject_id: $('#a-subject').value, level: $('#a-level').value, date: $('#a-date').value });
     sessionStorage.setItem('attSubject', params.get('subject_id'));
     sessionStorage.setItem('attLevel', params.get('level'));
@@ -2718,7 +2781,9 @@ async function viewAttendance(el) {
       list.innerHTML = `<div class="card error">${esc(err.message)}</div>`;
     }
   };
-  for (const id of ['#a-subject', '#a-level', '#a-date']) $(id).addEventListener('change', load);
+  $('#a-date').addEventListener('change', () => (filterByDay(), load()));
+  $('#a-subject').addEventListener('change', () => (filterByDay(), load()));
+  $('#a-level').addEventListener('change', load);
   await load();
 }
 
@@ -3160,7 +3225,7 @@ async function viewPayroll(el) {
                 const pct = total ? Math.round((t.hours_done / total) * 100) : 0;
                 return `<article class="scard pr-card ${status(t)}" style="--lv:${status(t) === 'due' ? 330 : status(t) === 'ok' ? 152 : 230}">
                   <a class="sc-head" href="#/payroll/${t.id}">${avatar({ full_name: t.full_name }, 'md')}
-                    <div class="sc-id"><h3>${esc(t.full_name)}</h3><div class="sc-tags"><span class="sc-level">${rateCell(t)}</span></div>${noSlots(t)}</div></a>
+                    <div class="sc-id"><h3>${esc(t.full_name)}</h3><div class="sc-tags"><span class="sc-level">${rateCell(t)}</span>${t.round_hours ? '<span class="badge average">1:45 = 2س</span>' : ''}</div>${noSlots(t)}</div></a>
                   <div class="pr-bar"><i style="width:${pct}%"></i></div>
                   <div class="pr-hours"><span><b>${fmtHours(t.hours_done)}</b> منجزة</span><span class="muted">${fmtHours(t.hours_planned)} مبرمجة</span></div>
                   <div class="sc-stats">
@@ -3275,6 +3340,8 @@ async function viewTeacherPay(el, teacherId) {
         <div class="stat ${m.remaining > 0 ? 'warn' : 'good'}"><b>${fmtMoney(Math.max(m.remaining, 0))}</b><span>${m.remaining < 0 ? `الباقي (دُفع زيادة ${fmtMoney(-m.remaining)})` : 'الباقي'}</span></div>
       </div>
       ${m.hourly_rate == null ? `<p class="error">لم يُحدَّد معلوم الساعة${isAdmin ? ' — حدّده من «الحسابات ← المعلمون ← تعديل»' : ''}.</p>` : ''}
+      ${isAdmin ? `<label class="round-opt"><input type="checkbox" id="tp-round" ${m.teacher.round_hours ? 'checked' : ''}>
+        <span><b>⏱ حصة 1:45 تُحتسب ساعتين</b><small>بعد تأكيد الإدارة: كل حصة 1:45 في جدول هذا المدرّس تُحتسب ساعتين كاملتين. تنجم تطفيها وقت ما تحب.</small></span></label>` : ''}
       <section class="card">
         <div class="section-head">
           <h3>💵 الدفعات</h3>
@@ -3341,6 +3408,17 @@ async function viewTeacherPay(el, teacherId) {
           reload();
         })
         .catch((err) => toast(err.message, true));
+    $('#tp-round')?.addEventListener('change', async (e) => {
+      try {
+        await api('PUT', `/api/payroll/${teacherId}/round-hours`, { on: e.target.checked });
+        toast(e.target.checked ? 'حصص 1:45 تُحتسب ساعتين' : 'رجعت الحصص تُحتسب بمدّتها الحقيقية');
+        load();
+        loadYear();
+      } catch (err) {
+        toast(err.message, true);
+        e.target.checked = !e.target.checked;
+      }
+    });
     $('#tp-body').querySelectorAll('[data-absent]').forEach((b) =>
       b.addEventListener('click', () => {
         const x = m.sessions[Number(b.dataset.absent)];
@@ -3411,6 +3489,24 @@ async function viewTeacherPay(el, teacherId) {
 }
 
 // ---------- تسجيل الأولياء (رابط عمومي) ----------
+function viewWaiting(el) {
+  const kids = state.user.children || [];
+  el.innerHTML = `<section class="waiting-card">
+      <div class="wt-ico">⏳</div>
+      <h2>في انتظار تفعيل الإدارة</h2>
+      <p>شكرًا ${esc(state.user.full_name)}! وصلنا تسجيل ${kids.length > 1 ? 'أبنائك' : 'ابنك'}. الإدارة تراجع التسجيل وتفعّلو في أقرب وقت، ومن بعد تنجم تتابع الدروس والغيابات والخلاص من هنا.</p>
+      ${kids.length ? `<ul class="wt-kids">${kids.map((k) => `<li>${avatar(k, 'sm')}<b>${esc(k.full_name)}</b><span class="pill">${esc(levelLabel(k.level))}</span></li>`).join('')}</ul>` : ''}
+      <button class="btn" id="wt-refresh">🔄 تحديث</button>
+    </section>`;
+  $('#wt-refresh').addEventListener('click', async () => {
+    const { user } = await api('GET', '/api/me');
+    state.user = user;
+    if (user.waiting) return toast('مازال التسجيل في الانتظار');
+    location.hash = homeFor(user);
+    router();
+  });
+}
+
 async function viewRegister(el) {
   const meta = await api('GET', '/api/public/meta');
   const levelOpts = meta.levels.map((l) => `<option value="${esc(l.code)}">${esc(l.label)}</option>`).join('');
@@ -3428,6 +3524,7 @@ async function viewRegister(el) {
       <label>المؤسسة التربوية التي يدرس فيها<input name="c${k}_school"></label>
       <label class="check pack"><input type="checkbox" name="c${k}_pack" class="c-pack"> <b>Pack</b> — كل المواد</label>
       <div class="checks c-subjects"></div>
+      <p class="reg-price c-price" hidden></p>
       <label>ملاحظات<input name="c${k}_remarks"></label>
     </fieldset>`;
   };
@@ -3443,6 +3540,17 @@ async function viewRegister(el) {
       )
       .join('');
     box.classList.toggle('disabled', fs.querySelector('.c-pack').checked);
+    box.querySelectorAll('input').forEach((i) => i.addEventListener('change', () => showPrice(fs)));
+    showPrice(fs);
+  };
+  // السعر الشهري يظهر وحده بعد اختيار المواد (حسب تسعيرة المركز)
+  const showPrice = (fs) => {
+    const ids = [...fs.querySelectorAll('.c-subjects input:checked')].map((i) => Number(i.value));
+    const pack = fs.querySelector('.c-pack').checked;
+    const sug = (pack || ids.length) && suggestFee(fs.querySelector('.c-level').value, pack, ids, meta);
+    const p = fs.querySelector('.c-price');
+    p.hidden = !sug;
+    if (sug) p.innerHTML = `💰 المعلوم الشهري: <b>${fmtMoney(sug.fee)}</b> <span class="muted small">(${esc(sug.label)})</span>`;
   };
 
   el.innerHTML = `
@@ -3473,7 +3581,7 @@ async function viewRegister(el) {
         <button type="button" class="btn ghost" id="add-child">+ ابن آخر</button>
         <p class="error" id="reg-error" hidden></p>
         <button class="btn block" id="reg-submit">إرسال التسجيل والدخول</button>
-        <p class="muted small center">بعد التسجيل تدخل مباشرة بحسابك (اسم المستخدم: رقم الهاتف أو رقم بطاقة التعريف). الإدارة تؤكد التسجيل وتحدد المبلغ الشهري.</p>
+        <p class="muted small center">بعد التسجيل تدخل مباشرة بحسابك (اسم المستخدم: رقم الهاتف أو رقم بطاقة التعريف). يبقى التسجيل في قائمة الانتظار حتى تفعّله الإدارة، ومعلوم التسجيل (الشهر الأول) يُضاف عند التفعيل.</p>
         <p class="center"><a href="#/login">عندي حساب، الدخول</a></p>
       </form>
     </div>`;

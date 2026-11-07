@@ -48,8 +48,8 @@ async function viewHome(el) {
     can('school') && ['#/program', '🎨', 'البرنامج التربوي', 'الأقسام حسب الأعمار، الأطفال، الخلاص الشهري'],
     can('school') && ['#/courses', '🏕️', 'الدورات والأنشطة', 'دورات العطل والصيف، الأنشطة، الرحلات والمخيمات'],
     ['#/todo', '🗂️', 'إدارة المركز', 'المهام، الاجتماعات والقرارات، التنبيهات', 'alt'],
-    !can('stats') && can('cash') && ['#/cash', '💵', 'الصندوق اليومي', 'ما دخل وما خرج اليوم، والمفروض في الصندوق'],
-    can('accounting') && ['#/accounting', '🏦', 'فضاء المحاسبة', 'مداخيل البنك، مصاريف المحاسبة، الوصولات والملفات', 'alt'],
+    (can('cash') || can('expenses') || can('accounting')) &&
+      [can('cash') ? '#/cash' : can('expenses') ? '#/ledger' : '#/accounting', '💰', 'المالية والمحاسبة', 'الصندوق اليومي، المداخيل والمصاريف، الوصولات، الأجور، فضاء المحاسبة', 'alt'],
   ].filter(Boolean);
   el.innerHTML = `
     ${heroBanner({ sub: 'مركز فيد: اختر الفضاء الذي تريد الدخول إليه.', art: '🌿' })}
@@ -95,7 +95,16 @@ async function viewBoardHub(el, tab = '') {
   // عدد الإشعارات على التبويب
   api('GET', '/api/board/notices')
     .then((n) => {
-      const c = n.salaries.length + n.unpaid.length;
+      // الرقم يختفي بمجرد فتح تبويب الإشعارات، ولا يرجع إلا لإشعار جديد
+      const keys = [...n.salaries.map((x) => 's' + x.month + x.group + x.name), ...n.unpaid.map((x) => 'u' + n.month + x.kind + x.id)];
+      const store = 'noticesSeen:' + state.user.id;
+      let seen = [];
+      try { seen = JSON.parse(localStorage.getItem(store) || '[]'); } catch {}
+      if (tab === 'notices') {
+        try { localStorage.setItem(store, JSON.stringify(keys)); } catch {}
+        return;
+      }
+      const c = keys.filter((k) => !seen.includes(k)).length;
       const b = el.querySelector('[data-badge="notices"]');
       if (b && c) (b.textContent = c), (b.hidden = false);
     })
@@ -876,7 +885,8 @@ async function viewProgramChild(el, id) {
           ${role !== 'parent' && c.contact_name ? `<span>الولي: ${esc(c.contact_name)}</span>` : ''}
           ${role === 'admin' && c.contact_phone ? `<span class="phone-line"><span dir="ltr">${esc(c.contact_phone)}</span>${waButton(c.contact_phone)}</span>` : ''}
           ${c.status === 'left' ? `<span class="badge status-left">خرج في ${fmtDate(c.end_date)}</span>` : ''}
-          ${c.student_id && role !== 'teacher' ? `<a class="badge level" href="#/students/${c.student_id}">مسجّل أيضًا في دروس الدعم ←</a>` : ''}</div>
+          ${c.student_id && role !== 'teacher' ? `<a class="badge level" href="#/students/${c.student_id}">مسجّل أيضًا في دروس الدعم ←</a>` : ''}
+          ${!c.student_id && role === 'admin' && c.status === 'active' ? '<button type="button" class="badge level" id="to-support">📚 تسجيله في دروس الدعم</button>' : ''}</div>
       </div>
     </div>
     ${fileTabs([['follow', 'المتابعة'], finance ? ['pay', 'الخلاص'] : null, role === 'admin' ? ['info', 'المعلومات'] : null])}
@@ -919,6 +929,7 @@ async function viewProgramChild(el, id) {
     childForm(full, { classes, parents, teachers, students, children }, reload);
   });
   bindFileTabs(el);
+  $('#to-support')?.addEventListener('click', () => studentForm(null, () => viewProgramChild(el, id), Number(id)));
 }
 
 // المنشط: أقسامه وأطفالها
