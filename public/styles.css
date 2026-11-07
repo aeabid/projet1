@@ -1439,3 +1439,7 @@ body.sel-open { overflow: hidden; }
   .ct-grid .bal { background: #2e2147; } .count-box.ok, .owner-grid .ok { background: #16301f; color: #bbf7d0; }
   .count-box.bad, .owner-grid .neg { background: #3a1a2b; color: #f9a8d4; } .warn-box { background: #3a2a12; color: #fde68a; }
 }
+.new-parent { margin: -.3rem 0 .8rem; border: 1.5px dashed #d9c7f2; border-radius: 14px; padding: .55rem .8rem; background: #faf6ff; }
+.new-parent summary { cursor: pointer; font-weight: 700; color: var(--feed-purple); font-size: .9rem; }
+.new-parent[open] summary { margin-bottom: .6rem; }
+@media (prefers-color-scheme: dark) { .new-parent { background: #241c31; border-color: #4a3866; } }

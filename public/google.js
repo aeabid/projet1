@@ -191,7 +191,7 @@ async function viewParentRequests(el) {
               ? `<label>ربطه بحساب ولي موجود<select class="pr-parent">
                   <option value="">— إنشاء حساب ولي جديد —</option>
                   ${parents
-                    .map((p) => `<option value="${p.id}" ${p.id === r.suggested_parent_id ? 'selected' : ''}>${esc(p.full_name)} (${esc(p.phone || p.username)})</option>`)
+                    .map((p) => `<option value="${p.id}" ${p.id === r.suggested_parent_id ? 'selected' : ''}>${esc(parentLabel(p))}</option>`)
                     .join('')}
                 </select></label>
                 ${r.suggested_parent_id ? '<p class="muted small">✔ اقتراح تلقائي حسب الهاتف أو الابن المختار.</p>' : ''}

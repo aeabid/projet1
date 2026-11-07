@@ -559,7 +559,7 @@ function childForm(c, { classes, parents, students, children }, onDone) {
      <label id="cf-formula-wrap" hidden>الصيغة<select name="formula" id="cf-formula"></select></label>
      <div id="cf-parent">
        <label>حساب الولي (ليتابع ابنه من التطبيق)<select name="parent_id"><option value="">— دون حساب —</option>${parents
-         .map((u) => `<option value="${u.id}" ${c?.parent_id === u.id ? 'selected' : ''}>${esc(u.full_name)}${u.phone ? ` — ${esc(u.phone)}` : ''}</option>`)
+         .map((u) => `<option value="${u.id}" ${c?.parent_id === u.id ? 'selected' : ''}>${esc(parentLabel(u))}</option>`)
          .join('')}</select></label>
        <div class="row">
          <label>اسم الولي (دون حساب)<input name="guardian_name" value="${esc(c?.guardian_name || '')}"></label>

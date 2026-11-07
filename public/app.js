@@ -1130,6 +1130,12 @@ function bindFeeFrom(modal) {
   sync();
 }
 
+// اسم الولي في القوائم: الهاتف (أو اسم المستخدم) معزول من اليسار لليمين حتى لا ينقلب ترتيبه
+function parentLabel(p) {
+  const tel = (p.phone || p.username || '').split(/\s*[\/,;]\s*|\s+-\s+/)[0].replace(/^\+?216\s*/, '');
+  return `${p.full_name}${tel ? ` · \u2066${tel}\u2069` : ''}`;
+}
+
 async function studentForm(student, onDone) {
   // معطيات القائمة تكفي (لا حاجة لتحميل ملف التلميذ كاملًا)، والأولياء يُحمّلون مرة واحدة
   const listed = student && ('subject_ids' in student || student.subjects);
@@ -1186,11 +1192,15 @@ async function studentForm(student, onDone) {
      <label>الولي
        <select name="parent_id">
          <option value="">— بدون —</option>
-         ${parents
-           .map((p) => `<option value="${p.id}" ${p.id === s.parent_id ? 'selected' : ''}>${esc(p.full_name)} (${esc(p.username)})</option>`)
-           .join('')}
+         ${parents.map((p) => `<option value="${p.id}" ${p.id === s.parent_id ? 'selected' : ''}>${esc(parentLabel(p))}</option>`).join('')}
        </select>
-     </label>`,
+     </label>
+     <details class="new-parent" id="np-box"><summary>+ ولي جديد (غير موجود في القائمة)</summary>
+       <div class="row"><label>اسم الولي ولقبه<input id="np-name"></label>
+         <label>الهاتف<input id="np-phone" inputmode="tel" placeholder="مثال: 98123456"></label></div>
+       <p class="muted small">يُنشأ له حساب: اسم المستخدم وكلمة السر = رقم الهاتف (يبدّلها من بعد).</p>
+       <button type="button" class="btn small" id="np-add">إضافة الولي واختياره</button>
+     </details>`,
     async (data) => {
       if (data.pack) data.subject_ids = [];
       if (student) await api('PUT', `/api/students/${student.id}`, data);
@@ -1228,6 +1238,25 @@ async function studentForm(student, onDone) {
   $('#modal').querySelectorAll('input[name="subject_ids[]"]').forEach((x) => x.addEventListener('change', applyFee));
   applyFee();
   bindFeeFrom($('#modal'));
+  // إضافة ولي جديد دون مغادرة الاستمارة
+  $('#np-add').addEventListener('click', async () => {
+    const full_name = $('#np-name').value.trim();
+    const phone = $('#np-phone').value.replace(/\s+/g, '').replace(/^\+?216/, '');
+    if (!full_name) return toast('اكتب اسم الولي', true);
+    if (!/^\d{8}$/.test(phone)) return toast('اكتب رقم هاتف من 8 أرقام', true);
+    try {
+      const { user } = await api('POST', '/api/users', { role: 'parent', username: phone, full_name, phone, password: phone });
+      state.parentsCache = null;
+      const sel = $('#modal select[name=parent_id]');
+      sel.insertAdjacentHTML('beforeend', `<option value="${user.id}">${esc(parentLabel(user))}</option>`);
+      sel.value = String(user.id);
+      $('#np-box').open = false;
+      $('#np-name').value = $('#np-phone').value = '';
+      toast(`أُضيف الولي ${full_name} واختير`);
+    } catch (err) {
+      toast(err.status === 409 || /مستعمل/.test(err.message) ? 'هذا الرقم عنده حساب: ابحث عنه في قائمة الأولياء' : err.message, true);
+    }
+  });
   const statusSel = $('#modal select[name=status]');
   const syncStatus = () => ($('#end-date-field').hidden = !['left', 'stopped'].includes(statusSel.value));
   statusSel.addEventListener('change', syncStatus);
