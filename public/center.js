@@ -815,6 +815,41 @@ async function loadCashCard(box) {
   } catch {}
 }
 
+// قائمة معاملات يوم واحد مع المجاميع
+const TX_SRC = {
+  support: ['📚', 'دروس الدعم'], program: ['🎨', 'البرنامج التربوي'], courses: ['🏕️', 'دورة'], product: ['📦', 'منتج'],
+  ledger: ['🧾', ''], salary: ['👩‍🏫', 'أجر'], move: ['💼', ''],
+};
+function dayTxHtml(r) {
+  const t = r.totals;
+  const method = (m) => (m === 'owner' ? 'من سحب صاحب المشروع' : PAYMENT_LABELS[m] || m);
+  const link = (x) =>
+    x.src === 'support' ? `#/students/${x.who_id}` : x.src === 'program' ? `#/program/child/${x.who_id}` : x.src === 'courses' ? `#/courses/${x.who_id}` : null;
+  const rows = r.items.map((x) => {
+    const [ico0, name] = TX_SRC[x.src];
+    const ico = x.src === 'move' ? CASH_KIND[x.detail][0] : ico0;
+    const what =
+      x.src === 'move' ? `${CASH_KIND[x.detail][1]}` :
+      x.src === 'ledger' ? (x.dir === 'in' ? 'مدخول: ' : 'مصروف: ') + esc(x.label || '') :
+      x.src === 'support' || x.src === 'program' ? `${name} · ${esc(monthLabel(x.detail))}` :
+      x.src === 'salary' ? `أجر ${esc(monthLabel(x.detail))}` : `${name} · ${esc(x.detail || '')}`;
+    const href = link(x);
+    const who = x.who ? (href ? `<a href="${href}">${esc(x.who)}</a>` : esc(x.who)) : '';
+    const cls = x.dir === 'in' ? 'in' : x.dir === 'out' ? 'out' : '';
+    return `<li class="tx ${cls}${x.src === 'move' ? ' move' : ''}">
+      <span class="tx-ico">${ico}</span>
+      <span class="tx-main"><b>${who || what}</b><small>${who ? what + (x.src === 'move' ? '' : ' · ') : ''}${x.src === 'move' ? '' : esc(method(x.method))}${x.receipt_no ? ` · وصل ${x.receipt_no}` : ''}${
+        x.note && x.src !== 'ledger' ? ` · ${esc(x.note)}` : ''}</small></span>
+      <span class="tx-amt ${cls}">${x.dir === 'in' ? '+' : x.dir === 'out' ? '−' : ''}${fmtMoney(x.amount)}</span></li>`;
+  });
+  return `<div class="tx-sum">
+      <div class="in"><small>المداخيل (${fmtDate(r.date)})</small><b>${fmtMoney(t.in_all)}</b><i>نقدًا ${fmtMoney(t.in_cash)} · بنك ${fmtMoney(t.in_bank)}</i></div>
+      <div class="out"><small>المصاريف</small><b>${fmtMoney(t.out_all)}</b><i>منها نقدًا ${fmtMoney(t.out_cash)}</i></div>
+      <div class="${t.net_cash >= 0 ? 'in' : 'out'}"><small>صافي الصندوق</small><b>${fmtMoney(t.net_cash)}</b><i>${t.count} معاملة${t.withdraw ? ` · سحب ${fmtMoney(t.withdraw)}` : ''}${t.deposit ? ` · إيداع ${fmtMoney(t.deposit)}` : ''}</i></div>
+    </div>
+    ${rows.length ? `<ul class="tx-list">${rows.join('')}</ul>` : '<p class="muted">لا معاملات في هذا اليوم.</p>'}`;
+}
+
 async function viewCash(el) {
   el.innerHTML = `
     <div class="page-head"><div><h2>💵 الصندوق اليومي</h2>
@@ -830,6 +865,18 @@ async function viewCash(el) {
     </div>
     <div id="cs-body"><p class="muted">جاري التحميل…</p></div>`;
   let c;
+  let dayTxDate = today();
+  const loadDay = async (d) => {
+    dayTxDate = d || today();
+    const box = $('#dt-body');
+    if (!box) return;
+    try {
+      const r = await api('GET', '/api/cash/day?date=' + dayTxDate);
+      if (box.isConnected && $('#dt-date')?.value === dayTxDate) box.innerHTML = dayTxHtml(r);
+    } catch (e) {
+      box.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+    }
+  };
   const load = async () => {
     c = await api('GET', '/api/cash?month=' + $('#cs-month').value);
     const lc = c.last_count;
@@ -843,6 +890,9 @@ async function viewCash(el) {
             }</div>`
           : ''
       }
+      <section class="card day-tx"><div class="section-head"><h3>📋 معاملات يوم</h3>
+        <input type="date" id="dt-date" value="${esc(dayTxDate)}" aria-label="اليوم"></div>
+        <div id="dt-body"><p class="muted">جاري التحميل…</p></div></section>
       <section class="card"><div class="section-head"><h3>📅 أيام ${esc(monthLabel(c.month))}</h3>
         <span class="muted small">دخل ${fmtMoney(c.month_totals.cash_in)} · خرج ${fmtMoney(c.month_totals.cash_out)} · سحب ${fmtMoney(c.month_totals.withdraw)}</span></div>
         ${
@@ -850,7 +900,7 @@ async function viewCash(el) {
             ? `<div class="table-wrap"><table><thead><tr><th>اليوم</th><th>دخل نقدًا</th><th>خرج من الصندوق</th><th>سحب / إيداع</th><th>صافي اليوم</th><th>الرصيد</th></tr></thead><tbody>${[...c.days]
                 .reverse()
                 .map(
-                  (d) => `<tr><td class="nowrap"><b>${fmtDate(d.date)}</b></td><td class="in">${fmtMoney(d.cash_in)}</td><td class="out">${fmtMoney(d.cash_out)}</td>
+                  (d) => `<tr class="clickable" data-day="${d.date}" title="عرض معاملات هذا اليوم"><td class="nowrap"><b>${fmtDate(d.date)}</b></td><td class="in">${fmtMoney(d.cash_in)}</td><td class="out">${fmtMoney(d.cash_out)}</td>
                     <td>${d.withdraw ? `<span class="out">− ${fmtMoney(d.withdraw)}</span>` : ''}${d.deposit ? ` <span class="in">+ ${fmtMoney(d.deposit)}</span>` : ''}${!d.withdraw && !d.deposit ? '—' : ''}</td>
                     <td><b class="${d.net >= 0 ? 'in' : 'out'}">${fmtMoney(d.net)}</b></td><td><b>${d.balance === null ? '—' : fmtMoney(d.balance)}</b></td></tr>`
                 )
@@ -876,6 +926,15 @@ async function viewCash(el) {
               .join('')}</ul>`
           : '<p class="muted">لا حركات.</p>'
       }</section>`;
+    $('#dt-date').addEventListener('change', () => loadDay($('#dt-date').value));
+    el.querySelectorAll('[data-day]').forEach((r) =>
+      r.addEventListener('click', () => {
+        $('#dt-date').value = r.dataset.day;
+        loadDay(r.dataset.day);
+        $('.day-tx').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      })
+    );
+    loadDay(dayTxDate);
     el.querySelectorAll('[data-del-move]').forEach((b) =>
       b.addEventListener('click', async () => {
         if (!confirmAction('حذف هذه الحركة؟')) return;

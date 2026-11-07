@@ -1123,6 +1123,14 @@ test('cash box: daily in/out, owner withdrawal is not an expense, expense paid f
   // السحب لا يدخل في المصاريف الشهرية
   // السحب (150) لا يدخل في المصاريف، والمصروفان (30 + 50) يدخلان
   assert.strictEqual(Math.round(((await expNov()) - before) * 1000) / 1000, 80);
+  // معاملات اليوم: القائمة والمجاميع متطابقة
+  const day = (await admin('GET', '/api/cash/day?date=2026-11-03')).body;
+  assert.ok(day.items.some((x) => x.src === 'support' && x.who === 'صندوق' && x.amount === 200 && x.method === 'cash'));
+  assert.ok(day.items.some((x) => x.src === 'ledger' && x.dir === 'out' && x.amount === 30));
+  assert.ok(day.totals.in_cash >= 200 && day.totals.out_cash >= 30 && day.totals.withdraw >= 150);
+  const inCash = day.items.filter((x) => x.src !== 'move' && x.dir === 'in' && x.method === 'cash').reduce((t, x) => t + x.amount, 0);
+  assert.strictEqual(Math.round(inCash * 1000) / 1000, day.totals.in_cash);
+  assert.strictEqual(day.totals.in_cash, d3.cash_in);
 });
 
 test('teacher hours: counted day by day from the timetable, except absences and paused periods', async () => {

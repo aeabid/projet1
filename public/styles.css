@@ -1507,3 +1507,25 @@ body.sel-open { overflow: hidden; }
 .wk-col b { font-size: .8rem; } .wk-col small { font-size: .7rem; color: var(--muted); white-space: nowrap; } .wk-col span { font-family: 'Tajawal', sans-serif; font-size: .8rem; font-weight: 800; }
 .legend { display: inline-flex; gap: .8rem; font-size: .8rem; color: var(--muted); } .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-inline-end: .3rem; }
 .pkid .wa-btn { flex: none; }
+
+/* ===== معاملات يوم (الصندوق) ===== */
+.day-tx .section-head input[type=date] { width: auto; min-width: 150px; padding: .4rem .6rem; }
+.tx-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin-bottom: .8rem; }
+.tx-sum > div { display: flex; flex-direction: column; gap: .1rem; padding: .6rem .75rem; border-radius: 14px; background: var(--soft-2); min-width: 0; }
+.tx-sum small { font-size: .74rem; color: var(--muted); font-weight: 600; }
+.tx-sum b { font-family: 'Tajawal', sans-serif; font-size: 1.2rem; white-space: nowrap; }
+.tx-sum i { font-style: normal; font-size: .7rem; color: var(--muted); }
+.tx-sum .in b { color: var(--good); } .tx-sum .out b { color: #be185d; }
+@media (max-width: 640px) { .tx-sum { grid-template-columns: 1fr 1fr; } .tx-sum > div:last-child { grid-column: 1 / -1; } }
+.tx-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .35rem; }
+.tx { display: grid; grid-template-columns: 2.2rem 1fr auto; align-items: center; gap: .6rem; padding: .5rem .65rem; border-radius: 14px; background: var(--soft-2); border-inline-start: 3px solid transparent; }
+.tx.in { border-inline-start-color: var(--good); } .tx.out { border-inline-start-color: #ec4899; }
+.tx.move { background: #fff8ec; }
+.tx-ico { width: 2.2rem; height: 2.2rem; border-radius: 12px; background: var(--card); display: grid; place-items: center; font-size: 1.05rem; }
+.tx-main { display: flex; flex-direction: column; min-width: 0; }
+.tx-main b { color: var(--text); font-size: .92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tx-main b a { color: inherit; text-decoration: none; } .tx-main b a:hover { color: var(--feed-purple); }
+.tx-main small { font-size: .74rem; color: var(--muted); }
+.tx-amt { font-family: 'Tajawal', sans-serif; font-weight: 800; white-space: nowrap; direction: ltr; unicode-bidi: isolate; }
+.tx-amt.in { color: var(--good); } .tx-amt.out { color: #be185d; }
+tr.clickable { cursor: pointer; } tr.clickable:hover td { background: var(--soft-2); }
