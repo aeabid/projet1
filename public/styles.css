@@ -1135,3 +1135,38 @@ label .mp-label { flex: 1; justify-content: flex-start; }
 @media (prefers-color-scheme: dark) {
   .prod-ico { background: #12382b; } .prod-price { color: #6ee7b7; } .ps-total { background: #12382b; color: #a7f3d0; }
 }
+
+/* ---------- القوائم المنسدلة بتصميم التطبيقة ---------- */
+.sel-wrap { position: relative; display: inline-block; vertical-align: middle; max-width: 100%; }
+label .sel-wrap, dialog .sel-wrap, .row .sel-wrap { display: block; }
+.sel-wrap > select { width: 100%; }
+.filters .sel-wrap { min-width: 200px; }
+.filters .sel-wrap > select { min-width: 0; }
+.sel-hit { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+label .sel-hit { top: .25rem; }
+.sel-wrap > select:disabled + .sel-hit { cursor: not-allowed; }
+
+.sel-pop { position: fixed; z-index: 3000; background: var(--card); color: var(--text); border: 1px solid var(--border); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; overflow: hidden; font-size: .95rem; }
+.sel-pop.drop { border-radius: 16px; padding: .35rem; animation: sel-in .12s ease-out; }
+.sel-list { overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 2px; }
+.sel-opt { display: flex; align-items: center; justify-content: space-between; gap: .6rem; width: 100%; text-align: start; font: inherit; color: inherit; background: none; border: 0; border-radius: 11px; padding: .55rem .75rem; cursor: pointer; line-height: 1.45; }
+.sel-opt span { flex: 1; }
+.sel-opt:hover { background: var(--soft); }
+.sel-opt.on { background: var(--soft); color: var(--feed-purple); font-weight: 700; }
+.sel-opt svg { flex: none; color: var(--feed-purple); }
+.sel-opt:disabled { opacity: .45; cursor: default; }
+.sel-group { font-size: .74rem; font-weight: 700; color: var(--muted); padding: .55rem .75rem .2rem; letter-spacing: .01em; }
+.sel-search { margin: .1rem 0 .35rem !important; padding: .5rem .75rem !important; font-size: .9rem; }
+
+/* الهاتف: لوحة من الأسفل */
+.sel-bg { position: fixed; inset: 0; z-index: 2999; background: rgba(20, 12, 40, .42); animation: sel-fade .15s ease-out; }
+.sel-pop.sheet { inset: auto 0 0 0; max-height: min(72vh, 560px); border-radius: 24px 24px 0 0; border-bottom: 0; padding: .35rem .75rem calc(.8rem + env(safe-area-inset-bottom)); animation: sel-up .2s cubic-bezier(.2, .8, .2, 1); }
+.sel-grip { width: 42px; height: 5px; border-radius: 99px; background: var(--border); margin: .35rem auto .5rem; flex: none; }
+.sel-title { font-weight: 700; font-size: 1rem; padding: 0 .4rem .6rem; border-bottom: 1px solid var(--border); margin-bottom: .4rem; flex: none; }
+.sel-pop.sheet .sel-opt { padding: .8rem .85rem; font-size: 1rem; border-radius: 14px; }
+body.sel-open { overflow: hidden; }
+@keyframes sel-in { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes sel-up { from { transform: translateY(100%); } }
+@keyframes sel-fade { from { opacity: 0; } }
+@media (max-width: 640px) { .filters .sel-wrap { width: 100%; min-width: 0; } }
+@media (prefers-color-scheme: dark) { .sel-bg { background: rgba(0, 0, 0, .55); } }

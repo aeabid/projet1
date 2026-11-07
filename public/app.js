@@ -948,10 +948,10 @@ async function viewStudents(el) {
       }
     </div>
     <div class="filters">
-      <select id="f-level">${levelOptions(level, true)}</select>
+      <select id="f-level" aria-label="المستوى">${levelOptions(level, true)}</select>
       ${
         role === 'admin'
-          ? `<select id="f-status"><option value="">كل الحالات</option>${Object.entries(STATUS_LABELS)
+          ? `<select id="f-status" aria-label="الحالة"><option value="">كل الحالات</option>${Object.entries(STATUS_LABELS)
               .map(([k, v]) => `<option value="${k}" ${(sessionStorage.getItem('statusFilter') ?? 'studying') === k ? 'selected' : ''}>${v}</option>`)
               .join('')}</select>`
           : ''
@@ -3015,6 +3015,113 @@ new MutationObserver(() => document.querySelectorAll('input[type=month]').forEac
   childList: true,
   subtree: true,
 });
+
+// ---------- القوائم المنسدلة: بدل قائمة الهاتف الخام، قائمة بتصميم التطبيقة ----------
+// الـ select الأصلي يبقى (يعرض القيمة ويُرسَل مع النموذج)، وفوقه زر شفاف يفتح قائمتنا:
+// في الحاسوب قائمة تحت الخانة، وفي الهاتف لوحة من الأسفل.
+const isPhone = () => matchMedia('(max-width: 640px)').matches;
+function closeSelectPop() {
+  document.querySelectorAll('.sel-pop, .sel-bg').forEach((x) => x.remove());
+  document.body.classList.remove('sel-open');
+}
+function selectTitle(select) {
+  const label = select.closest('label');
+  const t = label ? [...label.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' ').trim() : '';
+  return t || select.getAttribute('aria-label') || select.title || 'اختر';
+}
+function openSelectPop(select) {
+  closeSelectPop();
+  if (select.disabled) return;
+  const host = select.closest('dialog[open]') || document.body;
+  const phone = isPhone();
+  const items = [];
+  const optRow = (o) =>
+    `<button type="button" class="sel-opt ${o.selected ? 'on' : ''}" data-i="${o.index}" ${o.disabled ? 'disabled' : ''}>
+      <span>${esc(o.textContent.trim())}</span>${o.selected ? '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>' : ''}</button>`;
+  for (const node of select.children) {
+    if (node.tagName === 'OPTGROUP') items.push(`<div class="sel-group">${esc(node.label)}</div>`, ...[...node.children].map(optRow));
+    else if (node.tagName === 'OPTION') items.push(optRow(node));
+  }
+  const many = select.options.length > 9;
+  const pop = document.createElement('div');
+  pop.className = `sel-pop ${phone ? 'sheet' : 'drop'}`;
+  pop.dataset.for = select.dataset.sel;
+  pop.setAttribute('role', 'listbox');
+  pop.innerHTML = `${phone ? `<div class="sel-grip"></div><div class="sel-title">${esc(selectTitle(select))}</div>` : ''}
+    ${many ? '<input class="sel-search" type="search" placeholder="بحث…" autocomplete="off">' : ''}
+    <div class="sel-list">${items.join('')}</div>`;
+  if (phone) {
+    const bg = document.createElement('div');
+    bg.className = 'sel-bg';
+    bg.addEventListener('click', closeSelectPop);
+    host.appendChild(bg);
+    document.body.classList.add('sel-open');
+  }
+  host.appendChild(pop);
+  if (!phone) {
+    const r = select.getBoundingClientRect();
+    const w = Math.max(r.width, 220);
+    pop.style.width = `${w}px`;
+    pop.style.left = `${Math.max(8, Math.min(r.right - w, innerWidth - w - 8))}px`;
+    const below = innerHeight - r.bottom - 12;
+    if (below < 220 && r.top > below) pop.style.bottom = `${innerHeight - r.top + 6}px`, (pop.style.maxHeight = `${Math.min(340, r.top - 16)}px`);
+    else pop.style.top = `${r.bottom + 6}px`, (pop.style.maxHeight = `${Math.min(340, below)}px`);
+  }
+  pop.querySelector('.sel-opt.on')?.scrollIntoView({ block: 'center' });
+  const search = pop.querySelector('.sel-search');
+  if (search) {
+    if (!phone) search.focus();
+    search.addEventListener('input', () => {
+      const q = search.value.trim().toLowerCase();
+      pop.querySelectorAll('.sel-opt').forEach((b) => (b.hidden = q && !b.textContent.toLowerCase().includes(q)));
+      pop.querySelectorAll('.sel-group').forEach((g) => (g.hidden = !!q));
+    });
+  }
+  pop.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const b = e.target.closest('.sel-opt');
+    if (!b || b.disabled) return;
+    const i = Number(b.dataset.i);
+    closeSelectPop();
+    if (select.selectedIndex !== i) {
+      select.selectedIndex = i;
+      select.dispatchEvent(new Event('input', { bubbles: true }));
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    select.focus({ preventScroll: true });
+  });
+}
+enhanceSelect.n = 0;
+function enhanceSelect(select) {
+  if (select.dataset.sel || select.multiple || select.size > 1 || select.hasAttribute('data-native')) return;
+  select.dataset.sel = String(++enhanceSelect.n);
+  const wrap = document.createElement('span');
+  wrap.className = 'sel-wrap';
+  select.before(wrap);
+  const hit = document.createElement('button');
+  hit.type = 'button';
+  hit.className = 'sel-hit';
+  hit.tabIndex = -1;
+  hit.setAttribute('aria-hidden', 'true');
+  wrap.append(select, hit);
+  hit.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (document.querySelector('.sel-pop')?.dataset.for === select.dataset.sel) return closeSelectPop();
+    openSelectPop(select);
+  });
+  select.addEventListener('keydown', (e) => {
+    if ([' ', 'Enter', 'ArrowDown', 'ArrowUp'].includes(e.key) && !e.altKey) {
+      e.preventDefault();
+      openSelectPop(select);
+    }
+  });
+}
+document.addEventListener('click', (e) => !e.target.closest('.sel-pop') && closeSelectPop());
+document.addEventListener('keydown', (e) => e.key === 'Escape' && document.querySelector('.sel-pop') && (e.preventDefault(), closeSelectPop()));
+addEventListener('resize', () => !isPhone() && closeSelectPop());
+document.addEventListener('scroll', (e) => !e.target.closest?.('.sel-pop') && !isPhone() && closeSelectPop(), true);
+new MutationObserver(() => document.querySelectorAll('select:not([data-sel])').forEach(enhanceSelect)).observe(document.body, { childList: true, subtree: true });
 
 // ---------- الجداول في الهاتف: كل سطر يصبح بطاقة، وكل خانة تحمل اسم عمودها ----------
 function labelTable(table) {
