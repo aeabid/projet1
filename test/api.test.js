@@ -1125,3 +1125,28 @@ test('cash box: daily in/out, owner withdrawal is not an expense, expense paid f
   // السحب (150) لا يدخل في المصاريف، والمصروفان (30 + 50) يدخلان
   assert.strictEqual(Math.round(((await expNov()) - before) * 1000) / 1000, 80);
 });
+
+test('teacher hours: counted day by day from the timetable, except absences and paused periods', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const math = meta.subjects.find((s) => s.name === 'الرياضيات').id;
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'pz-t', full_name: 'مدرّس إيقاف', password: 'secret1', subject_ids: [math], hourly_rate: 10 })).body.user;
+  // حصة كل اثنين ساعتين منذ سبتمبر
+  const slot = await admin('POST', '/api/timetable', { level: '7', day: 1, start_time: '08:00', end_time: '10:00', subject_id: math, teacher_id: t.id, valid_from: '2026-09-01' });
+  assert.strictEqual(slot.status, 201);
+  const before = (await admin('GET', `/api/payroll/${t.id}?month=2026-10`)).body;
+  const mondays = before.sessions.filter((x) => x.status === 'done').length;
+  assert.ok(mondays >= 4);
+  assert.strictEqual(before.hours_done, mondays * 2);
+  // عطلة لكل المدرّسين من 19 إلى 25 أكتوبر (اثنين واحد)
+  const pz = await admin('POST', '/api/payroll/pauses', { date_from: '2026-10-19', date_to: '2026-10-25', reason: 'عطلة' });
+  assert.strictEqual(pz.status, 201);
+  const after = (await admin('GET', `/api/payroll/${t.id}?month=2026-10`)).body;
+  assert.strictEqual(after.hours_done, (mondays - 1) * 2);
+  assert.strictEqual(after.sessions.filter((x) => x.status === 'paused').length, 1);
+  const list = (await admin('GET', '/api/payroll?month=2026-10')).body;
+  assert.strictEqual(list.teachers.find((x) => x.id === t.id).paused, 1);
+  assert.strictEqual(list.pauses.length >= 1, true);
+  await admin('DELETE', `/api/payroll/pauses/${pz.body.id}`);
+  assert.strictEqual((await admin('GET', `/api/payroll/${t.id}?month=2026-10`)).body.hours_done, mondays * 2);
+});

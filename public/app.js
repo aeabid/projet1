@@ -3032,6 +3032,7 @@ const SESSION_LABELS = {
   absent: ['غياب', 'weak'],
   adjusted: ['معدّلة', 'average'],
   extra: ['إضافية', 'level'],
+  paused: ['موقوفة (عطلة)', 'status-left'],
 };
 const fmtHours = (h) => `${Number(h).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} س`;
 const payMonth = () => sessionStorage.getItem('payMonth') || today().slice(0, 7);
@@ -3040,41 +3041,103 @@ const weekdayName = (d) => DAYS_AR[(new Date(d + 'T00:00:00Z').getUTCDay() || 7)
 async function viewPayroll(el) {
   el.innerHTML = `
     <div class="page-head">
-      <h2>ساعات وخلاص المعلمين</h2>
+      <div><h2>ساعات وخلاص المدرّسين</h2>
+        <p class="muted small">الساعات تُضاف وحدها يومًا بيوم من <a href="#/support/teachers/timetable">جدول الأوقات</a>، إلا غياب المدرّس (تسجّله الإدارة) أو فترة «إيقاف العدّ» (عطلة، امتحانات).</p></div>
       <input type="month" id="pay-month" value="${payMonth()}">
     </div>
-    <div id="pay-body"></div>`;
-  const load = async () => {
-    sessionStorage.setItem('payMonth', $('#pay-month').value);
-    const { teachers, totals, month } = await api('GET', '/api/payroll?month=' + $('#pay-month').value);
+    <div id="pay-body"><p class="muted">جاري التحميل…</p></div>`;
+  let view = studentsView('payView');
+  let data;
+  const render = () => {
+    const { teachers, totals, month, pauses } = data;
+    const status = (t) => (t.remaining > 0 ? 'due' : t.due > 0 ? 'ok' : 'none');
+    const rateCell = (t) => (t.hourly_rate ? `${fmtMoney(t.hourly_rate)} / س` : '<span class="error small">معلوم الساعة غير محدّد</span>');
+    const noSlots = (t) => (t.slots_per_week ? '' : `<a class="pr-warn" href="#/support/teachers/timetable">⚠️ لا حصص له في الجدول</a>`);
+    const remainCell = (t) => (t.remaining > 0 ? `<b class="owed">${fmtMoney(t.remaining)}</b>` : t.due > 0 ? '<span class="badge good">خالص</span>' : '—');
     $('#pay-body').innerHTML = `
-      <div class="stats compact">
-        <div class="stat"><b>${fmtHours(totals.hours_done)}</b><span>الساعات المنجزة — ${esc(monthLabel(month))}</span></div>
-        <div class="stat"><b>${fmtMoney(totals.due)}</b><span>المستحق</span></div>
-        <div class="stat good"><b>${fmtMoney(totals.paid)}</b><span>المدفوع</span></div>
-        <div class="stat warn"><b>${fmtMoney(totals.remaining)}</b><span>الباقي</span></div>
+      <div class="fb-kpis">
+        <div class="fb-kpi net"><span>الساعات المنجزة · ${esc(monthLabel(month))}</span><b>${fmtHours(totals.hours_done)}</b><small>+ ${fmtHours(totals.hours_planned || 0)} مبرمجة لبقية الشهر</small></div>
+        <div class="fb-kpi out"><span>المستحق إلى اليوم</span><b>${fmtMoney(totals.due)}</b><small>مدفوع ${fmtMoney(totals.paid)}</small></div>
+        <div class="fb-kpi ${totals.remaining > 0 ? 'out' : 'in'}"><span>الباقي للخلاص</span><b>${fmtMoney(totals.remaining)}</b><small>${teachers.filter((t) => t.remaining > 0).length} مدرّس</small></div>
       </div>
+      <section class="card pauses"><div class="section-head"><h3>⏸ إيقاف العدّ</h3><button class="btn small ghost" id="pz-add">+ عطلة / امتحانات</button></div>
+        ${
+          pauses.length
+            ? `<ul class="levels">${pauses
+                .map(
+                  (p) => `<li><span><b>${fmtDate(p.date_from)}${p.date_to !== p.date_from ? ` ← ${fmtDate(p.date_to)}` : ''}</b> · ${esc(p.reason || 'إيقاف')}
+                    <span class="muted small">${p.teacher_name ? esc(p.teacher_name) : 'كل المدرّسين'}</span></span><button class="link danger small" data-del-pz="${p.id}">حذف</button></li>`
+                )
+                .join('')}</ul>`
+            : '<p class="muted small">لا عطل هذا الشهر: كل الحصص المبرمجة تُحتسب.</p>'
+        }</section>
+      <div class="filters">${viewToggle()}</div>
       ${
-        teachers.length
-          ? `<div class="table-wrap"><table>
-              <thead><tr><th>المعلم</th><th>معلوم الساعة</th><th>الحصص</th><th>الساعات</th><th>المستحق</th><th>المدفوع</th><th>الباقي</th><th></th></tr></thead>
+        !teachers.length
+          ? '<div class="card muted">لا يوجد مدرّسون.</div>'
+          : view === 'cards'
+          ? `<div class="scards">${teachers
+              .map((t) => {
+                const total = t.hours_done + t.hours_planned;
+                const pct = total ? Math.round((t.hours_done / total) * 100) : 0;
+                return `<article class="scard pr-card ${status(t)}" style="--lv:${status(t) === 'due' ? 330 : status(t) === 'ok' ? 152 : 230}">
+                  <a class="sc-head" href="#/payroll/${t.id}">${avatar({ full_name: t.full_name }, 'md')}
+                    <div class="sc-id"><h3>${esc(t.full_name)}</h3><div class="sc-tags"><span class="sc-level">${rateCell(t)}</span></div>${noSlots(t)}</div></a>
+                  <div class="pr-bar"><i style="width:${pct}%"></i></div>
+                  <div class="pr-hours"><span><b>${fmtHours(t.hours_done)}</b> منجزة</span><span class="muted">${fmtHours(t.hours_planned)} مبرمجة</span></div>
+                  <div class="sc-stats">
+                    <div class="sc-stat ${t.absences ? 'warn' : ''}"><b>${t.sessions}</b><span>حصة${t.absences ? ` · ${t.absences} غياب` : ''}${t.paused ? ` · ${t.paused} موقوفة` : ''}</span></div>
+                    <div class="sc-stat"><b>${fmtMoney(t.due)}</b><span>المستحق</span></div>
+                    <div class="sc-stat ${status(t) === 'due' ? 'owe' : status(t) === 'ok' ? 'ok' : ''}"><b>${t.remaining > 0 ? fmtMoney(t.remaining) : t.due > 0 ? '✓' : '—'}</b><span>${t.remaining > 0 ? 'الباقي' : t.due > 0 ? 'خالص' : 'الباقي'}</span></div>
+                  </div>
+                  <div class="sc-actions"><a class="btn ghost small" href="#/payroll/${t.id}">التفاصيل والخلاص</a>${waNumber(t.phone) ? waButton(t.phone) : ''}</div>
+                </article>`;
+              })
+              .join('')}</div>`
+          : `<div class="table-wrap as-table"><table>
+              <thead><tr><th>المدرّس</th><th>معلوم الساعة</th><th>الحصص</th><th>الساعات</th><th>المستحق</th><th>المدفوع</th><th>الباقي</th></tr></thead>
               <tbody>${teachers
                 .map(
                   (t) => `<tr>
-                    <td><b>${esc(t.full_name)}</b></td>
-                    <td>${t.hourly_rate ? fmtMoney(t.hourly_rate) : '<span class="error small">غير محدّد</span>'}</td>
-                    <td>${t.sessions}${t.absences ? ` <span class="badge weak">${t.absences} غياب</span>` : ''}</td>
-                    <td><b>${fmtHours(t.hours_done)}</b>${t.hours_planned ? `<div class="muted small">+ ${fmtHours(t.hours_planned)} مبرمجة</div>` : ''}</td>
-                    <td>${fmtMoney(t.due)}</td>
-                    <td>${fmtMoney(t.paid)}</td>
-                    <td>${t.remaining > 0 ? `<b class="owed">${fmtMoney(t.remaining)}</b>` : t.due > 0 ? '<span class="badge good">خالص</span>' : '—'}</td>
-                    <td><a class="btn ghost small" href="#/payroll/${t.id}">التفاصيل</a></td>
+                    <td><a class="who-cell" href="#/payroll/${t.id}">${avatar({ full_name: t.full_name }, 'sm')}<b>${esc(t.full_name)}</b></a>${noSlots(t)}</td>
+                    <td class="nowrap">${rateCell(t)}</td>
+                    <td>${t.sessions}${t.absences ? ` <span class="badge weak">${t.absences} غياب</span>` : ''}${t.paused ? ` <span class="badge status-left">${t.paused} موقوفة</span>` : ''}</td>
+                    <td class="nowrap"><b>${fmtHours(t.hours_done)}</b>${t.hours_planned ? `<div class="muted small">+ ${fmtHours(t.hours_planned)} مبرمجة</div>` : ''}</td>
+                    <td class="nowrap">${fmtMoney(t.due)}</td>
+                    <td class="nowrap">${fmtMoney(t.paid)}</td>
+                    <td class="nowrap">${remainCell(t)}</td>
                   </tr>`
                 )
                 .join('')}</tbody></table></div>`
-          : '<div class="card muted">لا يوجد معلمون.</div>'
-      }
-      <p class="muted small">الساعات تُحسب تلقائيًا من جدول الأوقات، يومًا بيوم من 1 إلى آخر الشهر. الحصص المقبلة «مبرمجة» ولا تدخل في المستحق حتى يحين موعدها.</p>`;
+      }`;
+    bindViewToggle($('#pay-body'), 'payView', () => view, (v) => (view = v), render);
+    $('#pz-add').addEventListener('click', () =>
+      openModal(
+        '⏸ إيقاف عدّ الساعات',
+        `<p class="muted small">الحصص في هذه الفترة لا تُحتسب (عطلة، أسبوع امتحانات، تغيير الجدول…). تنجم تلغيها في أي وقت.</p>
+         <div class="row"><label>من<input type="date" name="date_from" value="${today()}" required></label>
+           <label>إلى<input type="date" name="date_to" value="${today()}" required></label></div>
+         <label>السبب<input name="reason" placeholder="مثال: عطلة الشتاء، امتحانات الثلاثي"></label>
+         <label>المدرّسون<select name="teacher_id"><option value="">كل المدرّسين</option>${teachers.map((t) => `<option value="${t.id}">${esc(t.full_name)}</option>`).join('')}</select></label>`,
+        async (f) => {
+          await api('POST', '/api/payroll/pauses', f);
+          toast('تم إيقاف العدّ في هذه الفترة');
+          load();
+        }
+      )
+    );
+    $('#pay-body').querySelectorAll('[data-del-pz]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirmAction('إلغاء الإيقاف؟ الحصص في هذه الفترة ترجع تُحتسب.')) return;
+        await api('DELETE', `/api/payroll/pauses/${b.dataset.delPz}`).catch((err) => toast(err.message, true));
+        load();
+      })
+    );
+  };
+  const load = async () => {
+    sessionStorage.setItem('payMonth', $('#pay-month').value);
+    data = await api('GET', '/api/payroll?month=' + $('#pay-month').value);
+    if ($('#pay-body')) render();
   };
   $('#pay-month').addEventListener('change', load);
   await load();
