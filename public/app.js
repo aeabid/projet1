@@ -946,6 +946,12 @@ function bindPayButtons(root, reload) {
   );
 }
 
+// خانة الولي في الجداول (الدعم والتربوي): الاسم (رابط لملفه) ثم الهاتف وواتساب
+function parentCell(name, phone, parentId, admin = true) {
+  const n = name ? (admin && parentId ? `<a href="#/parents/${parentId}">${esc(name)}</a>` : esc(name)) : '—';
+  return `${n}${phone ? `<div class="muted small phone-line"><span dir="ltr">${esc(phone)}</span>${admin ? waButton(phone) : ''}</div>` : ''}`;
+}
+
 // فلتر الخلاص في القوائم: الكل، لم يدفع بعد (باقي عليه)، خالص
 function payFilterSelect(id) {
   const v = sessionStorage.getItem('payFilter') || '';
@@ -1067,11 +1073,7 @@ async function viewStudents(el) {
                 <td><span class="pill">${esc(levelLabel(s.level))}</span></td>
                 <td class="nowrap">${s.start_date ? fmtDate(s.start_date) : '<span class="muted">—</span>'}</td>
                 <td>${subjectsCell(s)}</td>
-                <td>${esc(s.parent_name || '—')}${
-                  s.parent_phone
-                    ? `<div class="muted small phone-line"><span dir="ltr">${esc(s.parent_phone)}</span>${role === 'admin' ? waButton(s.parent_phone) : ''}</div>`
-                    : ''
-                }</td>
+                <td>${parentCell(s.parent_name, s.parent_phone, s.parent_id, role === 'admin')}</td>
                 <td>${s.absence_count}${s.unjustified_count ? ` <span class="badge weak">${s.unjustified_count} غير مبرر</span>` : ''}</td>
                 <td>${s.note_count}</td>
                 ${role === 'admin' ? `<td>${payButton('support', s)}</td>` : ''}

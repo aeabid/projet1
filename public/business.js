@@ -469,16 +469,16 @@ async function viewProgram(el) {
           })
           .join('')}</div>`
       : `<div class="table-wrap as-table"><table>
-          <thead><tr><th>الاسم</th><th>القسم</th><th>تاريخ الدخول</th><th>العمر</th><th>الولي</th><th>المبلغ الشهري</th><th>الخلاص</th></tr></thead>
+          <thead><tr><th>الاسم</th><th>القسم</th><th>تاريخ الدخول</th><th>الولي</th><th>الغيابات</th><th>الملاحظات</th><th>الخلاص</th></tr></thead>
           <tbody>${list
             .map(
               (c) => `<tr class="${c.status === 'left' ? 'planned' : ''}">
                 <td><a class="who-cell" href="#/program/child/${c.id}">${avatar({ full_name: c.full_name }, 'sm')}<b>${esc(c.full_name)}</b></a>${badges(c)}</td>
                 <td>${c.class_name ? `<span class="pill">${esc(c.class_name)}</span>` : '—'}</td>
                 <td class="nowrap">${c.start_date ? fmtDate(c.start_date) : '<span class="muted">—</span>'}</td>
-                <td class="nowrap">${ageOf(c.birth_date) || '—'}</td>
-                <td>${esc(c.contact_name || '—')}${c.family_parent_id ? ' <span title="له حساب ولي">👤</span>' : ''}${c.contact_phone ? `<div class="muted small phone-line"><span dir="ltr">${esc(c.contact_phone)}</span>${waButton(c.contact_phone)}</div>` : ''}</td>
-                <td>${feeCell(c)}</td>
+                <td>${parentCell(c.contact_name, c.contact_phone, c.family_parent_id)}</td>
+                <td>${c.absence_count ?? 0}</td>
+                <td>${c.note_count ?? 0}</td>
                 <td>${payButton('program', c)}</td>
               </tr>`
             )
