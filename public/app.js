@@ -1076,6 +1076,28 @@ function suggestFee(level, pack, subjectIds) {
   return fee ? { fee, label: n >= 5 || fee === packFee ? `${n} حصص = الباقة` : `${n === 1 ? 'حصة' : n === 2 ? 'حصتان' : n + ' حصص'} في الأسبوع` } : null;
 }
 
+// تغيير المعلوم في الاستمارة: من أي شهر يُطبَّق (الأشهر قبله تبقى بمعلومها)
+function feeFromField(startDate) {
+  const cur = today().slice(0, 7);
+  const first = (startDate || cur).slice(0, 7);
+  const opts = [];
+  for (let m = first; m <= shiftMonth(cur, 2); m = shiftMonth(m, 1)) opts.push(m);
+  return `<div class="fee-from" id="fee-from" hidden>
+    <label>المعلوم الجديد يُطبَّق ابتداءً من<select name="fee_from">${opts
+      .map((m) => `<option value="${m}" ${m === cur ? 'selected' : ''}>${esc(monthLabel(m))}${m === cur ? ' (الشهر الحالي)' : ''}</option>`)
+      .join('')}<option value="all">كل الأشهر (تصحيح خطأ)</option></select></label>
+    <p class="muted small">الأشهر قبل هذا الشهر تبقى بمعلومها القديم.</p></div>`;
+}
+function bindFeeFrom(modal) {
+  const box = modal.querySelector('#fee-from');
+  if (!box) return;
+  const ins = ['monthly_fee', 'discount'].map((n) => modal.querySelector(`input[name=${n}]`)).filter(Boolean);
+  const init = ins.map((i) => i.value);
+  const sync = () => (box.hidden = ins.every((i, k) => i.value === init[k]));
+  ins.forEach((i) => i.addEventListener('input', sync));
+  sync();
+}
+
 async function studentForm(student, onDone) {
   // معطيات القائمة تكفي (لا حاجة لتحميل ملف التلميذ كاملًا)، والأولياء يُحمّلون مرة واحدة
   const listed = student && ('subject_ids' in student || student.subjects);
@@ -1126,6 +1148,7 @@ async function studentForm(student, onDone) {
        <label>تخفيض شهري (د.ت)<input name="discount" inputmode="decimal" value="${esc(s.discount ?? '')}" placeholder="0"></label>
        <label>سبب التخفيض<input name="discount_reason" value="${esc(s.discount_reason || '')}" placeholder="مثال: إخوة، منحة"></label>
      </div>
+     ${student ? feeFromField(s.start_date) : ''}
      <label class="check"><input type="checkbox" name="no_sibling" ${s.no_sibling ? 'checked' : ''}> بدون تخفيض الإخوة (يدفع المعلوم كاملًا حتى لو عندو إخوة)</label>
      <label>ملاحظات التسجيل<input name="remarks" value="${esc(s.remarks)}" placeholder="مثال: ما عدا الفرنسية"></label>
      <label>الولي
@@ -1164,7 +1187,7 @@ async function studentForm(student, onDone) {
     $('#fee-apply')?.addEventListener('click', () => {
       feeInput.value = sug.fee;
       feeInput.dataset.touched = '1';
-      applyFee();
+      feeInput.dispatchEvent(new Event('input'));
     });
   };
   levelSel.addEventListener('change', applyFee);
@@ -1172,6 +1195,7 @@ async function studentForm(student, onDone) {
   feeInput.addEventListener('input', applyFee);
   $('#modal').querySelectorAll('input[name="subject_ids[]"]').forEach((x) => x.addEventListener('change', applyFee));
   applyFee();
+  bindFeeFrom($('#modal'));
   const statusSel = $('#modal select[name=status]');
   const syncStatus = () => ($('#end-date-field').hidden = !['left', 'stopped'].includes(statusSel.value));
   statusSel.addEventListener('change', syncStatus);

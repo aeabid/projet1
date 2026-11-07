@@ -1380,3 +1380,6 @@ body.sel-open { overflow: hidden; }
 .pf-sum { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .4rem 1rem; background: #fde8f1; color: #9d174d; border-radius: 14px; padding: .65rem .9rem; margin-bottom: .8rem; font-size: .9rem; }
 .pf-sum b { font-family: 'Tajawal', sans-serif; font-size: 1.05rem; }
 @media (prefers-color-scheme: dark) { .pf-sum { background: #3a1a2b; color: #f9a8d4; } }
+.fee-from { background: #fff7e6; border: 1px dashed #f3d08a; border-radius: 14px; padding: .6rem .8rem .2rem; margin-bottom: .7rem; }
+.fee-from label { margin-bottom: .3rem; font-weight: 600; color: #8a5a00; }
+@media (prefers-color-scheme: dark) { .fee-from { background: #2e2412; border-color: #6b4e1a; } .fee-from label { color: #fcd34d; } }

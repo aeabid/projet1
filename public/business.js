@@ -554,6 +554,7 @@ function childForm(c, { classes, parents, students, children }, onDone) {
        <label>تخفيض شهري (د.ت)<input name="discount" inputmode="decimal" value="${esc(c?.discount ?? '')}"></label>
        <label>سبب التخفيض<input name="discount_reason" value="${esc(c?.discount_reason || '')}"></label>
      </div>
+     ${c ? feeFromField(c.start_date) : ''}
      <label class="check"><input type="checkbox" name="free" ${c?.free ? 'checked' : ''}> مجاني</label>
      <label>ملاحظات<input name="notes" value="${esc(c?.notes || '')}"></label>
      ${c ? '<p><button type="button" class="link danger" id="del-child">حذف الطفل نهائيًا</button></p>' : ''}`,
@@ -597,6 +598,7 @@ function childForm(c, { classes, parents, students, children }, onDone) {
   };
   $('#cf-student').addEventListener('change', sync);
   sync();
+  bindFeeFrom($('#modal'));
   $('#del-child')?.addEventListener('click', async () => {
     if (!confirmAction('حذف الطفل وكل دفعاته؟ (لخروجه من البرنامج استعمل الحالة «خرج»)')) return;
     await api('DELETE', `/api/program/children/${c.id}`);

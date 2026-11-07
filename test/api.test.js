@@ -1033,3 +1033,22 @@ test('a payment can be edited after its receipt: same receipt number, new amount
   assert.deepStrictEqual([rc.amount, rc.month, rc.receipt_no, !!rc.edited_at], [100, '2026-10', pay.receipt_no, true]);
   assert.strictEqual((await admin('PUT', `/api/payments/${pay.id}`, { month: 'x', amount: 1 })).status, 400);
 });
+
+test('changing the monthly fee from a month keeps earlier months at the old fee', async () => {
+  const admin = await login('admin', 'admin123');
+  const st = (await admin('POST', '/api/students', { full_name: 'تلميذ باقة', level: '7', monthly_fee: 140, start_date: '2026-09-01' })).body.student;
+  const put = (fee, from) => admin('PUT', `/api/students/${st.id}`, { full_name: 'تلميذ باقة', level: '7', monthly_fee: fee, start_date: '2026-09-01', status: 'studying', fee_from: from });
+  const dues = async () => Object.fromEntries((await admin('GET', `/api/students/${st.id}`)).body.finance.months.map((m) => [m.month, m.due]));
+  // باقة من أكتوبر: سبتمبر يبقى 140
+  assert.strictEqual((await put(240, '2026-10')).status, 200);
+  let d = await dues();
+  assert.deepStrictEqual([d['2026-09'], d['2026-10']], [140, 240]);
+  // تغيير ثانٍ من نوفمبر: سبتمبر 140، أكتوبر 240، نوفمبر 200
+  await put(200, '2026-11');
+  d = await dues();
+  assert.deepStrictEqual([d['2026-09'], d['2026-10'], d['2026-11']], [140, 240, 200]);
+  // تصحيح خطأ: المعلوم على كل الأشهر
+  await put(180, 'all');
+  d = await dues();
+  assert.deepStrictEqual([d['2026-09'], d['2026-10'], d['2026-11']], [180, 180, 180]);
+});
