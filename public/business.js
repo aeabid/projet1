@@ -374,8 +374,6 @@ async function viewProgram(el) {
         <button class="btn" id="add-child">+ طفل</button>
       </div>
     </div>
-    <p class="muted">برنامج سنوي من 1 سبتمبر إلى موفى ماي (جوان-أوت لا تُحتسب). اربط كل طفل بحساب وليّه ليتابع الغيابات والملاحظات والخلاص،
-      وإن كان الطفل يدرس أيضًا في دروس الدعم اختره من القائمة: يبقى شخصًا واحدًا بمعلوم تسجيل واحد.</p>
     <div class="stats compact">
       <div class="stat"><b>${active.length}</b><span>طفل مسجّل</span></div>
       <div class="stat"><b>${classes.length}</b><span>أقسام</span></div>
@@ -391,12 +389,12 @@ async function viewProgram(el) {
         .join('')}</select>
       <input id="pf-q" type="search" placeholder="بحث بالاسم…">
       <button class="btn ghost small" id="pf-edit-class" hidden>✎ تعديل القسم</button>
+      ${viewToggle()}
     </div>
     <p class="muted small" id="pf-class-info"></p>
-    <div id="prog-list"></div>
-    <section class="card"><h3>المصاريف والأجور</h3>
-      <p class="muted">أجور المؤطّرين من <a href="#/program/pay">خلاص المؤطّرين</a> و<a href="#/salaries">الأجور</a>، والمصاريف الأخرى من <a href="#/ledger">المداخيل والمصاريف</a> (النشاط: البرنامج التربوي).</p>
-    </section>`;
+    <div id="prog-list"></div>`;
+  let view = studentsView('progView');
+  const hueOf = (classId) => [262, 330, 200, 152, 28, 290, 175, 45][Math.max(0, classes.findIndex((k) => k.id === classId)) % 8];
 
   const render = () => {
     const f = $('#pf-class').value;
@@ -411,30 +409,63 @@ async function viewProgram(el) {
     const list = children.filter(
       (c) => (!f || String(c.class_id) === f) && (!st || c.status === st) && (!q || c.full_name.toLowerCase().includes(q) || String(c.contact_name || '').toLowerCase().includes(q))
     );
-    $('#prog-list').innerHTML = list.length
-      ? `<div class="table-wrap"><table>
-          <thead><tr><th>الطفل</th><th>العمر</th><th>القسم</th><th>الولي</th><th>المبلغ الشهري</th><th>الباقي</th><th></th></tr></thead>
+    const owedCell = (c) => (c.balance > 0 ? `<b class="owed">${fmtMoney(c.balance)}</b>` : c.monthly_fee && !c.free ? '<span class="badge good">خالص</span>' : '—');
+    const feeCell = (c) => `${c.free ? '<span class="badge free">مجاني</span>' : fmtMoney(c.monthly_fee)}${c.sibling_pct ? `<div class="muted small">إخوة −${c.sibling_pct}%</div>` : ''}`;
+    const badges = (c) => `${c.status === 'left' ? ' <span class="badge status-left">خرج</span>' : ''}${c.student_id ? ' <span class="badge level">+ دروس الدعم</span>' : ''}`;
+    $('#prog-list').innerHTML = !list.length
+      ? '<div class="card muted">لا يوجد أطفال بهذه الشروط.</div>'
+      : view === 'cards'
+      ? `<div class="scards">${list
+          .map((c) => {
+            const money =
+              c.balance > 0
+                ? `<div class="sc-stat owe"><b>${fmtMoney(c.balance)}</b><span>الباقي</span></div>`
+                : c.monthly_fee || c.free
+                ? `<div class="sc-stat ok"><b>✓</b><span>${c.free ? 'مجاني' : 'خالص'}</span></div>`
+                : '<div class="sc-stat"><b>—</b><span>الخلاص</span></div>';
+            return `<article class="scard" style="--lv:${hueOf(c.class_id)}">
+              <a class="sc-head" href="#/program/child/${c.id}">
+                ${avatar({ full_name: c.full_name }, 'md')}
+                <div class="sc-id"><h3>${esc(c.full_name)}</h3>
+                  <div class="sc-tags"><span class="sc-level">${esc(c.class_name || 'بدون قسم')}</span>${badges(c)}</div>
+                  <div class="sc-since">${c.start_date ? `دخل المركز ${fmtDate(c.start_date)}` : '<span class="muted">تاريخ الدخول غير محدّد</span>'}</div></div>
+              </a>
+              <div class="sc-parent"><span class="sc-ico" aria-hidden="true">👤</span>
+                <div><b>${esc(c.contact_name || 'بدون ولي')}</b>${c.contact_phone ? `<span dir="ltr" class="muted small">${esc(c.contact_phone)}</span>` : ''}</div>
+                ${c.contact_phone ? waButton(c.contact_phone) : ''}</div>
+              <div class="sc-stats">
+                <div class="sc-stat"><b>${ageOf(c.birth_date) || '—'}</b><span>العمر</span></div>
+                <div class="sc-stat"><b>${c.free ? '—' : fmtMoney(c.monthly_fee)}</b><span>${c.sibling_pct ? `شهريًا · إخوة −${c.sibling_pct}%` : 'شهريًا'}</span></div>
+                ${money}
+              </div>
+              <div class="sc-actions"><a class="btn ghost small" href="#/program/child/${c.id}">الملف</a>
+                <button class="btn ghost small" data-edit="${c.id}">تعديل</button></div>
+            </article>`;
+          })
+          .join('')}</div>`
+      : `<div class="table-wrap as-table"><table>
+          <thead><tr><th>الاسم</th><th>القسم</th><th>تاريخ الدخول</th><th>العمر</th><th>الولي</th><th>المبلغ الشهري</th><th>الباقي</th><th></th></tr></thead>
           <tbody>${list
             .map(
               (c) => `<tr class="${c.status === 'left' ? 'planned' : ''}">
-                <td><a href="#/program/child/${c.id}"><b>${esc(c.full_name)}</b></a>${c.status === 'left' ? ' <span class="badge status-left">خرج</span>' : ''}
-                  ${c.student_id ? ' <span class="badge level">+ دروس الدعم</span>' : ''}</td>
-                <td>${ageOf(c.birth_date)}</td>
-                <td>${esc(c.class_name || '—')}</td>
-                <td>${esc(c.contact_name || '—')}${c.family_parent_id ? ' <span title="له حساب ولي">👤</span>' : ''}${c.contact_phone ? `<div class="phone-line small"><span dir="ltr">${esc(c.contact_phone)}</span>${waButton(c.contact_phone)}</div>` : ''}</td>
-                <td>${c.free ? '<span class="badge free">مجاني</span>' : fmtMoney(c.monthly_fee)}${c.sibling_pct ? `<div class="muted small">إخوة −${c.sibling_pct}%</div>` : ''}</td>
-                <td>${c.balance > 0 ? `<b class="owed">${fmtMoney(c.balance)}</b>` : c.monthly_fee && !c.free ? '<span class="badge good">خالص</span>' : '—'}</td>
+                <td><a class="who-cell" href="#/program/child/${c.id}">${avatar({ full_name: c.full_name }, 'sm')}<b>${esc(c.full_name)}</b></a>${badges(c)}</td>
+                <td>${c.class_name ? `<span class="pill">${esc(c.class_name)}</span>` : '—'}</td>
+                <td class="nowrap">${c.start_date ? fmtDate(c.start_date) : '<span class="muted">—</span>'}</td>
+                <td class="nowrap">${ageOf(c.birth_date) || '—'}</td>
+                <td>${esc(c.contact_name || '—')}${c.family_parent_id ? ' <span title="له حساب ولي">👤</span>' : ''}${c.contact_phone ? `<div class="muted small phone-line"><span dir="ltr">${esc(c.contact_phone)}</span>${waButton(c.contact_phone)}</div>` : ''}</td>
+                <td>${feeCell(c)}</td>
+                <td>${owedCell(c)}</td>
                 <td class="row-actions"><button class="btn ghost small" data-edit="${c.id}">تعديل</button></td>
               </tr>`
             )
-            .join('')}</tbody></table></div>`
-      : '<div class="card muted">لا يوجد أطفال بهذه الشروط.</div>';
+            .join('')}</tbody></table></div>`;
     $('#prog-list').querySelectorAll('[data-edit]').forEach((b) =>
       b.addEventListener('click', () => childForm(children.find((c) => c.id === Number(b.dataset.edit)), lists, reload))
     );
   };
   const reload = () => viewProgram(el);
 
+  bindViewToggle(el, 'progView', () => view, (v) => (view = v), render);
   $('#pf-class').addEventListener('change', render);
   $('#pf-status').addEventListener('change', render);
   $('#pf-q').addEventListener('input', render);
@@ -515,7 +546,7 @@ function childForm(c, { classes, parents, students, children }, onDone) {
      <p class="muted small" id="cf-linked" hidden>الولي وحسابه ومعلوم التسجيل السنوي من ملف دروس الدعم.</p>
      <div class="row">
        <label>المبلغ الشهري (د.ت)<input name="monthly_fee" inputmode="decimal" value="${esc(c?.monthly_fee ?? '')}"></label>
-       <label>تاريخ البداية<input type="date" name="start_date" value="${esc(c?.start_date || '')}"></label>
+       <label>تاريخ الدخول للمركز<input type="date" name="start_date" value="${esc(c?.start_date || (c ? '' : today()))}"></label>
      </div>
      <div class="row">
        <label>الحالة<select name="status"><option value="active">مسجّل</option><option value="left" ${c?.status === 'left' ? 'selected' : ''}>خرج</option></select></label>

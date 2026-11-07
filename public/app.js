@@ -856,12 +856,32 @@ const VIEW_ICONS = {
   table: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>',
   cards: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg>',
 };
-function studentsView() {
+function studentsView(key = 'studentsView') {
   let v = null;
   try {
-    v = localStorage.getItem('studentsView');
+    v = localStorage.getItem(key);
   } catch {}
   return v === 'table' || v === 'cards' ? v : matchMedia('(max-width: 640px)').matches ? 'cards' : 'table';
+}
+function viewToggle() {
+  return `<div class="view-toggle" role="group" aria-label="طريقة العرض">
+    <button type="button" data-view="table" title="جدول">${VIEW_ICONS.table}<span>جدول</span></button>
+    <button type="button" data-view="cards" title="بطاقات">${VIEW_ICONS.cards}<span>بطاقات</span></button></div>`;
+}
+// يربط أزرار العرض: يحفظ الاختيار ويعيد الرسم
+function bindViewToggle(el, key, get, set, render) {
+  const sync = () => el.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === get()));
+  sync();
+  el.querySelectorAll('[data-view]').forEach((b) =>
+    b.addEventListener('click', () => {
+      set(b.dataset.view);
+      try {
+        localStorage.setItem(key, b.dataset.view);
+      } catch {}
+      sync();
+      render();
+    })
+  );
 }
 // لون مميز لكل مستوى (شريط البطاقة)
 function levelHue(level) {
@@ -937,16 +957,11 @@ async function viewStudents(el) {
           : ''
       }
       <input id="f-q" type="search" placeholder="بحث بالاسم…">
-      <div class="view-toggle" role="group" aria-label="طريقة العرض">
-        <button type="button" data-view="table" title="جدول">${VIEW_ICONS.table}<span>جدول</span></button>
-        <button type="button" data-view="cards" title="بطاقات">${VIEW_ICONS.cards}<span>بطاقات</span></button>
-      </div>
+      ${viewToggle()}
     </div>
     <div id="students-list"></div>`;
 
   let view = studentsView();
-  const syncToggle = () => el.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === view));
-  syncToggle();
   let current = [];
 
   const load = async () => {
@@ -1012,16 +1027,7 @@ async function viewStudents(el) {
     );
   };
 
-  el.querySelectorAll('[data-view]').forEach((b) =>
-    b.addEventListener('click', () => {
-      view = b.dataset.view;
-      try {
-        localStorage.setItem('studentsView', view);
-      } catch {}
-      syncToggle();
-      render();
-    })
-  );
+  bindViewToggle(el, 'studentsView', () => view, (v) => (view = v), render);
   $('#f-level').addEventListener('change', load);
   $('#f-status')?.addEventListener('change', load);
   let timer;

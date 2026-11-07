@@ -1052,14 +1052,12 @@ label .mp-label { flex: 1; justify-content: flex-start; }
   .view-toggle button { flex: 1; justify-content: center; }
 }
 
-/* الجدول الحقيقي: يبقى جدولًا حتى في الهاتف (تمرير أفقي، والاسم ثابت) */
+/* الجدول الحقيقي: يبقى جدولًا حتى في الهاتف (تمرير أفقي) */
 .table-wrap.as-table { -webkit-overflow-scrolling: touch; }
 .table-wrap.as-table table { min-width: 760px; }
 .table-wrap.as-table td { vertical-align: middle; }
 .table-wrap.as-table td:first-child { white-space: nowrap; }
 .table-wrap.as-table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--soft) 45%, var(--card)); }
-.table-wrap.as-table th:first-child, .table-wrap.as-table td:first-child { position: sticky; inset-inline-start: 0; z-index: 1; background: var(--card); box-shadow: inset 1px 0 0 var(--border); }
-.table-wrap.as-table tbody tr:nth-child(even) td:first-child { background: color-mix(in srgb, var(--soft) 45%, var(--card)); }
 
 /* ---------- بطاقات التلاميذ ---------- */
 .scards { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 1rem; }
