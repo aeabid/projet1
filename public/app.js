@@ -2272,6 +2272,67 @@ function bindFinance(el, f, { kind, id }, reload) {
 }
 
 // ---------- المستخدمون ----------
+// قائمة الأولياء: بطاقات أو جدول
+function viewParentsList(el, users, reload, edit) {
+  const kidsOf = (u) => [
+    ...u.children.map((c) => `<a class="pk-chip" href="#/students/${c.id}">📚 ${esc(c.full_name)}<i>${esc(levelLabel(c.level))}</i></a>`),
+    ...(u.program_children || []).map((c) => `<a class="pk-chip prog" href="#/program/child/${c.id}">🎨 ${esc(c.full_name)}${c.class_name ? `<i>${esc(c.class_name)}</i>` : ''}</a>`),
+  ];
+  const phones = (u) => String(u.phone || '').split(/\s*[\/,;]\s*/).filter(Boolean);
+  const count = (u) => u.children.length + (u.program_children || []).length;
+  let view = studentsView('parentsView');
+  el.innerHTML = `
+    <div class="page-head"><h2>الأولياء <span class="muted small">(${users.length})</span></h2><button class="btn" id="add-user">+ ولي جديد</button></div>
+    <div class="filters"><input id="pq" type="search" placeholder="بحث بالاسم أو الهاتف أو اسم الابن…">${viewToggle()}</div>
+    <div id="p-list"></div>`;
+  const render = () => {
+    const q = $('#pq').value.trim().toLowerCase();
+    const list = users.filter((u) => !q || [u.full_name, u.phone, u.username, u.cin, ...u.children.map((c) => c.full_name), ...(u.program_children || []).map((c) => c.full_name)].some((x) => String(x || '').toLowerCase().includes(q)));
+    $('#p-list').innerHTML = !list.length
+      ? '<div class="card muted">لا يوجد أولياء.</div>'
+      : view === 'cards'
+      ? `<div class="pcards">${list
+          .map(
+            (u) => `<article class="pcard">
+              <a class="pc-head" href="#/parents/${u.id}">${avatar({ full_name: u.full_name }, 'md')}
+                <div><h3>${esc(u.full_name)}</h3><span class="muted small">${count(u) ? `${count(u)} ${count(u) === 1 ? 'ابن' : 'أبناء'}` : 'بلا أبناء'}${u.google_email ? ' · Google' : ''}</span></div></a>
+              <div class="pc-phones">${phones(u).length ? phones(u).map((p) => `<span class="pc-phone"><span dir="ltr">${esc(p)}</span><a class="pc-call" href="tel:${esc(p)}" aria-label="اتصال">📞</a>${waButton(p)}</span>`).join('') : '<span class="muted small">لا هاتف</span>'}</div>
+              <div class="pc-kids">${kidsOf(u).join('') || '<span class="muted small">—</span>'}</div>
+              <div class="pc-foot"><span class="muted small" dir="ltr">${esc(u.username)}${u.cin ? ` · ${esc(u.cin)}` : ''}</span>
+                <span><a class="btn ghost small" href="#/parents/${u.id}">الملف</a><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
+            </article>`
+          )
+          .join('')}</div>`
+      : `<div class="table-wrap as-table"><table>
+          <thead><tr><th>الولي</th><th>الهاتف</th><th>الأبناء</th><th>اسم المستخدم</th><th></th></tr></thead>
+          <tbody>${list
+            .map(
+              (u) => `<tr>
+                <td><a class="who-cell" href="#/parents/${u.id}">${avatar({ full_name: u.full_name }, 'sm')}<b>${esc(u.full_name)}</b></a></td>
+                <td>${phones(u).map((p) => `<span class="phone-line"><span dir="ltr">${esc(p)}</span>${waButton(p)}</span>`).join('') || '<span class="muted">—</span>'}</td>
+                <td><div class="pc-kids">${kidsOf(u).join('') || '<span class="muted">—</span>'}</div></td>
+                <td class="nowrap" dir="ltr">${esc(u.username)}</td>
+                <td class="row-actions"><button class="btn ghost small" data-edit="${u.id}">تعديل</button>${u.id !== state.user.id ? `<button class="btn danger small" data-del="${u.id}">حذف</button>` : ''}</td>
+              </tr>`
+            )
+            .join('')}</tbody></table></div>`;
+    $('#p-list').querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => edit(users.find((u) => u.id === Number(b.dataset.edit)))));
+    $('#p-list').querySelectorAll('[data-del]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const u = users.find((x) => x.id === Number(b.dataset.del));
+        if (!confirmAction(`حذف حساب ${u.full_name}؟`)) return;
+        await api('DELETE', `/api/users/${u.id}`).catch((e) => toast(e.message, true));
+        reload();
+      })
+    );
+  };
+  bindViewToggle(el, 'parentsView', () => view, (v) => (view = v), render);
+  let timer;
+  $('#pq').addEventListener('input', () => (clearTimeout(timer), (timer = setTimeout(render, 150))));
+  $('#add-user').addEventListener('click', () => edit(null));
+  render();
+}
+
 async function viewUsers(el, role, scope = null) {
   const titles = { teacher: scope === 'program' ? 'المؤطّرون (البرنامج التربوي)' : scope === 'support' ? 'مدرّسو دروس الدعم' : 'المعلمون', parent: 'الأولياء', admin: 'حسابات الإدارة' };
   const addLabels = { teacher: scope === 'program' ? '+ مؤطّر جديد' : '+ مدرّس جديد', parent: '+ ولي جديد', admin: '+ حساب إدارة' };
@@ -2281,7 +2342,7 @@ async function viewUsers(el, role, scope = null) {
   if (scope === 'support') users = users.filter((u) => !isProgram(u));
   if (scope === 'program') users = users.filter(isProgram);
   const prog = scope === 'program';
-  el.innerHTML = `
+  if (role !== 'parent') el.innerHTML = `
     <div class="page-head">
       <h2>${titles[role]}</h2>
       <button class="btn" id="add-user">${addLabels[role]}</button>
@@ -2370,6 +2431,8 @@ async function viewUsers(el, role, scope = null) {
     );
   };
 
+  // الأولياء: عرض بطاقات أو جدول، مع بحث
+  if (role === 'parent') return viewParentsList(el, users, reload, form);
   $('#add-user').addEventListener('click', () => form(null));
   el.querySelectorAll('[data-approve]').forEach((b) =>
     b.addEventListener('click', async () => {
