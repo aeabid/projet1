@@ -1188,6 +1188,37 @@ async function viewMyChildren(el) {
     }`;
 }
 
+// شبكة معلومات: أيقونة + عنوان + قيمة (والفارغ يظهر «غير محدّد»)
+const INFO_ICONS = {
+  school: '<path d="m3 9 9-5 9 5-9 5-9-5Z"/><path d="M7 11.2V16c0 1.2 2.2 2.5 5 2.5s5-1.3 5-2.5v-4.8M21 9v5"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  cake: '<path d="M4 20h16v-6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v6ZM4 16c2 1 4 1 6 0s4-1 6 0 3 .5 4 0M12 12V8M12 5.5c.8-.6 1-1.4 0-2.5-1 1.1-.8 1.9 0 2.5Z"/>',
+  pin: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0C18.5 15.4 12 21 12 21Z"/><circle cx="12" cy="10" r="2.4"/>',
+  user: '<circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>',
+  coin: '<circle cx="12" cy="12" r="8.5"/><path d="M14.8 9.3c-.6-.9-1.6-1.3-2.8-1.3-1.6 0-2.8.8-2.8 2s1.2 1.7 2.8 2 2.8.8 2.8 2-1.2 2-2.8 2c-1.3 0-2.4-.5-2.9-1.4M12 6.5V8M12 16v1.5"/>',
+  book: '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5v-15Z"/><path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20v3H6.5"/>',
+};
+function yearsOld(birth) {
+  const b = new Date(birth);
+  const n = new Date();
+  let y = n.getFullYear() - b.getFullYear();
+  if (n < new Date(n.getFullYear(), b.getMonth(), b.getDate())) y--;
+  return y > 0 && y < 30 ? `${y} سنة` : '';
+}
+function infoGrid(items) {
+  return `<div class="info-grid">${items
+    .filter(Boolean)
+    .map((it) => {
+      const empty = !it.value;
+      const val = empty ? '<span class="info-empty">غير محدّد</span>' : it.raw ? it.value : esc(it.value);
+      return `<div class="info-item ${it.wide ? 'wide' : ''} ${it.strong && !empty ? 'strong' : ''}">
+        <span class="info-ico"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${INFO_ICONS[it.icon]}</svg></span>
+        <div class="info-body"><span class="info-label">${it.label}</span><div class="info-value ${it.wide ? 'chips' : ''}">${val}</div>${it.sub ? `<span class="info-sub">${it.sub}</span>` : ''}</div>
+      </div>`;
+    })
+    .join('')}</div>`;
+}
+
 // ---------- أزرار الإجراءات السريعة (ملف التلميذ) ----------
 const QA_ICONS = {
   note: '<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="m13.5 7.5 3 3"/>',
@@ -1295,19 +1326,24 @@ async function viewStudent(el, id) {
       <div class="stat"><b>${adminNotes.length}</b><span>ملاحظات الإدارة</span></div>
     </div>
 
-    <section class="card">
-      <h3>🪪 معلومات التلميذ</h3>
-      <dl class="info">
-        <dt>المؤسسة التربوية</dt><dd>${esc(student.school || '—')}</dd>
-        <dt>تاريخ الدخول للمركز</dt><dd>${student.start_date ? fmtDate(student.start_date) : '—'}${
-          student.end_date ? ` — ${STATUS_LABELS[student.status]} في ${fmtDate(student.end_date)}` : ''
-        }</dd>
-        <dt>العنوان</dt><dd>${esc([student.address, student.city].filter(Boolean).join('، ') || '—')}</dd>
-        <dt>المواد المسجّل فيها</dt><dd>${
-          student.pack ? '<span class="badge pack">باقة كاملة (Pack)</span> ' : ''
-        }${student.subjects.map((x) => `<span class="pill">${esc(x.name)}</span>`).join(' ') || '—'}</dd>
-        ${finance ? `<dt>المبلغ الشهري</dt><dd><b>${fmtMoney(finance.monthly_fee)}</b></dd>` : ''}
-      </dl>
+    <section class="card info-card">
+      <div class="section-head"><h3>🪪 معلومات التلميذ</h3>${role === 'admin' ? '<button class="link small" id="info-edit">✏️ تعديل</button>' : ''}</div>
+      ${infoGrid([
+        { icon: 'school', label: 'المؤسسة التربوية', value: student.school },
+        { icon: 'calendar', label: 'تاريخ الدخول للمركز', value: student.start_date && fmtDate(student.start_date),
+          sub: student.end_date ? `${STATUS_LABELS[student.status]} في ${fmtDate(student.end_date)}` : '' },
+        { icon: 'cake', label: 'تاريخ الولادة', value: student.birth_date && fmtDate(student.birth_date), sub: student.birth_date ? yearsOld(student.birth_date) : '' },
+        { icon: 'pin', label: 'العنوان', value: [student.address, student.city].filter(Boolean).join('، ') },
+        { icon: 'user', label: 'الولي', value: student.parent_name && esc(student.parent_name),
+          sub: student.parent_phone ? `<a href="tel:${esc(student.parent_phone)}" dir="ltr">${esc(student.parent_phone)}</a>` : '', raw: true },
+        finance
+          ? { icon: 'coin', label: 'المبلغ الشهري', value: student.free ? 'مجاني' : finance.monthly_fee ? fmtMoney(finance.monthly_fee) : '',
+              sub: student.discount ? `تخفيض ${fmtMoney(student.discount)}${student.discount_reason ? ' · ' + esc(student.discount_reason) : ''}` : '', strong: true, raw: true }
+          : null,
+        { icon: 'book', label: 'المواد المسجّل فيها', wide: true, raw: true,
+          value: (student.pack ? '<span class="badge pack">باقة كاملة</span>' : '') +
+            student.subjects.map((x) => `<span class="info-chip">${esc(SUBJECT_SHORT[x.name] || x.name)}</span>`).join('') },
+      ])}
     </section>
 ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضعية المالية — دروس الدعم' : '💰 الوضعية المالية') : ''}
     ${program ? childProgramSections(program, role) : ''}
@@ -1421,6 +1457,7 @@ ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضع�
     }
   });
   $('#edit-student')?.addEventListener('click', () => studentForm(student, reload));
+  $('#info-edit')?.addEventListener('click', () => studentForm(student, reload));
 
   $('#photo-input')?.addEventListener('change', async (e) => {
     const file = e.target.files[0];
