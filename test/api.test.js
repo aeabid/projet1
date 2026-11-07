@@ -540,8 +540,21 @@ test('program parents, one child in both programs, sibling discounts, yearly reg
   await admin('PUT', '/api/fee-adjustments', { child_id: B.id, month: '2026-09', kind: 'amount', value: 20 });
   const ex = (await admin('POST', '/api/fee-extras', { child_id: B.id, month: '2026-09', amount: 40, reason: 'معلوم التسجيل' })).body;
   b = (await admin('GET', `/api/program/children/${B.id}`)).body;
-  const sep = b.finance.months.find((m) => m.month === '2026-09');
-  assert.deepStrictEqual([sep.due, sep.extras[0].amount], [60, 40]);
+  let sep = b.finance.months.find((m) => m.month === '2026-09');
+  // معلوم التسجيل اختياري: غير مدفوع ← لا يُستحق ولا يصبح دينًا
+  assert.deepStrictEqual([sep.due, sep.extras[0].amount, sep.extras[0].paid], [20, 40, 0]);
+  // يُدفع جزء منه (30 زيادة على المعلوم) ← يُحتسب 30 فقط، ولا رصيد مسبق
+  const pB = (await admin('POST', '/api/pay-months', { kind: 'program', id: B.id, lines: [{ month: '2026-09', amount: 50 }] })).body.payment;
+  b = (await admin('GET', `/api/program/children/${B.id}`)).body;
+  sep = b.finance.months.find((m) => m.month === '2026-09');
+  assert.deepStrictEqual([sep.due, sep.paid, sep.remaining, sep.extras[0].paid], [50, 50, 0, 30]);
+  // مبلغ إضافي آخر (غير التسجيل) يُستحق كاملًا
+  const ex2 = (await admin('POST', '/api/fee-extras', { child_id: B.id, month: '2026-09', amount: 15, reason: 'رحلة' })).body;
+  b = (await admin('GET', `/api/program/children/${B.id}`)).body;
+  sep = b.finance.months.find((m) => m.month === '2026-09');
+  assert.deepStrictEqual([sep.due, sep.remaining], [50, 0]);
+  await admin('DELETE', `/api/program/payments/${pB.id}`);
+  await admin('DELETE', `/api/fee-extras/${ex2.id}`);
   assert.strictEqual((await admin('DELETE', `/api/fee-extras/${ex.id}`)).status, 200);
 
   // المنشط: حضور قسمه وملاحظات، دون معطيات مالية

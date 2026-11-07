@@ -1369,3 +1369,8 @@ body.sel-open { overflow: hidden; }
 .pay-btn .pb-txt b { font-size: 1rem; line-height: 1.2; }
 .pay-btn .pb-txt i { font-size: .7rem; line-height: 1.2; }
 @media (prefers-color-scheme: dark) { .pay-btn .pb-ico { background: rgba(255, 255, 255, .08); } }
+.mc-tag.opt { background: #fff7e6; color: #9a6400; border: 1px dashed #f3d08a; }
+.ps-reg { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; background: #faf6ff; border: 1.5px dashed #d9c7f2; border-radius: 14px; padding: .55rem .75rem; margin: 0 0 .7rem; font-size: .88rem; font-weight: 600; color: var(--feed-purple); cursor: pointer; }
+.ps-reg input { width: 18px; height: 18px; margin: 0; accent-color: var(--feed-purple); }
+.ps-reg small { color: var(--muted); font-weight: 500; }
+@media (prefers-color-scheme: dark) { .mc-tag.opt { background: #3a2a12; color: #fcd34d; border-color: #6b4e1a; } .ps-reg { background: #241c31; border-color: #4a3866; } }

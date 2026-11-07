@@ -1626,7 +1626,9 @@ function financeSection(f, role, kind = 'support', title = '💰 الوضعية 
   // معلوم التسجيل: يُضاف اختياريًا لأول شهر (عادة 40، أو مخفّض، أو معفى)
   const isReg = (x) => /تسجيل/.test(x.reason || '');
   const hasReg = f.months.some((m) => (m.extras || []).some(isReg));
-  const firstMonth = [...f.months].filter((m) => m.due > 0 || m.adjustment).map((m) => m.month).sort()[0];
+  const asc = [...f.months].sort((a, b) => a.month.localeCompare(b.month));
+  // الشهر الذي دُفع فيه زيادة (غالبًا معلوم التسجيل)، وإلا أول شهر
+  const firstMonth = (asc.find((m) => m.paid > m.due && m.due > 0) || asc.find((m) => m.due > 0 || m.adjustment))?.month;
   const askReg = registration && role === 'admin' && !hasReg && !f.free && firstMonth;
   const status = (m) =>
     m.adjustment?.kind === 'exempt' && !m.paid
@@ -1712,7 +1714,15 @@ function financeSection(f, role, kind = 'support', title = '💰 الوضعية 
                   ${
                     a || notes.length || m.extras?.length
                       ? `<div class="mc-tags">${a ? `<span class="mc-tag adj">✂️ ${esc(adjLabel(a))}${a.reason ? ` · ${esc(a.reason)}` : ''} <s>${fmtMoney(a.original)}</s></span>` : ''}${(m.extras || [])
-                          .map((x) => `<span class="mc-tag ${x.amount ? 'plus' : ''}">${x.amount ? `+ ${fmtMoney(x.amount)} · ${esc(x.reason || '')}` : `${esc(x.reason || 'معلوم التسجيل')}: معفى`}${role === 'admin' ? ` <button class="link danger" data-del-extra="${x.id}" aria-label="حذف">✕</button>` : ''}</span>`)
+                          .map((x) => `<span class="mc-tag ${x.amount && (!x.registration || x.paid >= x.amount) ? 'plus' : x.registration && x.amount ? 'opt' : ''}">${
+                            !x.amount
+                              ? `${esc(x.reason || 'معلوم التسجيل')}: معفى`
+                              : !x.registration || x.paid >= x.amount
+                              ? `+ ${fmtMoney(x.amount)} · ${esc(x.reason || '')}${x.registration ? ' ✓' : ''}`
+                              : x.paid > 0
+                              ? `${esc(x.reason)}: ${fmtMoney(x.paid)} من ${fmtMoney(x.amount)}`
+                              : `${esc(x.reason)} ${fmtMoney(x.amount)} · غير مدفوع (اختياري)`
+                          }${role === 'admin' ? ` <button class="link danger" data-del-extra="${x.id}" aria-label="حذف">✕</button>` : ''}</span>`)
                           .join('')}${notes
                           .map((n) => `<span class="mc-tag">${n}</span>`)
                           .join('')}</div>`
@@ -1783,6 +1793,9 @@ async function paySheet(kind, id, onDone) {
     if (skip.includes(next.slice(5))) continue;
     if (!chips.some((c) => c.month === next)) chips.push({ month: next, due: monthFee, paid: 0, rest: monthFee, future: true }), n++;
   }
+  // معلوم تسجيل محدّد ولم يُدفع: يُضاف للدفعة باختيار الإدارة
+  const reg = f.months.flatMap((m) => (m.extras || []).filter((x) => x.registration && x.amount > (x.paid || 0)).map((x) => ({ month: m.month, rest: Math.round((x.amount - (x.paid || 0)) * 1000) / 1000 })))[0];
+  let withReg = false;
   const firstDue = chips.find((c) => c.rest > 0);
   const selected = new Set(firstDue ? [firstDue.month] : []);
   const bg = document.createElement('div');
@@ -1798,6 +1811,11 @@ async function paySheet(kind, id, onDone) {
       <button type="button" class="ps-x" aria-label="إغلاق">✕</button></div>`;
   const render = () => {
     const lines = chips.filter((c) => selected.has(c.month)).map((c) => ({ month: c.month, amount: c.rest }));
+    if (withReg && reg) {
+      const l = lines.find((x) => x.month === reg.month);
+      if (l) l.amount = Math.round((l.amount + reg.rest) * 1000) / 1000;
+      else lines.unshift({ month: reg.month, amount: reg.rest });
+    }
     const total = lines.reduce((t, l) => t + l.amount, 0);
     sh.innerHTML = `${head}
       <div class="ps-kpis"><div><b>${fmtMoney(f.total_due)}</b><small>المستحق</small></div><div><b class="in">${fmtMoney(f.total_paid)}</b><small>المدفوع</small></div>
@@ -1811,6 +1829,7 @@ async function paySheet(kind, id, onDone) {
             <span>${MONTHS_AR[Number(c.month.slice(5)) - 1]}</span><b>${st === 'ok' ? '✓' : fmtMoney(c.rest)}</b>${st === 'part' ? '<i>جزئي</i>' : c.future ? '<i>مسبق</i>' : ''}</button>`;
         })
         .join('')}</div>
+      ${reg ? `<label class="ps-reg"><input type="checkbox" id="ps-reg" ${withReg ? 'checked' : ''}> 🪪 + معلوم التسجيل <b>${fmtMoney(reg.rest)}</b> <small>(${esc(monthLabel(reg.month))} · اختياري)</small></label>` : ''}
       <form class="ps-form">
         <div class="ps-row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${total || ''}" required></label>
           <label>طريقة الدفع<select name="method">${Object.entries(PAYMENT_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label></div>
@@ -1844,6 +1863,10 @@ async function paySheet(kind, id, onDone) {
         render();
       })
     );
+    sh.querySelector('#ps-reg')?.addEventListener('change', (e) => {
+      withReg = e.target.checked;
+      render();
+    });
     sh.querySelector('.ps-x').addEventListener('click', closePaySheet);
     sh.querySelector('[data-tab-pay]').addEventListener('click', () => {
       sessionStorage.setItem('fileTab:' + (kind === 'support' ? `#/students/${id}` : `#/program/child/${id}`), 'pay');
@@ -2232,7 +2255,7 @@ function parseStudentList(raw) {
     if (/élève|eleve|^nom|التلميذ|^اسم/i.test(cells[0] || '') || /^classe$/i.test(cells[1] || '')) continue;
     const [name = '', classe = '', parent = '', phone = '', city = '', school = ''] = cells;
     if (!name) continue;
-    const remarks = (name.match(/\(([^)]*)\)/g) || []).map((x) => x.slice(1, -1).trim()).join('، ');
+    const remarks = ''; // ما بين قوسين في الاسم (مثل SAUF FR) يُحذف ولا يُنقل
     rows.push({
       full_name: name.replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim(),
       level: parseLevel(classe),
@@ -2267,7 +2290,7 @@ function viewImport(el) {
         <b>التلميذ، القسم، الولي، الهاتف، المدينة، المؤسسة</b> (عمود الترقيم # وسطر العناوين يُتجاهلان).</p>
       <ul class="muted small">
         <li>القسم: 5ème … 9ème، و«6ème en ligne» تُسجّل في «السادسة أساسي (عن بعد)».</li>
-        <li>ما بين قوسين في اسم التلميذ، مثل (SAUF FR)، يُنقل إلى «ملاحظات التسجيل».</li>
+        <li>ما بين قوسين في اسم التلميذ، مثل (SAUF FR)، يُحذف.</li>
         <li>يُنشأ حساب لكل ولي: اسم المستخدم رقم الهاتف وكلمة سر من 6 أرقام. الإخوة يُربطون بنفس الولي.</li>
         <li>التلميذ الموجود مسبقًا (نفس الاسم والمستوى) لا يُضاف مرة ثانية.</li>
       </ul>
