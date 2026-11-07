@@ -1021,3 +1021,15 @@ test('multi-month payment: one receipt number for all months, visible to the par
   assert.strictEqual(mine.body.receipts[0].total, 200);
   assert.strictEqual((await parent('GET', `/api/receipts/support/${r.body.payment.id}`)).status, 200);
 });
+
+test('a payment can be edited after its receipt: same receipt number, new amount and month', async () => {
+  const admin = await login('admin', 'admin123');
+  const st = (await admin('POST', '/api/students', { full_name: 'تلميذ تعديل', level: '8', monthly_fee: 100, start_date: '2026-09-01' })).body.student;
+  const pay = (await admin('POST', '/api/pay-months', { kind: 'support', id: st.id, lines: [{ month: '2026-09', amount: 80 }] })).body.payment;
+  const r = await admin('PUT', `/api/payments/${pay.id}`, { month: '2026-10', amount: 100, paid_on: '2026-10-02', method: 'cash' });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.body.payment.receipt_no, pay.receipt_no);
+  const rc = (await admin('GET', `/api/receipts/support/${pay.id}`)).body.receipt;
+  assert.deepStrictEqual([rc.amount, rc.month, rc.receipt_no, !!rc.edited_at], [100, '2026-10', pay.receipt_no, true]);
+  assert.strictEqual((await admin('PUT', `/api/payments/${pay.id}`, { month: 'x', amount: 1 })).status, 400);
+});

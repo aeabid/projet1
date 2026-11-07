@@ -1742,8 +1742,8 @@ function financeSection(f, role, kind = 'support', title = '💰 الوضعية 
                           .map(
                             (p) => `<li><span>✓ <b>${fmtMoney(p.amount)}</b> · ${fmtDate(p.paid_on)}${p.method ? ` · ${esc(PAYMENT_LABELS[p.method] || p.method)}` : ''}${
                               p.note ? ` · <span class="muted">${esc(p.note)}</span>` : ''
-                            }</span><span class="mc-acts"><a class="receipt-link" href="#/receipt/${kind}/${p.id}">🧾 ${p.receipt_no ?? ''}</a>${
-                              role === 'admin' ? `<button class="link danger" data-del-pay="${p.id}" data-kind="${kind}" aria-label="حذف الدفعة">✕</button>` : ''
+                            }${p.edited ? ' <span class="mc-edited">معدّل</span>' : ''}</span><span class="mc-acts"><a class="receipt-link" href="#/receipt/${kind}/${p.id}">🧾 ${p.receipt_no ?? ''}</a>${
+                              role === 'admin' ? `<button class="link mc-pedit" data-edit-pay="${p.id}" data-kind="${kind}" aria-label="تعديل الدفعة" title="تعديل">✏️</button><button class="link danger" data-del-pay="${p.id}" data-kind="${kind}" aria-label="حذف الدفعة">✕</button>` : ''
                             }</span></li>`
                           )
                           .join('')}</ul>`
@@ -2027,6 +2027,32 @@ function bindFinance(el, f, { kind, id }, reload) {
       async (data) => afterPay('registration', (await api('POST', '/api/registration-payments', { ...data, ...urls.reg })).payment)
     );
   });
+  el.querySelectorAll(`[data-edit-pay][data-kind="${kind}"]`).forEach((b) =>
+    b.addEventListener('click', () => {
+      const p = f.months.flatMap((m) => m.payments).find((x) => x.id === Number(b.dataset.editPay));
+      if (!p) return;
+      openModal(
+        `تعديل الدفعة — وصل ${p.receipt_no ?? ''}`,
+        `<p class="muted small">الوصل يحافظ على نفس الرقم، ويتبدّل فيه المبلغ والمعطيات (ويظهر «معدّل»).</p>
+         <div class="row">
+           <label>الشهر<input type="month" name="month" value="${esc(p.month)}" required></label>
+           <label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(p.amount)}" required></label>
+         </div>
+         <div class="row">
+           <label>تاريخ الدفع<input type="date" name="paid_on" value="${esc(p.paid_on)}"></label>
+           <label>طريقة الدفع<select name="method">${Object.entries(PAYMENT_LABELS)
+             .map(([k, v]) => `<option value="${k}" ${p.method === k ? 'selected' : ''}>${v}</option>`)
+             .join('')}</select></label>
+         </div>
+         <label>ملاحظة<input name="note" value="${esc(p.note || '')}"></label>`,
+        async (data) => {
+          await api('PUT', kind === 'support' ? `/api/payments/${p.id}` : `/api/program/payments/${p.id}`, data);
+          toast('تم تعديل الدفعة');
+          reload();
+        }
+      );
+    })
+  );
   el.querySelectorAll(`[data-del-pay][data-kind="${kind}"]`).forEach((b) =>
     b.addEventListener('click', async () => {
       if (!confirmAction('حذف هذه الدفعة؟')) return;

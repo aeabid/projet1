@@ -736,3 +736,7 @@ ALTER TABLE students ADD COLUMN no_sibling BOOLEAN NOT NULL DEFAULT false;
 -- معلوم التسجيل يمكن أن يكون 0 (معفى) حتى يُعرف أنه حُسم
 ALTER TABLE fee_extras DROP CONSTRAINT fee_extras_amount_check;
 ALTER TABLE fee_extras ADD CONSTRAINT fee_extras_amount_check CHECK (amount >= 0);
+
+-- تعديل دفعة بعد تسليم الوصل: نفس رقم الوصل، مع تاريخ آخر تعديل
+ALTER TABLE payments ADD COLUMN edited_at TIMESTAMPTZ;
+ALTER TABLE program_payments ADD COLUMN edited_at TIMESTAMPTZ;

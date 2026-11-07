@@ -1374,3 +1374,6 @@ body.sel-open { overflow: hidden; }
 .ps-reg input { width: 18px; height: 18px; margin: 0; accent-color: var(--feed-purple); }
 .ps-reg small { color: var(--muted); font-weight: 500; }
 @media (prefers-color-scheme: dark) { .mc-tag.opt { background: #3a2a12; color: #fcd34d; border-color: #6b4e1a; } .ps-reg { background: #241c31; border-color: #4a3866; } }
+.mc-pedit { font-size: .85rem; padding: 0 .2rem; text-decoration: none !important; }
+.mc-edited { font-size: .68rem; font-weight: 700; color: #9a6400; background: #fff3df; border-radius: 999px; padding: 0 .45rem; }
+@media (prefers-color-scheme: dark) { .mc-edited { background: #3a2a12; color: #fcd34d; } }

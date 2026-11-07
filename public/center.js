@@ -191,6 +191,7 @@ async function viewReceipt(el, kind, id) {
         }
         <dt>طريقة الدفع</dt><dd>${esc(PAYMENT_LABELS[r.method] || r.method || '—')}</dd>
         ${r.note ? `<dt>ملاحظة</dt><dd>${esc(r.note)}</dd>` : ''}
+        ${r.edited_at ? `<dt>ملاحظة</dt><dd class="muted">وصل معدّل في ${fmtDate(r.edited_at)}</dd>` : ''}
       </dl>
       ${
         multi
