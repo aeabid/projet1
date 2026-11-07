@@ -409,8 +409,8 @@ async function viewProgram(el) {
     const list = children.filter(
       (c) => (!f || String(c.class_id) === f) && (!st || c.status === st) && (!q || c.full_name.toLowerCase().includes(q) || String(c.contact_name || '').toLowerCase().includes(q))
     );
-    const owedCell = (c) => (c.balance > 0 ? `<b class="owed">${fmtMoney(c.balance)}</b>` : c.monthly_fee && !c.free ? '<span class="badge good">خالص</span>' : '—');
-    const feeCell = (c) => `${c.free ? '<span class="badge free">مجاني</span>' : fmtMoney(c.monthly_fee)}${c.sibling_pct ? `<div class="muted small">إخوة −${c.sibling_pct}%</div>` : ''}`;
+    const owedCell = (c) => (c.free ? '<span class="badge free">مجاني</span>' : c.balance > 0 ? `<b class="owed">${fmtMoney(c.balance)}</b>` : c.monthly_fee && !c.free ? '<span class="badge good">خالص</span>' : '—');
+    const feeCell = (c) => `${c.free ? '<span class="muted">—</span>' : fmtMoney(c.monthly_fee)}${c.sibling_pct ? `<div class="muted small">إخوة −${c.sibling_pct}%</div>` : ''}`;
     const badges = (c) => `${c.status === 'left' ? ' <span class="badge status-left">خرج</span>' : ''}${c.student_id ? ' <span class="badge level">+ دروس الدعم</span>' : ''}`;
     $('#prog-list').innerHTML = !list.length
       ? '<div class="card muted">لا يوجد أطفال بهذه الشروط.</div>'

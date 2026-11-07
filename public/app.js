@@ -992,7 +992,7 @@ async function viewStudents(el) {
             .map(
               (s) => `<tr>
                 <td><a class="who-cell" href="#/students/${s.id}">${avatar(s, 'sm')}<b>${esc(s.full_name)}</b></a>
-                  ${s.status !== 'studying' ? statusBadge(s.status) : ''}${s.free ? ' <span class="badge free">مجاني</span>' : ''}</td>
+                  ${s.status !== 'studying' ? statusBadge(s.status) : ''}</td>
                 <td><span class="pill">${esc(levelLabel(s.level))}</span></td>
                 <td class="nowrap">${s.start_date ? fmtDate(s.start_date) : '<span class="muted">—</span>'}</td>
                 <td>${subjectsCell(s)}</td>
@@ -1003,7 +1003,7 @@ async function viewStudents(el) {
                 }</td>
                 <td>${s.absence_count}${s.unjustified_count ? ` <span class="badge weak">${s.unjustified_count} غير مبرر</span>` : ''}</td>
                 <td>${s.note_count}</td>
-                ${role === 'admin' ? `<td>${s.balance > 0 ? `<b class="owed">${fmtMoney(s.balance)}</b>` : s.monthly_fee ? '<span class="badge good">خالص</span>' : '—'}</td>` : ''}
+                ${role === 'admin' ? `<td>${s.free ? '<span class="badge free">مجاني</span>' : s.balance > 0 ? `<b class="owed">${fmtMoney(s.balance)}</b>` : s.monthly_fee ? '<span class="badge good">خالص</span>' : '—'}</td>` : ''}
                 ${
                   role === 'admin'
                     ? `<td class="row-actions"><button class="btn ghost small" data-edit="${s.id}">تعديل</button>
