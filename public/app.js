@@ -1864,7 +1864,7 @@ function financeSection(f, role, kind = 'support', title = '💰 الوضعية 
                               ? `+ ${fmtMoney(x.amount)} · ${esc(x.reason || '')}${x.registration ? ' ✓' : ''}`
                               : x.paid > 0
                               ? `${esc(x.reason)}: ${fmtMoney(x.paid)} من ${fmtMoney(x.amount)}`
-                              : `${esc(x.reason)} ${fmtMoney(x.amount)} · غير مدفوع (اختياري)`
+                              : `${esc(x.reason)} ${fmtMoney(x.amount)} · غير مدفوع`
                           }${role === 'admin' ? ` <button class="link danger" data-del-extra="${x.id}" aria-label="حذف">✕</button>` : ''}</span>`)
                           .join('')}${notes
                           .map((n) => `<span class="mc-tag">${n}</span>`)
@@ -1873,7 +1873,7 @@ function financeSection(f, role, kind = 'support', title = '💰 الوضعية 
                   }
                   ${
                     askReg && m.month === firstMonth
-                      ? `<div class="mc-reg"><span>🪪 معلوم التسجيل <small>(أول شهر)</small></span>
+                      ? `<div class="mc-reg"><span>🪪 معلوم التسجيل <small>(أول شهر · 40 عادةً)</small></span>
                           <div class="mc-reg-opts">${[40, 30, 20].map((v) => `<button type="button" data-reg-set="${v}" data-kind="${kind}" data-month="${m.month}">${v}</button>`).join('')}
                             <button type="button" data-reg-set="other" data-kind="${kind}" data-month="${m.month}">مبلغ آخر</button>
                             <button type="button" class="ex" data-reg-set="0" data-kind="${kind}" data-month="${m.month}">معفى</button></div></div>`
@@ -1940,7 +1940,8 @@ async function paySheet(kind, id, onDone0) {
     if (!chips.some((c) => c.month === next)) chips.push({ month: next, due: monthFee, paid: 0, rest: monthFee, future: true }), n++;
   }
   // معلوم تسجيل محدّد ولم يُدفع: يُضاف للدفعة باختيار الإدارة
-  const reg = f.months.flatMap((m) => (m.extras || []).filter((x) => x.registration && x.amount > (x.paid || 0)).map((x) => ({ month: m.month, rest: Math.round((x.amount - (x.paid || 0)) * 1000) / 1000 })))[0];
+  // معلوم التسجيل داخل مستحق أول شهر: لا يُضاف مرة ثانية
+  const reg = null;
   let withReg = false;
   const firstDue = chips.find((c) => c.rest > 0);
   const selected = new Set(firstDue ? [firstDue.month] : []);
@@ -2251,7 +2252,7 @@ async function viewUsers(el, role, scope = null) {
                   ${role === 'teacher' && prog ? `<td>${u.program_classes ? `${u.program_classes} قسم` : '<span class="muted">—</span>'}</td>
                     <td>${u.monthly_salary ? fmtMoney(u.monthly_salary) : ''}${u.pay_per_child ? ` ${fmtMoney(u.pay_per_child)} / طفل` : ''}${!u.monthly_salary && !u.pay_per_child ? '<span class="muted">—</span>' : ''}</td>` : ''}
                   ${role === 'teacher' && !prog ? `<td>${u.subjects.map((s) => `<span class="pill">${esc(s.name)}</span>`).join(' ') || '—'}</td>
-                    <td>${u.hourly_rate ? fmtMoney(u.hourly_rate) : '<span class="muted">—</span>'} <a class="small" href="#/payroll/${u.id}">الساعات ←</a></td>` : ''}
+                    <td>${u.hourly_rate != null ? fmtMoney(u.hourly_rate) : '<span class="muted">—</span>'} <a class="small" href="#/payroll/${u.id}">الساعات ←</a></td>` : ''}
                   ${
                     role === 'parent'
                       ? `<td>${u.children.map((c) => `<a href="#/students/${c.id}">${esc(c.full_name)}</a>`).join('، ') || '—'}</td>`
@@ -3110,7 +3111,7 @@ async function viewPayroll(el) {
   const render = () => {
     const { teachers, totals, month, pauses } = data;
     const status = (t) => (t.remaining > 0 ? 'due' : t.due > 0 ? 'ok' : 'none');
-    const rateCell = (t) => (t.hourly_rate ? `${fmtMoney(t.hourly_rate)} / س` : '<span class="error small">معلوم الساعة غير محدّد</span>');
+    const rateCell = (t) => (t.hourly_rate != null ? `${fmtMoney(t.hourly_rate)} / س` : '<span class="error small">معلوم الساعة غير محدّد</span>');
     const noSlots = (t) => (t.slots_per_week ? '' : `<a class="pr-warn" href="#/support/teachers/timetable">⚠️ لا حصص له في الجدول</a>`);
     const remainCell = (t) => (t.remaining > 0 ? `<b class="owed">${fmtMoney(t.remaining)}</b>` : t.due > 0 ? '<span class="badge good">خالص</span>' : '—');
     $('#pay-body').innerHTML = `
@@ -3249,13 +3250,13 @@ async function viewTeacherPay(el, teacherId) {
     if (isAdmin) $('#tp-title').textContent = m.teacher.full_name;
     $('#tp-body').innerHTML = `
       <div class="stats compact">
-        <div class="stat"><b>${m.hourly_rate ? fmtMoney(m.hourly_rate) : '—'}</b><span>معلوم الساعة</span></div>
+        <div class="stat"><b>${m.hourly_rate != null ? fmtMoney(m.hourly_rate) : '—'}</b><span>معلوم الساعة</span></div>
         <div class="stat"><b>${fmtHours(m.hours_done)}</b><span>الساعات المنجزة${m.hours_planned ? ` (+${fmtHours(m.hours_planned)} مبرمجة)` : ''}</span></div>
         <div class="stat"><b>${fmtMoney(m.due)}</b><span>المستحق — ${esc(monthLabel(month))}</span></div>
         <div class="stat good"><b>${fmtMoney(m.paid)}</b><span>المدفوع</span></div>
         <div class="stat ${m.remaining > 0 ? 'warn' : 'good'}"><b>${fmtMoney(Math.max(m.remaining, 0))}</b><span>${m.remaining < 0 ? `الباقي (دُفع زيادة ${fmtMoney(-m.remaining)})` : 'الباقي'}</span></div>
       </div>
-      ${!m.hourly_rate ? `<p class="error">لم يُحدَّد معلوم الساعة${isAdmin ? ' — حدّده من «الحسابات ← المعلمون ← تعديل»' : ''}.</p>` : ''}
+      ${m.hourly_rate == null ? `<p class="error">لم يُحدَّد معلوم الساعة${isAdmin ? ' — حدّده من «الحسابات ← المعلمون ← تعديل»' : ''}.</p>` : ''}
       <section class="card">
         <div class="section-head">
           <h3>💵 الدفعات</h3>

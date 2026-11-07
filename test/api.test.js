@@ -12,6 +12,9 @@ test.before(async () => {
   await db.applyMigrations(new URL('../netlify/database/migrations', import.meta.url).pathname);
   pool = new pg.Pool({ connectionString });
   handle = createHandler(pool, { adminPassword: 'admin123' });
+  // الاختبارات القديمة: دون معلوم تسجيل تلقائي (له اختبار خاص)
+  await handle(new Request('http://localhost/api/meta'));
+  await pool.query(`INSERT INTO settings (key, value) VALUES ('registration_default', '0') ON CONFLICT (key) DO UPDATE SET value = '0'`);
 });
 test.after(async () => {
   await pool.end();
@@ -543,20 +546,14 @@ test('program parents, one child in both programs, sibling discounts, yearly reg
   const ex = (await admin('POST', '/api/fee-extras', { child_id: B.id, month: '2026-09', amount: 40, reason: 'معلوم التسجيل' })).body;
   b = (await admin('GET', `/api/program/children/${B.id}`)).body;
   let sep = b.finance.months.find((m) => m.month === '2026-09');
-  // معلوم التسجيل اختياري: غير مدفوع ← لا يُستحق ولا يصبح دينًا
-  assert.deepStrictEqual([sep.due, sep.extras[0].amount, sep.extras[0].paid], [20, 40, 0]);
-  // يُدفع جزء منه (30 زيادة على المعلوم) ← يُحتسب 30 فقط، ولا رصيد مسبق
+  // معلوم التسجيل مستحق كاملًا مع أول شهر (إلى أن يُدفع أو تعدّله الإدارة)
+  assert.deepStrictEqual([sep.due, sep.remaining, sep.extras.find((x) => x.reason === 'معلوم التسجيل').amount], [60, 60, 40]);
+  // دفع 50: معلوم الشهر 20 + 30 من التسجيل، يبقى 10
   const pB = (await admin('POST', '/api/pay-months', { kind: 'program', id: B.id, lines: [{ month: '2026-09', amount: 50 }] })).body.payment;
   b = (await admin('GET', `/api/program/children/${B.id}`)).body;
   sep = b.finance.months.find((m) => m.month === '2026-09');
-  assert.deepStrictEqual([sep.due, sep.paid, sep.remaining, sep.extras[0].paid], [50, 50, 0, 30]);
-  // مبلغ إضافي آخر (غير التسجيل) يُستحق كاملًا
-  const ex2 = (await admin('POST', '/api/fee-extras', { child_id: B.id, month: '2026-09', amount: 15, reason: 'رحلة' })).body;
-  b = (await admin('GET', `/api/program/children/${B.id}`)).body;
-  sep = b.finance.months.find((m) => m.month === '2026-09');
-  assert.deepStrictEqual([sep.due, sep.remaining], [50, 0]);
+  assert.deepStrictEqual([sep.due, sep.paid, sep.remaining, sep.extras.find((x) => x.reason === 'معلوم التسجيل').paid], [60, 50, 10, 30]);
   await admin('DELETE', `/api/program/payments/${pB.id}`);
-  await admin('DELETE', `/api/fee-extras/${ex2.id}`);
   assert.strictEqual((await admin('DELETE', `/api/fee-extras/${ex.id}`)).status, 200);
 
   // المنشط: حضور قسمه وملاحظات، دون معطيات مالية
@@ -1173,4 +1170,29 @@ test('teacher absences page: everyone present by default, admin marks an absence
   await admin('POST', '/api/teacher-attendance', { date: day, timetable_id: slot.id, absent: false });
   r = (await admin('GET', `/api/teacher-attendance?date=${day}`)).body;
   assert.strictEqual(r.sessions.find((x) => x.id === slot.id).absent, false);
+});
+
+test('new student or child: registration 40 due on the first month by default, admin can change it', async () => {
+  const admin = await login('admin', 'admin123');
+  await pool.query(`UPDATE settings SET value = '40' WHERE key = 'registration_default'`);
+  try {
+    const st = (await admin('POST', '/api/students', { full_name: 'تسجيل', level: '7', monthly_fee: 100, start_date: '2026-10-01' })).body.student;
+    let f = (await admin('GET', `/api/students/${st.id}`)).body.finance;
+    let oct = f.months.find((m) => m.month === '2026-10');
+    assert.deepStrictEqual([oct.due, oct.extras[0].amount, oct.extras[0].reason], [140, 40, 'معلوم التسجيل']);
+    // الإدارة تخفّضه إلى 10: تحذف وتضيف
+    await admin('DELETE', `/api/fee-extras/${oct.extras[0].id}`);
+    await admin('POST', '/api/fee-extras', { student_id: st.id, month: '2026-10', amount: 10, reason: 'معلوم التسجيل' });
+    f = (await admin('GET', `/api/students/${st.id}`)).body.finance;
+    assert.strictEqual(f.months.find((m) => m.month === '2026-10').due, 110);
+    // مجاني: لا معلوم تسجيل
+    const fr = (await admin('POST', '/api/students', { full_name: 'مجاني', level: '7', free: true, start_date: '2026-10-01' })).body.student;
+    assert.strictEqual((await pool.query('SELECT COUNT(*)::int AS n FROM fee_extras WHERE student_id = $1', [fr.id])).rows[0].n, 0);
+    // طفل التربوي غير مرتبط بالدعم: 40 مع أول شهر
+    const ch = (await admin('POST', '/api/program/children', { full_name: 'طفل تسجيل', monthly_fee: 100, start_date: '2026-10-01' })).body.child;
+    const cf = (await admin('GET', `/api/program/children/${ch.id}`)).body.finance;
+    assert.strictEqual(cf.months.find((m) => m.month === '2026-10').due, 140);
+  } finally {
+    await pool.query(`UPDATE settings SET value = '0' WHERE key = 'registration_default'`);
+  }
 });
