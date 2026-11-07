@@ -1695,6 +1695,129 @@ async function viewCenterDebts(el) {
   );
 }
 
+// ---------- المنتجات: بيع يُحتسب مدخولًا في شهره ----------
+// نافذة البيع: تُفتح من صفحة المنتجات أو من ملف التلميذ (buyer = {student_id} أو {child_id})
+async function sellProductModal(onDone, buyer = null, data = null) {
+  data ??= await api('GET', '/api/products');
+  const products = data.products.filter((p) => p.active);
+  if (!products.length) return toast('أضف منتجًا أولًا من صفحة «المنتجات»', true);
+  const priced = products.filter((p) => p.price != null);
+  if (!priced.length) return toast('حدّد سعر المنتج أولًا من صفحة «المنتجات»', true);
+  openModal(
+    '📗 بيع منتج',
+    `<label>المنتج<select name="product_id">${priced.map((p) => `<option value="${p.id}" data-price="${p.price}">${esc(p.name)} — ${fmtMoney(p.price)}</option>`).join('')}</select></label>
+     ${
+       buyer
+         ? `<input type="hidden" name="${buyer.student_id ? 'student_id' : 'child_id'}" value="${buyer.student_id || buyer.child_id}">`
+         : `<label>المشتري<select name="buyer">
+             <optgroup label="تلاميذ الدعم">${data.students.map((s) => `<option value="s:${s.id}">${esc(s.full_name)} · ${esc(levelLabel(s.level))}</option>`).join('')}</optgroup>
+             <optgroup label="البرنامج التربوي">${data.children.map((c) => `<option value="c:${c.id}">${esc(c.full_name)}</option>`).join('')}</optgroup>
+             <option value="other">شخص آخر…</option></select></label>
+           <label id="ps-other" hidden>اسم المشتري<input name="buyer_name"></label>`
+     }
+     <div class="row"><label>الكمية<input name="qty" type="number" min="1" value="1"></label>
+       <label>التاريخ<input type="date" name="sold_on" value="${today()}"></label></div>
+     <p class="ps-total">المبلغ: <b id="ps-total"></b></p>
+     <label>ملاحظة<input name="note"></label>`,
+    async (f) => {
+      if (f.buyer) {
+        const [k, id] = f.buyer.split(':');
+        if (k === 's') f.student_id = id;
+        else if (k === 'c') f.child_id = id;
+        delete f.buyer;
+      }
+      await api('POST', '/api/product-sales', f);
+      toast('تم البيع وأُضيف إلى المداخيل');
+      onDone?.();
+    }
+  );
+  const m = $('#modal');
+  const total = () => {
+    const price = Number(m.querySelector('[name=product_id]').selectedOptions[0].dataset.price);
+    $('#ps-total').textContent = fmtMoney(price * Math.max(1, Number(m.querySelector('[name=qty]').value) || 1));
+  };
+  m.querySelector('[name=product_id]').addEventListener('change', total);
+  m.querySelector('[name=qty]').addEventListener('input', total);
+  m.querySelector('[name=buyer]')?.addEventListener('change', (e) => ($('#ps-other').hidden = e.target.value !== 'other'));
+  total();
+}
+
+async function viewProducts(el) {
+  el.innerHTML = `
+    <div class="page-head"><div><a href="#/home" class="muted small">→ الرئيسية</a><h2>📗 المنتجات</h2>
+      <p class="muted">كتب ومراجع وغيرها: تحدّد السعر مرة واحدة، وكل بيع يُضاف إلى المداخيل في شهر تاريخه.</p></div>
+      <div class="actions">${monthPicker('pr-month')}<button class="btn ghost" id="pr-add">+ منتج</button><button class="btn" id="pr-sell">بيع</button></div></div>
+    <div id="pr-body"><p class="muted">جاري التحميل…</p></div>`;
+  let data;
+  const load = async () => {
+    const month = $('#pr-month').value;
+    data = await api('GET', '/api/products?month=' + month);
+    $('#pr-body').innerHTML = `
+      <div class="prods">${
+        data.products.length
+          ? data.products
+              .map(
+                (p) => `<article class="prod ${p.active ? '' : 'off'}">
+                  <div class="prod-ico">📗</div>
+                  <div class="prod-main"><h3>${esc(p.name)}</h3>
+                    <div class="prod-price">${p.price != null ? fmtMoney(p.price) : '<span class="badge average">حدّد السعر</span>'}${p.active ? '' : ' <span class="badge status-left">موقوف</span>'}</div></div>
+                  <div class="prod-stats"><div><b>${p.sold}</b><span>نسخة مباعة</span></div><div><b>${fmtMoney(p.revenue)}</b><span>المجموع</span></div></div>
+                  <div class="prod-acts"><button class="btn ghost small" data-pedit="${p.id}">تعديل</button>
+                    ${p.sold ? '' : `<button class="link danger small" data-pdel="${p.id}">حذف</button>`}</div>
+                </article>`
+              )
+              .join('')
+          : '<div class="card muted">لا منتجات بعد. أضف «+ منتج».</div>'
+      }</div>
+      <section class="card">
+        <div class="section-head"><h3>مبيعات ${esc(monthLabel(month))}</h3><b class="in">${fmtMoney(data.total)}</b></div>
+        ${
+          data.sales.length
+            ? `<div class="table-wrap"><table><thead><tr><th>المشتري</th><th>المنتج</th><th>الكمية</th><th>المبلغ</th><th>التاريخ</th><th></th></tr></thead><tbody>${data.sales
+                .map(
+                  (s) => `<tr><td>${s.student_id ? `<a href="#/students/${s.student_id}">${esc(s.buyer)}</a>` : s.child_id ? `<a href="#/program/child/${s.child_id}">${esc(s.buyer)}</a>` : esc(s.buyer || '—')}${s.note ? `<div class="muted small">${esc(s.note)}</div>` : ''}</td>
+                    <td>${esc(s.product_name)}</td><td>${s.qty}</td><td><b>${fmtMoney(s.amount)}</b></td><td>${fmtDate(s.sold_on)}</td>
+                    <td><button class="link danger small" data-sdel="${s.id}">إلغاء</button></td></tr>`
+                )
+                .join('')}</tbody></table></div>`
+            : '<p class="muted">لا مبيعات في هذا الشهر.</p>'
+        }
+      </section>`;
+    el.querySelectorAll('[data-pedit]').forEach((b) => b.addEventListener('click', () => form(data.products.find((p) => p.id === Number(b.dataset.pedit)))));
+    el.querySelectorAll('[data-pdel]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirmAction('حذف هذا المنتج؟')) return;
+        await api('DELETE', `/api/products/${b.dataset.pdel}`).catch((err) => toast(err.message, true));
+        load();
+      })
+    );
+    el.querySelectorAll('[data-sdel]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirmAction('إلغاء هذا البيع؟ يُنقص من المداخيل.')) return;
+        await api('DELETE', `/api/product-sales/${b.dataset.sdel}`).catch((err) => toast(err.message, true));
+        load();
+      })
+    );
+  };
+  const form = (p) =>
+    openModal(
+      p ? 'تعديل المنتج' : 'منتج جديد',
+      `<label>اسم المنتج<input name="name" value="${esc(p?.name || '')}" required placeholder="مثال: المرجع في العربية"></label>
+       <label>السعر (د.ت)<input name="price" inputmode="decimal" value="${esc(p?.price ?? '')}" required></label>
+       ${p ? `<label class="check"><input type="checkbox" name="active" ${p.active ? 'checked' : ''}> متوفّر للبيع</label>` : ''}`,
+      async (f) => {
+        if (p) await api('PUT', `/api/products/${p.id}`, { ...f, active: !!f.active });
+        else await api('POST', '/api/products', f);
+        toast('تم الحفظ');
+        load();
+      }
+    );
+  $('#pr-add').addEventListener('click', () => form(null));
+  $('#pr-sell').addEventListener('click', () => sellProductModal(load, null, data));
+  bindMonth('pr-month', load);
+  await load();
+}
+
 // ---------- الأجور: نظرة عامة على كل الإطار ----------
 async function viewSalaries(el) {
   el.innerHTML = `
@@ -1774,7 +1897,7 @@ async function viewSalaries(el) {
 }
 
 // ---------- لوحة المشرف العام: السنة كاملة ----------
-const BOARD_IN = { support: ['📚 دروس الدعم', '#6d28d9'], program: ['🎨 البرنامج التربوي', '#db2777'], courses: ['🏕️ الدورات والعطل', '#0ea5e9'], other: ['➕ مداخيل أخرى', '#94a3b8'] };
+const BOARD_IN = { support: ['📚 دروس الدعم', '#6d28d9'], program: ['🎨 البرنامج التربوي', '#db2777'], courses: ['🏕️ الدورات والعطل', '#0ea5e9'], products: ['📗 المنتجات', '#10b981'], other: ['➕ مداخيل أخرى', '#94a3b8'] };
 const BOARD_EX = {
   salaries_support: ['أجور مدرّسي الدعم', '#6d28d9'], salaries_program: ['أجور مؤطّري التربوي', '#db2777'], salaries_admin: ['أجور الإدارة والنظافة', '#f59e0b'],
   salaries_courses: ['أجور الدورات', '#0ea5e9'], rent: ['الكراء', '#64748b'], other: ['مصاريف أخرى', '#cbd5e1'],

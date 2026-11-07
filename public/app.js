@@ -308,6 +308,7 @@ const routes = [
   [/^#\/salaries$/, (el) => viewSalaries(el)],
   [/^#\/board$/, (el) => viewBoard(el)],
   [/^#\/center-debts$/, (el) => viewCenterDebts(el)],
+  [/^#\/products$/, (el) => viewProducts(el)],
   [/^#\/courses$/, (el) => viewCourses(el)],
   [/^#\/courses\/(\d+)$/, (el, id) => viewCourse(el, Number(id))],
   [/^#\/ledger$/, (el) => viewLedger(el)],
@@ -434,6 +435,7 @@ const NAV = {
         ['#/receipts', 'الوصولات'],
         ['#/ledger', 'المداخيل والمصاريف'],
         ['#/fees', 'التعريفات والتخفيضات'],
+        ['#/products', 'المنتجات (كتب ومراجع)'],
         ['#/salaries', 'الأجور (كل الإطار)'],
         ['#/center-debts', 'ديون المركز'],
         ['#/partners', 'الشركاء والمرابيح'],
@@ -883,6 +885,7 @@ function studentCards(students, role) {
           <div class="sc-id">
             <h3>${esc(s.full_name)}</h3>
             <div class="sc-tags"><span class="sc-level">${esc(levelLabel(s.level))}</span>${s.status !== 'studying' ? statusBadge(s.status) : ''}</div>
+            <div class="sc-since">${s.start_date ? `دخل المركز ${fmtDate(s.start_date)}` : '<span class="muted">تاريخ الدخول غير محدّد</span>'}</div>
           </div>
         </a>
         <div class="sc-subjects">${subjectsCell(s)}</div>
@@ -967,7 +970,7 @@ async function viewStudents(el) {
       : view === 'cards'
       ? studentCards(students, role)
       : `<div class="table-wrap as-table"><table>
-          <thead><tr><th>الاسم</th><th>المستوى</th><th>المواد</th><th>الولي</th><th>الغيابات</th><th>الملاحظات</th>${
+          <thead><tr><th>الاسم</th><th>المستوى</th><th>تاريخ الدخول</th><th>المواد</th><th>الولي</th><th>الغيابات</th><th>الملاحظات</th>${
             role === 'admin' ? '<th>الباقي</th><th></th>' : ''
           }</tr></thead>
           <tbody>${students
@@ -976,6 +979,7 @@ async function viewStudents(el) {
                 <td><a class="who-cell" href="#/students/${s.id}">${avatar(s, 'sm')}<b>${esc(s.full_name)}</b></a>
                   ${s.status !== 'studying' ? statusBadge(s.status) : ''}${s.free ? ' <span class="badge free">مجاني</span>' : ''}</td>
                 <td><span class="pill">${esc(levelLabel(s.level))}</span></td>
+                <td class="nowrap">${s.start_date ? fmtDate(s.start_date) : '<span class="muted">—</span>'}</td>
                 <td>${subjectsCell(s)}</td>
                 <td>${esc(s.parent_name || '—')}${
                   s.parent_phone
@@ -1081,7 +1085,7 @@ async function studentForm(student, onDone) {
        <label>الحالة<select name="status">${Object.entries(STATUS_LABELS)
          .map(([k, v]) => `<option value="${k}" ${(s.status || 'studying') === k ? 'selected' : ''}>${v}</option>`)
          .join('')}</select></label>
-       <label>تاريخ بداية الدراسة<input name="start_date" type="date" value="${esc(s.start_date || '')}"></label>
+       <label>تاريخ الدخول للمركز<input name="start_date" type="date" value="${esc(s.start_date || (student ? '' : today()))}"></label>
      </div>
      <label id="end-date-field">تاريخ الخروج / التوقف<input name="end_date" type="date" value="${esc(s.end_date || '')}"></label>
      <div class="row">
@@ -1269,7 +1273,7 @@ async function viewStudent(el, id) {
       <h3>🪪 معلومات التلميذ</h3>
       <dl class="info">
         <dt>المؤسسة التربوية</dt><dd>${esc(student.school || '—')}</dd>
-        <dt>بداية الدراسة</dt><dd>${student.start_date ? fmtDate(student.start_date) : '—'}${
+        <dt>تاريخ الدخول للمركز</dt><dd>${student.start_date ? fmtDate(student.start_date) : '—'}${
           student.end_date ? ` — ${STATUS_LABELS[student.status]} في ${fmtDate(student.end_date)}` : ''
         }</dd>
         <dt>العنوان</dt><dd>${esc([student.address, student.city].filter(Boolean).join('، ') || '—')}</dd>
@@ -1521,7 +1525,7 @@ function financeSection(f, role, kind = 'support', title = '💰 الوضعية 
         <h3>${title}</h3>
         ${
           role === 'admin'
-            ? `<div>${regDue ? `<button class="btn small ghost" data-add-reg="${kind}">+ معلوم التسجيل</button> ` : ''}<button class="btn small" data-add-pay="${kind}">+ دفعة</button></div>`
+            ? `<div>${regDue ? `<button class="btn small ghost" data-add-reg="${kind}">+ معلوم التسجيل</button> ` : ''}<button class="btn small ghost" data-sell="${kind}">📗 بيع منتج</button> <button class="btn small" data-add-pay="${kind}">+ دفعة</button></div>`
             : ''
         }
       </div>
@@ -1621,6 +1625,9 @@ const adjLabel = (a) =>
   a.kind === 'exempt' ? 'معفى (غياب الشهر كاملًا)' : a.kind === 'absent_days' ? `غياب ${a.value} ${a.value >= 3 && a.value <= 10 ? 'أيام' : 'يوم'}` : `مبلغ معدّل ${fmtMoney(a.value)}`;
 
 function bindFinance(el, f, { kind, id }, reload) {
+  el.querySelectorAll(`[data-sell="${kind}"]`).forEach((b) =>
+    b.addEventListener('click', () => sellProductModal(reload, kind === 'support' ? { student_id: id } : { child_id: id }).catch((err) => toast(err.message, true)))
+  );
   el.querySelectorAll('[data-del-extra]').forEach((b) =>
     b.addEventListener('click', async () => {
       if (!confirmAction('حذف المبلغ المضاف لهذا الشهر؟')) return;
