@@ -952,7 +952,7 @@ async function viewStudents(el) {
       ${
         role === 'admin'
           ? `<select id="f-status"><option value="">كل الحالات</option>${Object.entries(STATUS_LABELS)
-              .map(([k, v]) => `<option value="${k}" ${sessionStorage.getItem('statusFilter') === k ? 'selected' : ''}>${v}</option>`)
+              .map(([k, v]) => `<option value="${k}" ${(sessionStorage.getItem('statusFilter') ?? 'studying') === k ? 'selected' : ''}>${v}</option>`)
               .join('')}</select>`
           : ''
       }

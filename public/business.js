@@ -384,7 +384,7 @@ async function viewProgram(el) {
       <select id="pf-class"><option value="">كل الأقسام (${children.length})</option>${classes
         .map((k) => `<option value="${k.id}" ${filter === String(k.id) ? 'selected' : ''}>${esc(k.name)}${k.age_range ? ` — ${esc(k.age_range)}` : ''} (${k.children})</option>`)
         .join('')}</select>
-      <select id="pf-status">${[['active', 'مسجّل'], ['left', 'خرج'], ['', 'كل الحالات']]
+      <select id="pf-status">${[['active', 'يدرس'], ['left', 'خرج'], ['', 'كل الحالات']]
         .map(([v, l]) => `<option value="${v}" ${(sessionStorage.getItem('progStatus') ?? 'active') === v ? 'selected' : ''}>${l}</option>`)
         .join('')}</select>
       <input id="pf-q" type="search" placeholder="بحث بالاسم…">
