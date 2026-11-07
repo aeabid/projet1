@@ -276,6 +276,7 @@ const routes = [
   [/^#\/students\/(\d+)$/, viewStudent],
   [/^#\/teachers$/, (el) => viewUsers(el, 'teacher', 'support')],
   [/^#\/parents$/, (el) => viewUsers(el, 'parent')],
+  [/^#\/parents\/(\d+)$/, (el, id) => viewParent(el, Number(id))],
   [/^#\/admins$/, (el) => viewUsers(el, 'admin')],
   [/^#\/subjects$/, viewSubjects],
   [/^#\/import$/, viewImport],
@@ -1358,6 +1359,7 @@ const QA_ICONS = {
   mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/>',
   report: '<path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
   edit: '<path d="M12 20h8"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2Z"/>',
 };
 function quickActions(items) {
   const list = items.filter(Boolean);
@@ -1427,7 +1429,7 @@ async function viewStudent(el, id) {
               : statusBadge(student.status)
           }${student.free ? ' <span class="badge free">مجاني</span>' : ''}
           ${student.group_name ? `<span>الفوج: ${esc(student.group_name)}</span>` : ''}
-          ${student.parent_name ? `<span>الولي: ${esc(student.parent_name)}</span>` : ''}
+          ${student.parent_name ? `<span>الولي: ${role === 'admin' ? `<a href="#/parents/${student.parent_id}">${esc(student.parent_name)}</a>` : esc(student.parent_name)}</span>` : ''}
           ${student.parent_phone ? `<span dir="ltr">${esc(student.parent_phone)}</span>` : ''}
         </div>
         ${student.remarks ? `<p class="remarks">📝 ${esc(student.remarks)}</p>` : ''}
@@ -1551,8 +1553,16 @@ async function viewStudent(el, id) {
           sub: student.end_date ? `${STATUS_LABELS[student.status]} في ${fmtDate(student.end_date)}` : '' },
         { icon: 'cake', label: 'تاريخ الولادة', value: student.birth_date && fmtDate(student.birth_date), sub: student.birth_date ? yearsOld(student.birth_date) : '' },
         { icon: 'pin', label: 'العنوان', value: [student.address, student.city].filter(Boolean).join('، ') },
-        { icon: 'user', label: 'الولي', value: student.parent_name && esc(student.parent_name),
-          sub: student.parent_phone ? `<a href="tel:${esc(student.parent_phone)}" dir="ltr">${esc(student.parent_phone)}</a>` : '', raw: true },
+        { icon: 'user', label: 'الولي', raw: true,
+          value: student.parent_id
+            ? role === 'admin' ? `<a href="#/parents/${student.parent_id}">${esc(student.parent_name)} ←</a>` : esc(student.parent_name)
+            : '',
+          sub: (student.parent_phone ? `<a href="tel:${esc(student.parent_phone.split(/\s*[\/,;]\s*/)[0])}" dir="ltr">${esc(student.parent_phone)}</a>` : role === 'admin' && student.parent_id ? 'بلا رقم هاتف' : '') +
+            (role === 'admin'
+              ? student.parent_id
+                ? ` <button type="button" class="link small" id="parent-edit">✏️ ${student.parent_phone ? 'تعديل' : 'إضافة رقم'}</button>`
+                : ' <button type="button" class="link small" id="parent-add">+ إضافة ولي</button>'
+              : '') },
         finance
           ? { icon: 'coin', label: 'المبلغ الشهري', value: student.free ? 'مجاني' : finance.monthly_fee ? fmtMoney(finance.monthly_fee) : '',
               sub: student.discount ? `تخفيض ${fmtMoney(student.discount)}${student.discount_reason ? ' · ' + esc(student.discount_reason) : ''}` : '', strong: true, raw: true }
@@ -1608,6 +1618,12 @@ async function viewStudent(el, id) {
   $('#edit-student')?.addEventListener('click', () => studentForm(student, reload));
   $('#info-edit')?.addEventListener('click', () => studentForm(student, reload));
   $('#info-edit2')?.addEventListener('click', () => studentForm(student, reload));
+  $('#parent-edit')?.addEventListener('click', () => parentQuickEdit(student.parent_id, reload).catch((err) => toast(err.message, true)));
+  $('#parent-add')?.addEventListener('click', async () => {
+    await studentForm(student, reload);
+    const box = $('#np-box');
+    if (box) (box.open = true), box.scrollIntoView({ block: 'center' });
+  });
   $('#del-student')?.addEventListener('click', async () => {
     if (!confirmAction(`حذف ${student.full_name} مع كل غياباته وملاحظاته ودفوعاته؟`)) return;
     await api('DELETE', `/api/students/${id}`).catch((err) => toast(err.message, true));
@@ -2207,7 +2223,7 @@ async function viewUsers(el, role, scope = null) {
             <tbody>${users
               .map(
                 (u) => `<tr>
-                  <td><b>${esc(u.full_name)}</b>${u.approved === false ? ' <span class="badge average">ينتظر الموافقة</span>' : ''}</td>
+                  <td>${role === 'parent' ? `<a href="#/parents/${u.id}"><b>${esc(u.full_name)}</b></a>` : `<b>${esc(u.full_name)}</b>`}${u.approved === false ? ' <span class="badge average">ينتظر الموافقة</span>' : ''}</td>
                   <td dir="ltr">${esc(u.username)}</td>
                   <td><span class="phone-line"><span dir="ltr">${esc(u.phone || '—')}</span>${waButton(u.phone)}</span></td>${role === 'parent' ? `<td dir="ltr">${esc(u.cin || '—')}</td>` : ''}
                   ${role === 'teacher' && prog ? `<td>${u.program_classes ? `${u.program_classes} قسم` : '<span class="muted">—</span>'}</td>

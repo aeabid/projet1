@@ -920,3 +920,70 @@ async function viewCash(el) {
   bindMonth('cs-month', load);
   await load();
 }
+
+// ---------- ملف الولي (من ملف التلميذ أو من قائمة الأولياء) ----------
+// تعديل سريع لمعطيات الولي (الاسم والهاتف…) دون المرور بقائمة الأولياء
+async function parentQuickEdit(parentId, onDone) {
+  const { parent: u } = await api('GET', `/api/parents/${parentId}`);
+  const [tel1, tel2] = String(u.phone || '').split(/\s*[\/,;]\s*/);
+  openModal(
+    `تعديل الولي — ${u.full_name}`,
+    `<label>الاسم واللقب<input name="full_name" value="${esc(u.full_name)}" required></label>
+     <div class="row">
+       <label>الهاتف<input name="tel1" value="${esc(tel1 || '')}" dir="ltr" inputmode="tel" placeholder="98123456"></label>
+       <label>هاتف ثانٍ (اختياري)<input name="tel2" value="${esc(tel2 || '')}" dir="ltr" inputmode="tel"></label>
+     </div>
+     <div class="row">
+       <label>البريد الإلكتروني (للدخول بـ Google)<input name="email" type="email" value="${esc(u.email || '')}" dir="ltr"></label>
+       <label>رقم بطاقة التعريف<input name="cin" value="${esc(u.cin || '')}" dir="ltr" inputmode="numeric"></label>
+     </div>
+     <label>العنوان<input name="address" value="${esc(u.address || '')}"></label>
+     <p class="muted small">اسم المستخدم للدخول: <b dir="ltr">${esc(u.username)}</b></p>`,
+    async (data) => {
+      const clean = (t) => String(t || '').replace(/\s+/g, '').replace(/^\+?216/, '');
+      const phone = [clean(data.tel1), clean(data.tel2)].filter(Boolean).join(' / ');
+      await api('PUT', `/api/users/${u.id}`, { full_name: data.full_name, username: u.username, phone, email: data.email, cin: data.cin, address: data.address });
+      state.parentsCache = null;
+      toast('تم حفظ معطيات الولي');
+      onDone?.();
+    }
+  );
+}
+
+async function viewParent(el, id) {
+  const { parent: p, kids, balance } = await api('GET', `/api/parents/${id}`);
+  const phones = String(p.phone || '').split(/\s*[\/,;]\s*/).filter(Boolean);
+  el.innerHTML = `
+    <a href="#/parents" class="muted small">→ الأولياء</a>
+    <div class="page-head"><div class="parent-head">${avatar({ full_name: p.full_name }, 'lg')}
+      <div><h2>${esc(p.full_name)}</h2>
+        <div class="meta"><span class="pill">ولي</span>${p.google_email ? '<span class="badge good">يدخل بـ Google</span>' : ''}${balance > 0 ? `<span class="badge weak">باقي ${fmtMoney(balance)}</span>` : '<span class="badge good">خالص</span>'}</div></div></div></div>
+    ${quickActions([
+      phones[0] ? { href: `tel:${phones[0]}`, icon: 'phone', label: 'اتصال', tone: 'blue' } : null,
+      waNumber(p.phone) ? { href: waUrl(p.phone, ''), icon: 'wa', label: 'واتساب', tone: 'green' } : null,
+      { id: 'pp-edit', icon: 'edit', label: 'تعديل المعطيات', tone: 'gray' },
+    ])}
+    <section class="card info-card"><div class="section-head"><h3>🪪 معطيات الولي</h3></div>
+      ${infoGrid([
+        { icon: 'user', label: 'الهاتف', raw: true, value: phones.map((t) => `<a href="tel:${esc(t)}" dir="ltr">${esc(t)}</a>`).join(' · ') },
+        { icon: 'school', label: 'اسم المستخدم للدخول', raw: true, value: `<span dir="ltr">${esc(p.username)}</span>` },
+        { icon: 'calendar', label: 'البريد الإلكتروني', raw: true, value: p.email ? `<span dir="ltr">${esc(p.email)}</span>` : '' },
+        { icon: 'book', label: 'رقم بطاقة التعريف', raw: true, value: p.cin ? `<span dir="ltr">${esc(p.cin)}</span>` : '' },
+        { icon: 'pin', label: 'العنوان', value: p.address },
+      ])}
+    </section>
+    <section class="card"><h3>👨‍👩‍👧 الأبناء (${kids.length})</h3>
+      ${
+        kids.length
+          ? `<div class="pkids">${kids
+              .map(
+                (k) => `<a class="pkid" href="${k.link}">${k.type === 'student' ? avatar(k, 'md') : avatar({ full_name: k.full_name }, 'md')}
+                  <span class="pk-main"><b>${esc(k.full_name)}</b><small>${k.level ? esc(levelLabel(k.level)) : ''}${k.program ? `${k.level ? ' · ' : ''}🎨 ${esc(k.program.class_name || 'البرنامج التربوي')}` : ''}</small></span>
+                  <span class="pk-bal ${k.balance > 0 ? 'due' : 'ok'}">${k.balance > 0 ? fmtMoney(k.balance) : 'خالص ✓'}</span></a>`
+              )
+              .join('')}</div>`
+          : '<p class="muted">لا أبناء مربوطين بهذا الولي.</p>'
+      }
+    </section>`;
+  $('#pp-edit').addEventListener('click', () => parentQuickEdit(id, () => viewParent(el, id)));
+}
