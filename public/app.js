@@ -943,6 +943,20 @@ async function viewStudents(el) {
   await load();
 }
 
+// السعر حسب التسعيرة: عدد حصص المواد المختارة في الأسبوع، أو الباقة
+function suggestFee(level, pack, subjectIds) {
+  const pr = state.meta.pricing;
+  const packFee = Number(state.meta.pack_fees?.[level]) || null;
+  if (!pr) return null;
+  if (pack) return packFee ? { fee: packFee, label: 'الباقة' } : null;
+  const subs = state.meta.subjects.filter((s) => subjectIds.includes(s.id) && (!s.levels || s.levels.includes(level)));
+  if (!subs.length) return null;
+  const n = subs.reduce((t, s) => t + (Number(pr.units?.[s.id]) || 1), 0);
+  const step = n >= 5 ? packFee : Number(pr.steps?.[String(n)]) || null;
+  const fee = packFee && step ? Math.min(step, packFee) : step || packFee;
+  return fee ? { fee, label: n >= 5 || fee === packFee ? `${n} حصص = الباقة` : `${n === 1 ? 'حصة' : n === 2 ? 'حصتان' : n + ' حصص'} في الأسبوع` } : null;
+}
+
 async function studentForm(student, onDone) {
   // معطيات القائمة تكفي (لا حاجة لتحميل ملف التلميذ كاملًا)، والأولياء يُحمّلون مرة واحدة
   const listed = student && ('subject_ids' in student || student.subjects);
@@ -985,7 +999,8 @@ async function studentForm(student, onDone) {
      </div>
      <label id="end-date-field">تاريخ الخروج / التوقف<input name="end_date" type="date" value="${esc(s.end_date || '')}"></label>
      <div class="row">
-       <label>المبلغ الشهري المتفق عليه (د.ت)<input name="monthly_fee" inputmode="decimal" value="${esc(s.monthly_fee ?? '')}" placeholder="مثال: 120"></label>
+       <label>المبلغ الشهري المتفق عليه (د.ت)<input name="monthly_fee" inputmode="decimal" value="${esc(s.monthly_fee ?? '')}" placeholder="مثال: 120">
+         <small class="fee-hint" id="fee-hint"></small></label>
        <label class="check free-check"><input type="checkbox" name="free" ${s.free ? 'checked' : ''}> يدرس مجانًا</label>
      </div>
      <div class="row">
@@ -1014,18 +1029,30 @@ async function studentForm(student, onDone) {
   const syncPack = () => $('#subject-checks').classList.toggle('disabled', pack.checked);
   pack.addEventListener('change', syncPack);
   syncPack();
-  // المعلوم الافتراضي حسب المستوى (من «التعريفات») لتلميذ جديد
-  if (!student) {
-    const fees = await api('GET', '/api/settings/fees').then((r) => r.support).catch(() => ({}));
-    const feeInput = $('#modal input[name=monthly_fee]');
-    const levelSel = $('#modal select[name=level]');
-    const applyFee = () => {
-      if (!feeInput.dataset.touched && fees[levelSel.value]) feeInput.value = fees[levelSel.value];
-    };
-    feeInput.addEventListener('input', () => (feeInput.dataset.touched = '1'));
-    levelSel.addEventListener('change', applyFee);
-    applyFee();
-  }
+  // السعر المقترح حسب التسعيرة: يُطبَّق وحده لتلميذ جديد، ويُقترح للقديم بزر
+  const feeInput = $('#modal input[name=monthly_fee]');
+  const levelSel = $('#modal select[name=level]');
+  const hint = $('#fee-hint');
+  feeInput.addEventListener('input', () => (feeInput.dataset.touched = '1'));
+  const applyFee = () => {
+    const ids = [...$('#modal').querySelectorAll('input[name="subject_ids[]"]:checked')].map((x) => Number(x.value));
+    const sug = suggestFee(levelSel.value, pack.checked, ids);
+    if (!sug) return (hint.textContent = '');
+    if (!student && !feeInput.dataset.touched) feeInput.value = sug.fee;
+    hint.innerHTML = Number(feeInput.value) === sug.fee
+      ? `✓ حسب التسعيرة: ${esc(sug.label)}`
+      : `حسب التسعيرة: <b>${fmtMoney(sug.fee)}</b> (${esc(sug.label)}) <button type="button" class="link small" id="fee-apply">تطبيق</button>`;
+    $('#fee-apply')?.addEventListener('click', () => {
+      feeInput.value = sug.fee;
+      feeInput.dataset.touched = '1';
+      applyFee();
+    });
+  };
+  levelSel.addEventListener('change', applyFee);
+  pack.addEventListener('change', applyFee);
+  feeInput.addEventListener('input', applyFee);
+  $('#modal').querySelectorAll('input[name="subject_ids[]"]').forEach((x) => x.addEventListener('change', applyFee));
+  applyFee();
   const statusSel = $('#modal select[name=status]');
   const syncStatus = () => ($('#end-date-field').hidden = !['left', 'stopped'].includes(statusSel.value));
   statusSel.addEventListener('change', syncStatus);
@@ -1473,8 +1500,10 @@ function financeSection(f, role, kind = 'support', title = '💰 الوضعية 
                     <div><small>الباقي</small><b class="${m.remaining ? 'owed' : ''}">${m.remaining ? fmtMoney(m.remaining) : '—'}</b></div>
                   </div>
                   ${
-                    a || notes.length
-                      ? `<div class="mc-tags">${a ? `<span class="mc-tag adj">✂️ ${esc(adjLabel(a))}${a.reason ? ` · ${esc(a.reason)}` : ''} <s>${fmtMoney(a.original)}</s></span>` : ''}${notes
+                    a || notes.length || m.extras?.length
+                      ? `<div class="mc-tags">${a ? `<span class="mc-tag adj">✂️ ${esc(adjLabel(a))}${a.reason ? ` · ${esc(a.reason)}` : ''} <s>${fmtMoney(a.original)}</s></span>` : ''}${(m.extras || [])
+                          .map((x) => `<span class="mc-tag plus">+ ${fmtMoney(x.amount)} · ${esc(x.reason || '')}${role === 'admin' ? ` <button class="link danger" data-del-extra="${x.id}" aria-label="حذف">✕</button>` : ''}</span>`)
+                          .join('')}${notes
                           .map((n) => `<span class="mc-tag">${n}</span>`)
                           .join('')}</div>`
                       : ''
@@ -1506,6 +1535,13 @@ const adjLabel = (a) =>
   a.kind === 'exempt' ? 'معفى (غياب الشهر كاملًا)' : a.kind === 'absent_days' ? `غياب ${a.value} ${a.value >= 3 && a.value <= 10 ? 'أيام' : 'يوم'}` : `مبلغ معدّل ${fmtMoney(a.value)}`;
 
 function bindFinance(el, f, { kind, id }, reload) {
+  el.querySelectorAll('[data-del-extra]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirmAction('حذف المبلغ المضاف لهذا الشهر؟')) return;
+      await api('DELETE', `/api/fee-extras/${b.dataset.delExtra}`).catch((err) => toast(err.message, true));
+      reload();
+    })
+  );
   el.querySelectorAll(`[data-adj-month][data-kind="${kind}"]`).forEach((b) =>
     b.addEventListener('click', () => {
       const m = f.months.find((x) => x.month === b.dataset.adjMonth);
@@ -1517,10 +1553,23 @@ function bindFinance(el, f, { kind, id }, reload) {
          <label class="check"><input type="radio" name="kind" value="absent_days" ${a?.kind === 'absent_days' ? 'checked' : ''}> تغيّب جزءًا من الشهر</label>
          <label id="adj-days">عدد أيام الغياب<input name="days" inputmode="numeric" value="${a?.kind === 'absent_days' ? esc(a.value) : ''}" placeholder="مثال: 10"></label>
          <label class="check"><input type="radio" name="kind" value="amount" ${a?.kind === 'amount' ? 'checked' : ''}> مبلغ آخر</label>
+         <label class="check"><input type="radio" name="kind" value="extra"> إضافة مبلغ لهذا الشهر (مثلًا معلوم التسجيل)</label>
+         <div class="row" id="adj-extra"><label>المبلغ المضاف (د.ت)<input name="extra_amount" inputmode="decimal" value="40"></label>
+           <label>البيان<input name="extra_reason" value="معلوم التسجيل"></label></div>
          <label id="adj-amount">المبلغ المطلوب لهذا الشهر (د.ت)<input name="amount" inputmode="decimal" value="${a?.kind === 'amount' ? esc(a.value) : ''}"></label>
          <label>السبب<input name="reason" value="${esc(a?.reason || '')}" placeholder="مثال: مرض، سفر"></label>
          ${a ? '<p><button type="button" class="btn small danger" id="adj-del">إلغاء التعديل والرجوع للمبلغ العادي</button></p>' : ''}`,
         async (data) => {
+          if (data.kind === 'extra') {
+            await api('POST', '/api/fee-extras', {
+              [kind === 'support' ? 'student_id' : 'child_id']: id,
+              month: m.month,
+              amount: data.extra_amount,
+              reason: data.extra_reason,
+            });
+            toast('تمت إضافة المبلغ إلى الشهر');
+            return reload();
+          }
           await api('PUT', '/api/fee-adjustments', {
             [kind === 'support' ? 'student_id' : 'child_id']: id,
             month: m.month,
@@ -1536,6 +1585,7 @@ function bindFinance(el, f, { kind, id }, reload) {
         const k = $('#modal input[name=kind]:checked').value;
         $('#adj-days').hidden = k !== 'absent_days';
         $('#adj-amount').hidden = k !== 'amount';
+        $('#adj-extra').hidden = k !== 'extra';
       };
       $('#modal').querySelectorAll('input[name=kind]').forEach((x) => x.addEventListener('change', sync));
       sync();

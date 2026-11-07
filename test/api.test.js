@@ -502,10 +502,9 @@ test('center management: discounts, receipts, debts, people, tasks, meetings, al
 test('program parents, one child in both programs, sibling discounts, yearly registration, shared expenses split', async () => {
   const admin = await login('admin', 'admin123');
   const year = (await admin('GET', '/api/settings/fees')).body.school_year;
-  assert.strictEqual((await admin('PUT', '/api/settings/fees', { support: {}, family: { two: 10, three: 20 }, registration_fee: 30 })).status, 200);
+  assert.strictEqual((await admin('PUT', '/api/settings/fees', { support: {}, family: { two: 10, three: 20 } })).status, 200);
   const fees = (await admin('GET', '/api/settings/fees')).body;
   assert.deepStrictEqual(fees.family, { two: 10, three: 20 });
-  assert.strictEqual(fees.registration_fee, 30);
   assert.strictEqual((await admin('PUT', '/api/settings/fees', { family: { two: 120 } })).status, 400);
 
   const parent = (await admin('POST', '/api/users', { role: 'parent', username: 'pfam', full_name: 'Famille', phone: '22 555 111', password: 'secret1' })).body.user;
@@ -521,13 +520,12 @@ test('program parents, one child in both programs, sibling discounts, yearly reg
   let a = (await admin('GET', `/api/students/${A.id}`)).body;
   assert.strictEqual(a.finance.months.find((m) => m.month === '2026-09').due, 90);
   assert.strictEqual(a.finance.months.find((m) => m.month === '2026-10').due, 90);
-  assert.deepStrictEqual(a.finance.registration.map((r) => [r.school_year, r.due]), [[year, 30]]);
+  assert.deepStrictEqual(a.finance.registration, []);
   assert.strictEqual(a.program.child.id, A2.id);
   assert.strictEqual(a.program.finance.months.find((m) => m.month === '2026-10').due, 45);
   assert.deepStrictEqual(a.program.finance.registration, []);
   let b = (await admin('GET', `/api/program/children/${B.id}`)).body;
   assert.strictEqual(b.finance.months.find((m) => m.month === '2026-09').due, 72);
-  assert.strictEqual(b.finance.registration[0].due, 30);
 
   // ثالث ابن من أكتوبر: 20% في أكتوبر فقط
   await admin('POST', '/api/students', { full_name: 'Fam C', level: '5', parent_id: parent.id, monthly_fee: 100, start_date: '2026-10-01' });
@@ -537,12 +535,14 @@ test('program parents, one child in both programs, sibling discounts, yearly reg
   b = (await admin('GET', `/api/program/children/${B.id}`)).body;
   assert.strictEqual(b.finance.months.find((m) => m.month === '2026-10').due, 64);
 
-  // معلوم التسجيل: مرة واحدة؛ دفعة على ملف A2 تُسجَّل في ملف الدعم A
-  const reg = (await admin('POST', '/api/registration-payments', { child_id: A2.id, amount: 30, school_year: year })).body.payment;
-  a = (await admin('GET', `/api/students/${A.id}`)).body;
-  assert.strictEqual(a.finance.registration[0].remaining, 0);
-  assert.strictEqual((await admin('GET', `/api/receipts/registration/${reg.id}`)).body.receipt.beneficiary, 'Fam A');
-  assert.strictEqual((await admin('POST', '/api/registration-payments', { child_id: B.id, amount: 30, school_year: '2026-2028' })).status, 400);
+  // معلوم التسجيل لم يعد منفصلًا: يُضاف إلى أول شهر، ويجتمع مع أي تعديل على نفس الشهر
+  assert.strictEqual((await admin('POST', '/api/registration-payments', { child_id: A2.id, amount: 30, school_year: year })).status, 410);
+  await admin('PUT', '/api/fee-adjustments', { child_id: B.id, month: '2026-09', kind: 'amount', value: 20 });
+  const ex = (await admin('POST', '/api/fee-extras', { child_id: B.id, month: '2026-09', amount: 40, reason: 'معلوم التسجيل' })).body;
+  b = (await admin('GET', `/api/program/children/${B.id}`)).body;
+  const sep = b.finance.months.find((m) => m.month === '2026-09');
+  assert.deepStrictEqual([sep.due, sep.extras[0].amount], [60, 40]);
+  assert.strictEqual((await admin('DELETE', `/api/fee-extras/${ex.id}`)).status, 200);
 
   // المنشط: حضور قسمه وملاحظات، دون معطيات مالية
   const t = await login('anim', 'secret1');
@@ -565,7 +565,6 @@ test('program parents, one child in both programs, sibling discounts, yearly reg
   const pb = (await p('GET', `/api/program/children/${B.id}`)).body;
   assert.strictEqual(pb.notes[0].category, 'content');
   assert.ok(pb.finance.balance > 0);
-  assert.strictEqual((await p('GET', `/api/receipts/registration/${reg.id}`)).status, 200);
   const other = (await admin('POST', '/api/program/children', { full_name: 'Other kid' })).body.child;
   assert.strictEqual((await p('GET', `/api/program/children/${other.id}`)).status, 404);
   assert.strictEqual((await p('POST', `/api/program/children/${B.id}/notes`, { category: 'level', content: 'x' })).status, 403);

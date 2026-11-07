@@ -1039,3 +1039,5 @@ label .mp-label { flex: 1; justify-content: flex-start; }
   .table-wrap tbody tr:hover { background: var(--card); }
   .fin td, .fin th { white-space: normal; }
 }
+.fee-hint { display: block; margin-top: .3rem; color: var(--feed-purple); font-size: .8rem; font-weight: 500; }
+.mc-tag.plus { background: #e7f8ef; color: #166534; font-weight: 600; } .mc-tag .link.danger { padding: 0 .15rem; font-size: .8rem; }

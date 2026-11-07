@@ -192,14 +192,16 @@ async function viewReceipt(el, kind, id) {
 
 // ---------- التعريفات والتخفيضات ----------
 async function viewFees(el) {
-  const { support, classes, family, school_year, registration_fee } = await api('GET', '/api/settings/fees');
+  const { support, classes, family, pricing } = await api('GET', '/api/settings/fees');
+  const units = pricing?.units || {};
+  const steps = pricing?.steps || {};
   const { courses } = await api('GET', '/api/courses');
   el.innerHTML = `
     <h2>🏷️ التعريفات والتخفيضات</h2>
     <form id="fees-form">
       <section class="card">
-        <h3>📚 دروس الدعم — المعلوم الشهري لكل مستوى</h3>
-        <p class="muted small">يُقترح تلقائيًا عند إضافة تلميذ جديد، ويمكن تغييره لكل تلميذ.</p>
+        <h3>📚 دروس الدعم — سعر الباقة (كل المواد) لكل مستوى</h3>
+        <p class="muted small">الباقة = كل مواد المستوى، أو 5 حصص فأكثر في الأسبوع.</p>
         <div class="fee-grid">${state.meta.levels
           .map((l) => `<label>${esc(l.label)}<input name="s_${esc(l.code)}" inputmode="decimal" value="${esc(support[l.code] ?? '')}" placeholder="د.ت"></label>`)
           .join('')}</div>
@@ -216,9 +218,21 @@ async function viewFees(el) {
         }
       </section>
       <section class="card">
-        <h3>🪪 معلوم التسجيل السنوي — ${esc(school_year)}</h3>
-        <p class="muted small">يُدفع مرة واحدة لكل طفل في السنة الدراسية، حتى لو كان في دروس الدعم والبرنامج التربوي معًا. اتركه فارغًا إن لم يكن هناك معلوم تسجيل.</p>
-        <div class="fee-grid"><label>المبلغ (د.ت)<input name="registration_fee" inputmode="decimal" value="${esc(registration_fee ?? '')}" placeholder="د.ت"></label></div>
+        <h3>🧮 دروس الدعم — السعر حسب عدد الحصص في الأسبوع</h3>
+        <p class="muted small">عند تسجيل تلميذ جديد يُحسب سعره وحده حسب المواد التي يختارها (يمكن تغييره). 5 حصص فأكثر = سعر الباقة.</p>
+        <div class="fee-grid">${['1', '2', '3', '4']
+          .map((n) => `<label>${n === '1' ? 'حصة واحدة' : n === '2' ? 'حصتان' : `${n} حصص`} في الأسبوع<input name="st_${n}" inputmode="decimal" value="${esc(steps[n] ?? '')}" placeholder="د.ت"></label>`)
+          .join('')}</div>
+        <h4>عدد حصص كل مادة في الأسبوع</h4>
+        <div class="fee-grid">${state.meta.subjects
+          .map((s) => `<label>${esc(s.name)} <small class="muted">(${esc(levelsText(s.levels))})</small>
+            <select name="u_${s.id}">${[1, 2, 3].map((n) => `<option value="${n}" ${Number(units[s.id] || 1) === n ? 'selected' : ''}>${n === 1 ? 'حصة' : n === 2 ? 'حصتان' : '3 حصص'}</option>`).join('')}</select></label>`)
+          .join('')}</div>
+        <p class="muted small">مثال: الرياضيات (7، 8، 9) والعلوم (5، 6) بحصتين = 140 د.ت.</p>
+      </section>
+      <section class="card">
+        <h3>🪪 معلوم التسجيل</h3>
+        <p class="muted small">لم يعد منفصلًا: أضف 40 د.ت إلى أول شهر يدخل فيه التلميذ، من ملفه ← «✂️ تعديل» على الشهر ← «إضافة مبلغ لهذا الشهر».</p>
       </section>
       <section class="card">
         <h3>👨‍👩‍👧 تخفيض الإخوة</h3>
@@ -258,9 +272,13 @@ async function viewFees(el) {
         support: Object.fromEntries(state.meta.levels.map((l) => [l.code, data[`s_${l.code}`]])),
         classes: classes.map((k) => ({ id: k.id, default_fee: data[`c_${k.id}`] })),
         family: { two: data.family_two, three: data.family_three },
-        registration_fee: data.registration_fee,
+        pricing: {
+          steps: Object.fromEntries(['1', '2', '3', '4'].map((n) => [n, data[`st_${n}`]])),
+          units: Object.fromEntries(state.meta.subjects.map((s) => [s.id, data[`u_${s.id}`]])),
+        },
       });
       toast('تم حفظ التعريفات');
+      state.meta = await api('GET', '/api/meta');
     } catch (err) {
       toast(err.message, true);
     }
