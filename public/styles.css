@@ -1829,3 +1829,26 @@ body.kb-dragging { cursor: grabbing; user-select: none; }
 .day-pick label { margin: 0; position: relative; } .day-pick input { position: absolute; opacity: 0; }
 .day-pick span { display: inline-block; padding: .4rem .75rem; border-radius: 999px; background: var(--soft-2); border: 2px solid transparent; font-weight: 700; font-size: .85rem; cursor: pointer; }
 .day-pick input:checked + span { background: #f3ecff; border-color: var(--feed-purple); color: var(--feed-purple); }
+
+/* ===== الديون: بطاقة موحّدة، زر التذكير دائمًا في نفس المكان ===== */
+.debts .debt { display: flex; flex-direction: column; gap: .5rem; padding: .9rem 1rem; border-bottom: 0; margin: 0; }
+.debt-top { display: grid; grid-template-columns: 1fr auto; gap: .6rem; align-items: start; }
+.debt-who { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.debt-who small { color: var(--muted); font-size: .8rem; }
+.debt-top .debt-amt { color: #be185d; font-family: 'Tajawal', sans-serif; font-size: 1.25rem; white-space: nowrap; }
+.debt-foot { display: flex; justify-content: space-between; align-items: center; gap: .6rem; border-top: 1px dashed var(--border); padding-top: .6rem; margin-top: auto; }
+.debt-phone { font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; unicode-bidi: isolate; }
+.debt-foot .btn.wa { min-width: 7.5rem; justify-content: center; }
+.debt-foot .btn.wa.sent { opacity: .55; }
+.debts { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: .8rem; }
+.bulk-opt { background: var(--soft-2); border-radius: 16px; padding: .8rem .9rem; margin-bottom: .8rem; }
+.bulk-opt h4 { margin: 0 0 .3rem; }
+.bulk-opt textarea { width: 100%; margin: .3rem 0 .5rem; }
+.bulk-next { display: flex; align-items: center; gap: .6rem; margin: .4rem 0 .6rem; }
+.bulk-prog { flex: 1; height: 8px; border-radius: 9px; background: var(--card); overflow: hidden; }
+.bulk-prog i { display: block; height: 100%; width: 0; background: #25d366; transition: width .2s; }
+.btn.block { display: flex; width: 100%; justify-content: center; }
+.btn.disabled { opacity: .5; pointer-events: none; }
+/* عناوين الأقسام: الزر دائمًا في آخر السطر حتى لو التفّ العنوان */
+.section-head > :last-child:not(:first-child) { margin-inline-start: auto; }
+.section-head > div:first-child { min-width: 0; flex: 1 1 14rem; }

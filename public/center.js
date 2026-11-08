@@ -102,30 +102,77 @@ async function viewDebts(el) {
     $('#db-list').innerHTML = list.length
       ? `<div class="debts">${list
           .map(
-            (f, i) => `<div class="card debt ${f.severity}">
-              <div class="section-head">
-                <div><b>${f.severity === 'high' ? '⛔' : f.severity === 'medium' ? '⚠️' : '🕓'} ${esc(f.name || `ولي ${f.items[0].student}`)}</b>
-                  ${f.phone ? `<span class="phone-line small"><span dir="ltr">${esc(f.phone)}</span></span>` : ''}
-                  <div class="muted small">${f.months_late ? `متأخر منذ ${f.months_late} شهر (منذ ${esc(monthLabel(f.oldest))})` : 'الشهر الحالي'}</div></div>
-                <div class="debt-total"><b class="owed">${fmtMoney(f.total)}</b>
-                  ${waNumber(f.phone) ? `<a class="btn wa small" target="_blank" rel="noopener" data-i="${i}" href="${esc(waUrl(f.phone, reminder(f)))}">${WA_ICON} تذكير</a>` : ''}</div>
+            (f, i) => `<article class="card debt ${f.severity}">
+              <div class="debt-top">
+                <div class="debt-who"><b>${f.severity === 'high' ? '⛔' : f.severity === 'medium' ? '⚠️' : '🕓'} ${esc(f.name || `ولي ${f.items[0].student}`)}</b>
+                  <small>${f.months_late ? `متأخر منذ ${f.months_late} شهر (منذ ${esc(monthLabel(f.oldest))})` : 'الشهر الحالي'}</small></div>
+                <b class="debt-amt">${fmtMoney(f.total)}</b>
               </div>
               <ul class="debt-items">${f.items
                 .map((x) => `<li><a href="${x.link}">${esc(x.label)}</a><span>${fmtMoney(x.amount)}</span></li>`)
                 .join('')}</ul>
-            </div>`
+              <div class="debt-foot">
+                ${f.phone ? `<span class="debt-phone" dir="ltr">${esc(f.phone)}</span>` : '<span class="muted small">لا هاتف</span>'}
+                ${waNumber(f.phone) ? `<a class="btn wa small" target="_blank" rel="noopener" data-i="${i}" href="${esc(waUrl(f.phone, reminder(f)))}">${WA_ICON} تذكير</a>` : ''}
+              </div>
+            </article>`
           )
           .join('')}</div>`
       : '<div class="card muted">لا توجد ديون 🎉</div>';
     $('#db-list').querySelectorAll('a.wa').forEach((a) => a.addEventListener('click', () => a.classList.add('sent')));
   };
   $('#db-sev').addEventListener('change', render);
+  // إرسال لكل المعروضين: واتساب لا يسمح برسالة واحدة لعدّة أرقام عبر رابط،
+  // فإمّا رسالة شخصية لكل عائلة (واحدة تلو الأخرى)، أو رسالة موحّدة + نسخ الأرقام لقائمة بثّ واتساب
   $('#db-remind-all').addEventListener('click', () => {
-    const links = [...$('#db-list').querySelectorAll('a.btn.wa:not(.sent)')];
-    if (!links.length) return toast('تم فتح كل التذكيرات');
-    links[0].click();
-    window.open(links[0].href, '_blank', 'noopener');
-    toast(`بقي ${links.length - 1} تذكير — اضغط مرة أخرى للتالي`);
+    const sev = $('#db-sev').value;
+    const list = families.filter((f) => (!sev || f.severity === sev) && waNumber(f.phone));
+    if (!list.length) return toast('لا أرقام هاتف في القائمة المعروضة', true);
+    let k = 0;
+    const generic = `السلام عليكم،\nنذكّركم بوجود مبالغ متبقية لدى مركز فيد. الرجاء تسويتها في أقرب الآجال، والاطلاع على التفاصيل في فضاء الولي على التطبيقة.\nشكرًا لتفهمكم، إدارة فيد`;
+    openModal(
+      `📣 تذكير ${list.length} عائلة`,
+      `<div class="bulk-opt">
+         <h4>1️⃣ رسالة شخصية لكل عائلة (بمبلغها)</h4>
+         <p class="muted small">واتساب ما يسمحش ببعث رسالة لبرشا أرقام مرّة وحدة من رابط. اضغط «التالي» وكل مرّة تتحلّ محادثة عائلة جاهزة، تبعث وترجع.</p>
+         <div class="bulk-next"><div class="bulk-prog"><i id="bk-bar"></i></div><span id="bk-count" dir="ltr">0 / ${list.length}</span></div>
+         <a class="btn wa block" id="bk-next" target="_blank" rel="noopener">${WA_ICON} <span></span></a>
+       </div>
+       <div class="bulk-opt">
+         <h4>2️⃣ رسالة موحّدة للكل</h4>
+         <p class="muted small">انسخ الأرقام وحطّهم في «قائمة بثّ» (Liste de diffusion) في واتساب، ومن بعد ابعث الرسالة مرّة وحدة.</p>
+         <textarea id="bk-text" rows="4">${esc(generic)}</textarea>
+         <div class="pw-acts"><button type="button" class="btn ghost" id="bk-copy-nums">📋 نسخ ${list.length} رقم</button><button type="button" class="btn ghost" id="bk-copy-msg">📋 نسخ الرسالة</button></div>
+       </div>`,
+      async () => {}
+    );
+    $('#modal-form button[type=submit]').textContent = 'تم';
+    const next = $('#bk-next');
+    const sync = () => {
+      $('#bk-count').textContent = `${k} / ${list.length}`;
+      $('#bk-bar').style.width = `${(k / list.length) * 100}%`;
+      if (k >= list.length) {
+        next.classList.add('disabled');
+        next.removeAttribute('href');
+        next.querySelector('span').textContent = '✓ تمّ فتح كل التذكيرات';
+        return;
+      }
+      const f = list[k];
+      next.href = waUrl(f.phone, reminder(f));
+      next.querySelector('span').textContent = `${k ? 'التالي' : 'ابدأ'}: ${f.name || 'ولي'} — ${fmtMoney(f.total)}`;
+    };
+    next.addEventListener('click', () => {
+      if (k >= list.length) return;
+      const i = families.indexOf(list[k]);
+      $('#db-list').querySelector(`a.wa[data-i="${i}"]`)?.classList.add('sent');
+      setTimeout(() => { k++; sync(); }, 50);
+    });
+    const copy = async (t, msg) => {
+      try { await navigator.clipboard.writeText(t); toast(msg); } catch { toast('تعذّر النسخ', true); }
+    };
+    $('#bk-copy-nums').addEventListener('click', () => copy(list.map((f) => '+' + waNumber(f.phone)).join('\n'), 'تم نسخ الأرقام'));
+    $('#bk-copy-msg').addEventListener('click', () => copy($('#bk-text').value, 'تم نسخ الرسالة'));
+    sync();
   });
   render();
 }
