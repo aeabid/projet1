@@ -1114,16 +1114,24 @@ const CASH_KIND = { withdraw: ['💼', 'سحب'], deposit: ['📥', 'إيداع 
 // بطاقة «اليوم» (في الرئيسية وفي صفحة الصندوق)
 function cashTodayHtml(c, link = true) {
   const t = c.today;
+  const move = (t.deposit || 0) - (t.withdraw || 0);
+  const end = c.balance_today;
+  const start = end === null ? null : end - (t.cash_in - t.cash_out + move);
+  const m = (v) => (v === null ? '—' : fmtMoney(v));
   return `<section class="cash-today">
     <div class="ct-head"><b>💵 صندوق اليوم · ${fmtDate(t.date)}</b>${link ? '<a class="link small" href="#/cash">التفاصيل ←</a>' : ''}</div>
-    <div class="ct-grid">
-      <div class="in"><small>دخل اليوم</small><b>${fmtMoney(t.cash_in)}</b></div>
-      <div class="out"><small>مصاريف اليوم</small><b>${fmtMoney(t.cash_out)}</b></div>
-      <div class="${t.net >= 0 ? 'in' : 'out'}"><small>صافي اليوم</small><b>${fmtMoney(t.net)}</b>${
-        t.withdraw || t.deposit ? `<i>${t.withdraw ? `سحب ${fmtMoney(t.withdraw)}` : ''}${t.withdraw && t.deposit ? ' · ' : ''}${t.deposit ? `إيداع ${fmtMoney(t.deposit)}` : ''} (ليس مصروفًا)</i>` : ''
-      }</div>
-      <div class="bal"><small>المفروض في الصندوق الآن</small><b>${c.balance_today === null ? '—' : fmtMoney(c.balance_today)}</b></div>
-    </div></section>`;
+    <div class="ct-eq">
+      <div class="ce start"><small>في الصندوق صباحًا</small><b>${m(start)}</b>${link ? '' : '<button type="button" class="link small" id="cs-fix">✎ تصحيح</button>'}</div>
+      <span class="op">+</span>
+      <div class="ce in"><small>المدخول اليوم (نقدًا)</small><b>${fmtMoney(t.cash_in)}</b></div>
+      <span class="op">−</span>
+      <div class="ce out"><small>المصروف اليوم</small><b>${fmtMoney(t.cash_out)}</b></div>
+      <span class="op">=</span>
+      <div class="ce bal"><small>الباقي في الصندوق الآن</small><b>${m(end)}</b></div>
+    </div>
+    ${t.withdraw || t.deposit ? `<p class="ct-note">${t.withdraw ? `سحب ${fmtMoney(t.withdraw)}` : ''}${t.withdraw && t.deposit ? ' · ' : ''}${t.deposit ? `إيداع ${fmtMoney(t.deposit)}` : ''} — محسوب في الباقي، وليس مصروفًا.</p>` : ''}
+    ${end === null ? '<p class="ct-note">⚠️ حدّد مرّة وحدة قدّاش كان في الصندوق في يوم معيّن («✎ تصحيح») باش نحسب الباقي يومًا بيوم.</p>' : ''}
+  </section>`;
 }
 async function loadCashCard(box) {
   if (!box || !can('cash')) return;
@@ -1209,17 +1217,34 @@ async function viewCash(el) {
         <span class="muted small">دخل ${fmtMoney(c.month_totals.cash_in)} · خرج ${fmtMoney(c.month_totals.cash_out)}</span></div>
         ${
           c.days.length
-            ? `<div class="table-wrap"><table><thead><tr><th>اليوم</th><th>دخل نقدًا</th><th>خرج من الصندوق</th><th>سحب / إيداع</th><th>صافي اليوم</th><th>الرصيد</th></tr></thead><tbody>${[...c.days]
+            ? `<div class="table-wrap"><table class="cash-days"><thead><tr><th>اليوم</th><th>في الصندوق صباحًا</th><th>+ المدخول</th><th>− المصروف</th><th>= الباقي مساءً</th></tr></thead><tbody>${[...c.days]
                 .reverse()
-                .map(
-                  (d) => `<tr class="clickable" data-day="${d.date}" title="عرض معاملات هذا اليوم"><td class="nowrap"><b>${fmtDate(d.date)}</b></td><td class="in">${fmtMoney(d.cash_in)}</td><td class="out">${fmtMoney(d.cash_out)}</td>
-                    <td>${d.withdraw ? `<span class="out">− ${fmtMoney(d.withdraw)}</span>` : ''}${d.deposit ? ` <span class="in">+ ${fmtMoney(d.deposit)}</span>` : ''}${!d.withdraw && !d.deposit ? '—' : ''}</td>
-                    <td><b class="${d.net >= 0 ? 'in' : 'out'}">${fmtMoney(d.net)}</b></td><td><b>${d.balance === null ? '—' : fmtMoney(d.balance)}</b></td></tr>`
-                )
+                .map((d) => {
+                  const move = (d.deposit || 0) - (d.withdraw || 0);
+                  const start = d.balance === null ? null : d.balance - (d.cash_in - d.cash_out + move);
+                  return `<tr class="clickable" data-day="${d.date}" title="عرض معاملات هذا اليوم"><td class="nowrap"><b>${fmtDate(d.date)}</b></td>
+                    <td class="muted">${start === null ? '—' : fmtMoney(start)}</td>
+                    <td class="in">${d.cash_in ? '+ ' + fmtMoney(d.cash_in) : '—'}</td>
+                    <td class="out">${d.cash_out ? '− ' + fmtMoney(d.cash_out) : '—'}${d.withdraw ? `<div class="small">سحب ${fmtMoney(d.withdraw)}</div>` : ''}${d.deposit ? `<div class="small in">إيداع ${fmtMoney(d.deposit)}</div>` : ''}</td>
+                    <td><b class="${d.balance !== null && d.balance < 0 ? 'out' : ''}">${d.balance === null ? '—' : fmtMoney(d.balance)}</b></td></tr>`;
+                })
                 .join('')}</tbody></table></div>`
             : '<p class="muted">لا حركة نقدية في هذا الشهر.</p>'
         }
       </section>`;
+    $('#cs-fix')?.addEventListener('click', () =>
+      openModal(
+        '✎ تصحيح الرصيد',
+        `<p class="muted small">عدّ الفلوس اللي في الصندوق، واكتب المبلغ والنهار. من هالنهار تحسب التطبيقة الباقي يومًا بيوم (المدخول نقدًا − المصروف من الصندوق).</p>
+         <div class="row"><label>المبلغ في الصندوق (د.ت)<input name="amount" inputmode="decimal" value="${esc(c.opening?.amount ?? '')}" required></label>
+           <label>صباح يوم<input type="date" name="date" value="${esc(c.opening?.date || today())}"></label></div>`,
+        async (data) => {
+          await api('PUT', '/api/cash/opening', data);
+          toast('تم الحفظ');
+          load();
+        }
+      )
+    );
     $('#dt-date').addEventListener('change', () => loadDay($('#dt-date').value));
     el.querySelectorAll('[data-day]').forEach((r) =>
       r.addEventListener('click', () => {
