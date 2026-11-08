@@ -1344,3 +1344,16 @@ test('partner account: statistics and partner share, no students or pedagogical 
   }
   assert.strictEqual((await p('GET', '/api/program/staff-pay')).status, 200);
 });
+
+test('read-only admin account: can read, cannot change anything', async () => {
+  const admin = await login('admin', 'admin123');
+  const u = (await admin('POST', '/api/users', { role: 'admin', username: 'ro-x', full_name: 'اطلاع', password: 'secret1' })).body.user;
+  await admin('PUT', `/api/users/${u.id}/permissions`, { perms: { school: false, stats: true, accounting: true, cash: true, partners: true, read_only: true } });
+  const r = await login('ro-x', 'secret1');
+  assert.strictEqual((await r('GET', '/api/accounting?month=2026-11')).status, 200);
+  assert.strictEqual((await r('GET', '/api/partners')).status, 200);
+  assert.strictEqual((await r('POST', '/api/accounting/expenses', { category: 'tax_monthly', amount: 10 })).status, 403);
+  assert.strictEqual((await r('POST', '/api/todo', { title: 'x' })).status, 403);
+  assert.strictEqual((await r('POST', '/api/alerts/seen')).status, 200);
+  assert.strictEqual((await r('GET', '/api/me')).body.user.perms.read_only, true);
+});

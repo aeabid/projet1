@@ -1871,3 +1871,8 @@ body.kb-dragging { cursor: grabbing; user-select: none; }
 .ct-eq.three { grid-template-columns: 1fr auto 1fr auto 1.15fr; }
 .ce.bal b.neg { color: #be185d; }
 @media (max-width: 700px) { .ct-eq.three { grid-template-columns: 1fr 1fr; } .ct-eq.three .ce.bal { grid-column: 1 / -1; } }
+
+/* حساب للاطّلاع فقط: لا أزرار إضافة أو تعديل أو حذف */
+body.read-only :is(#ac-add, #ac-add2, .att-add, .drop-zone, .dt-del, .al-del, [data-del], [data-edit], [data-del-doc], [data-del-exp], [data-undo],
+  #add-task, #add-problem, #kb-add, #add-meeting, #cs-exp, #pt-pay, #pt-settings, .kb-add, [data-pay], .bank-up, #bm-exp, #bm-inc, #add-income, #add-expense, .pay-btn, [data-move]) { display: none !important; }
+body.read-only .kb-card { cursor: default; }

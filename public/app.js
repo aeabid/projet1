@@ -602,6 +602,7 @@ const TABS = {
 };
 
 function renderTopbar() {
+  document.body.classList.toggle('read-only', !!(state.user?.role === 'admin' && !state.user.super_admin && state.user.perms?.read_only));
   const bar = $('#topbar');
   closeSubnav();
   if (!state.user) {
