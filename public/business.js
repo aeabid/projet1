@@ -47,7 +47,7 @@ async function viewHome(el) {
     can('school') && ['#/dashboard', '📚', 'دروس الدعم', 'التلاميذ، الجداول، الغيابات، الخلاص، المعلمون'],
     can('school') && ['#/program', '🎨', 'البرنامج التربوي', 'الأقسام حسب الأعمار، الأطفال، الخلاص الشهري'],
     can('school') && ['#/courses', '🏕️', 'الدورات والأنشطة', 'دورات العطل والصيف، الأنشطة، الرحلات والمخيمات'],
-    ['#/todo', '🗂️', 'إدارة المركز', 'المهام، الاجتماعات والقرارات، التنبيهات', 'alt'],
+    can('school') && ['#/todo', '🗂️', 'إدارة المركز', 'المهام، الاجتماعات والقرارات، التنبيهات', 'alt'],
     (can('cash') || can('expenses') || can('accounting')) &&
       [can('cash') ? '#/cash' : can('expenses') ? '#/ledger' : '#/accounting', '💰', 'المالية والمحاسبة', 'الصندوق اليومي، المداخيل والمصاريف، الوصولات، الأجور، فضاء المحاسبة', 'alt'],
   ].filter(Boolean);
@@ -87,13 +87,13 @@ const BOARD_TABS = [
 ];
 async function viewBoardHub(el, tab = '') {
   el.innerHTML = `
-    <div class="board-tabs" role="tablist">${BOARD_TABS.filter(([k]) => (k !== 'cash' || can('cash')) && (k !== 'absences' || can('school')))
+    <div class="board-tabs" role="tablist">${BOARD_TABS.filter(([k]) => (k !== 'cash' || can('cash')) && (!['absences', 'notices'].includes(k) || can('school')))
       .map(([k, i, l]) => `<a href="#/board${k ? '/' + k : ''}" class="${k === tab ? 'on' : ''}" role="tab"><span>${i}</span>${l}<b class="bt-badge" data-badge="${k}" hidden></b></a>`)
       .join('')}</div>
     <div id="board-page"></div>`;
   const page = $('#board-page');
   // عدد الإشعارات على التبويب
-  api('GET', '/api/board/notices')
+  if (can('school')) api('GET', '/api/board/notices')
     .then((n) => {
       // الرقم يختفي بمجرد فتح تبويب الإشعارات، ولا يرجع إلا لإشعار جديد
       const keys = [...n.salaries.map((x) => 's' + x.month + x.group + x.name), ...n.unpaid.map((x) => 'u' + n.month + x.kind + x.id)];

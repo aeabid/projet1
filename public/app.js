@@ -414,8 +414,9 @@ const HASH_PERM = {
   '#/people': 'school', '#/parents': 'school', '#/parent-requests': 'school', '#/students': 'school', '#/program': 'school',
   '#/attendance': 'school', '#/messages': 'school', '#/broadcast': 'school', '#/whatsapp': 'school', '#/courses': 'school',
   '#/support/teachers': 'accounts', '#/program/staff': 'accounts', '#/debts': 'school',
+  '#/receipts': 'school', '#/products': 'school', '#/todo': 'school', '#/meetings': 'school', '#/alerts': 'school',
 };
-const GROUP_PERM = { 'دروس الدعم': 'school', 'البرنامج التربوي': 'school', 'التواصل': 'school' };
+const GROUP_PERM = { 'دروس الدعم': 'school', 'البرنامج التربوي': 'school', 'التواصل': 'school', 'إدارة المركز': 'school' };
 const navAllowed = (h) => {
   const p = HASH_PERM[h];
   if (!p || state.user?.role !== 'admin') return true;
@@ -671,8 +672,9 @@ function renderTopbar() {
     document.body.classList.toggle('sheet-open', open);
   });
   $('#vmenu').querySelectorAll('a').forEach((a) => a.addEventListener('click', closeVmenu));
-  $('#bell').hidden = state.user.role !== 'admin';
-  if (state.user.role === 'admin') refreshBell();
+  $('#mail').hidden = state.user.role === 'admin' && !can('school');
+  $('#bell').hidden = state.user.role !== 'admin' || !can('school');
+  if (state.user.role === 'admin' && can('school')) refreshBell();
   refreshMail();
   fitNav();
 }

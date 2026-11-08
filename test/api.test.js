@@ -1339,7 +1339,7 @@ test('partner account: statistics and partner share, no students or pedagogical 
   assert.ok(y.totals.shares);
   assert.strictEqual((await p('GET', '/api/kpis')).status, 200);
   assert.strictEqual((await p('GET', '/api/cash')).status, 200);
-  for (const path of ['/api/students', '/api/program', '/api/attendance?level=7', '/api/center/people', '/api/courses']) {
+  for (const path of ['/api/students', '/api/program', '/api/attendance?level=7', '/api/center/people', '/api/courses', '/api/board/notices', '/api/receipts', '/api/debts', '/api/alerts', '/api/todo']) {
     assert.strictEqual((await p('GET', path)).status, 403, path);
   }
   assert.strictEqual((await p('GET', '/api/program/staff-pay')).status, 200);
@@ -1354,6 +1354,5 @@ test('read-only admin account: can read, cannot change anything', async () => {
   assert.strictEqual((await r('GET', '/api/partners')).status, 200);
   assert.strictEqual((await r('POST', '/api/accounting/expenses', { category: 'tax_monthly', amount: 10 })).status, 403);
   assert.strictEqual((await r('POST', '/api/todo', { title: 'x' })).status, 403);
-  assert.strictEqual((await r('POST', '/api/alerts/seen')).status, 200);
   assert.strictEqual((await r('GET', '/api/me')).body.user.perms.read_only, true);
 });
