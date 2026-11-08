@@ -1868,3 +1868,6 @@ body.kb-dragging { cursor: grabbing; user-select: none; }
   .ct-eq .op { display: none; }
 }
 .cash-days td { white-space: nowrap; }
+.ct-eq.three { grid-template-columns: 1fr auto 1fr auto 1.15fr; }
+.ce.bal b.neg { color: #be185d; }
+@media (max-width: 700px) { .ct-eq.three { grid-template-columns: 1fr 1fr; } .ct-eq.three .ce.bal { grid-column: 1 / -1; } }
