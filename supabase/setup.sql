@@ -813,3 +813,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS round_hours BOOLEAN NOT NULL DEFAULT 
 -- لوحة المهام: ترتيب البطاقات في كل عمود، وقائمة تحقق (checklist) لكل مهمة
 ALTER TABLE center_tasks ADD COLUMN IF NOT EXISTS position INTEGER;
 ALTER TABLE center_tasks ADD COLUMN IF NOT EXISTS checklist JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- ===== 20261121090000_accounting_folders.sql =====
+-- فضاء المحاسبة: كشوفات البنك ومحاضر الاجتماعات (PV) كملفات مجمّعة
+ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_folder_check;
+ALTER TABLE documents ADD CONSTRAINT documents_folder_check CHECK (folder IN ('month', 'center', 'bank', 'pv'));
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS doc_date DATE;

@@ -817,59 +817,69 @@ async function uploadDocs(files, extra) {
 const docLink = (d) =>
   `<a class="doc" href="/api/documents/${d.id}/file" target="_blank" rel="noopener">${/pdf/.test(d.mime) ? '📄' : /image/.test(d.mime) ? '🖼️' : '📎'} ${esc(d.title || d.filename)}</a>`;
 
-const ACC_CAT_ICON = { tax_office: '🏛️', monthly_dues: '📆', annual_declaration: '📑', accounting: '🧮', tax: '💼', acc_other: '🧾' };
+const ACC_CAT_ICON = { tax_monthly: '🏛️', tax_quarterly: '🏛️', tax_office: '🏛️', accountant_fee: '🧮', bilan_annual: '📑', acc_other: '🧾', annual_declaration: '📑', monthly_dues: '📆', accounting: '🧮', tax: '💼' };
+const ACC_GROUP_ICON = { recette: '🏛️', accountant: '🧮', bilan: '📑', other: '🧾' };
 const docIcon = (d) => (/pdf/.test(d.mime) ? '📄' : /image/.test(d.mime) ? '🖼️' : /sheet|excel|csv/.test(d.mime) ? '📊' : '📎');
-// بطاقة ملف (شبكة الوثائق)
 const docTile = (d) => `<div class="doc-tile">
-    <a href="/api/documents/${d.id}/file" target="_blank" rel="noopener"><span class="dt-ico">${docIcon(d)}</span><b>${esc(d.title || d.filename)}</b><small>${fmtDate(d.created)}</small></a>
+    <a href="/api/documents/${d.id}/file" target="_blank" rel="noopener"><span class="dt-ico">${docIcon(d)}</span><b>${esc(d.title || d.filename)}</b><small>${fmtDate(d.doc_date || d.created)}</small></a>
     <button type="button" class="dt-del" data-del-doc="${d.id}" aria-label="حذف">✕</button></div>`;
-// مرفقات معاملة: الملفات + زر إضافة، أو «ناقص وصل»
 const attachCell = (docs, attr) => `<div class="att-cell">${docs.map((d) => `<a class="att-chip" href="/api/documents/${d.id}/file" target="_blank" rel="noopener" title="${esc(d.filename)}">${docIcon(d)}</a>`).join('')}
     <label class="att-add ${docs.length ? '' : 'missing'}">${docs.length ? '+' : '📎 وصل ناقص'}<input type="file" ${attr} multiple hidden></label></div>`;
+const shortMonth = (m) => monthLabel(m).split(' ')[0];
 
 async function viewAccounting(el) {
   el.innerHTML = `
     <section class="acc-hero">
       <div class="ah-top">
-        <div><h2>🏦 فضاء المحاسبة</h2><p>ما يلزم المحاسب كل شهر: مداخيل البنك، مصاريف المحاسبة، والوصولات.</p></div>
-        <div class="ah-acts">${monthPicker('ac-month')}<button class="btn ghost small" id="ac-csv">⬇ تصدير البنك</button></div>
+        <div><h2>🏦 فضاء المحاسبة</h2><p>كل ما يحتاجه المحاسب: مداخيل البنك، مدفوعات القباضة والمحاسب والـ Bilan، والملفات.</p></div>
+        <div class="ah-acts">${monthPicker('ac-month')}</div>
       </div>
       <div class="ah-kpis" id="ac-kpis"></div>
     </section>
-    ${fileTabs([['bank', '🏦 البنك'], ['exp', '🧾 المصاريف'], ['docs', '📁 وثائق الشهر'], ['center', '🗂 ملفات المركز']])}
+    ${fileTabs([['bank', '🏦 مداخيل البنك'], ['pay', '📊 مدفوعات المحاسبة'], ['files', '🗂 الملفات']])}
     <div class="tab-panel" data-panel="bank"><div id="ac-bank"><p class="muted">جاري التحميل…</p></div></div>
-    <div class="tab-panel" data-panel="exp"><div id="ac-exp"></div></div>
-    <div class="tab-panel" data-panel="docs"><div id="ac-docs"></div></div>
-    <div class="tab-panel" data-panel="center">
-      <section class="card"><div class="section-head"><div><h3>🗂 ملفات المركز</h3><p class="muted small">وثائق دائمة: السجل التجاري، العقود، الشهادات، التصاريح…</p></div>
-        <label class="btn small">+ إضافة ملف<input type="file" id="ac-center-file" multiple hidden></label></div>
-        <div id="ac-center" class="doc-grid"></div></section>
-    </div>`;
+    <div class="tab-panel" data-panel="pay"><div id="ac-year"></div><div id="ac-exp"></div></div>
+    <div class="tab-panel" data-panel="files"><div id="ac-files"></div></div>`;
   bindFileTabs(el);
-  let data;
-  const loadCenter = async () => {
-    const { documents } = await api('GET', '/api/documents?folder=center');
-    if (!$('#ac-center')) return;
-    $('#ac-center').innerHTML = documents.length ? documents.map(docTile).join('') : '<p class="muted">لا ملفات بعد.</p>';
+  let data, year;
+  const month = () => $('#ac-month')?.value;
+  const up = async (files, extra, after) => {
+    if (!files.length) return;
+    try {
+      await uploadDocs(files, extra);
+      toast(files.length > 1 ? `تم رفع ${files.length} ملفات` : 'تم رفع الملف');
+    } catch (err) {
+      toast(err.message, true);
+    }
+    after();
   };
+  const bindDrop = (zone, onFiles) => {
+    if (!zone) return;
+    ['dragenter', 'dragover'].forEach((t) => zone.addEventListener(t, (e) => (e.preventDefault(), zone.classList.add('over'))));
+    ['dragleave', 'drop'].forEach((t) => zone.addEventListener(t, () => zone.classList.remove('over')));
+    zone.addEventListener('drop', (e) => (e.preventDefault(), onFiles([...e.dataTransfer.files])));
+    zone.querySelector('input[type=file]')?.addEventListener('change', (e) => onFiles([...e.target.files]));
+  };
+
+  // ---------- الشهر: البنك + تفاصيل المدفوعات ----------
   const load = async () => {
-    if (!$('#ac-month')) return;
-    const month = $('#ac-month').value;
-    data = await api('GET', '/api/accounting?month=' + month);
+    if (!month()) return;
+    const mo = month();
+    data = await api('GET', '/api/accounting?month=' + mo);
     if (!$('#ac-bank')) return;
     const docsFor = (pred) => data.documents.filter(pred);
     const cats = { ...data.expense_categories };
     const expTotal = data.expenses.reduce((t, x) => t + x.amount, 0);
     const missing = data.bank.filter((l) => !docsFor((d) => d.receipt_no === l.receipt_no).length).length + data.expenses.filter((x) => !docsFor((d) => d.ledger_id === x.id).length).length;
-    const monthDocs = docsFor((d) => !d.ledger_id && !d.receipt_no);
     $('#ac-kpis').innerHTML = `
-      <div class="ak in"><span>🏦 مداخيل البنك</span><b>${fmtMoney(data.bank_total)}</b><small>${data.bank.length} معاملة</small></div>
-      <div class="ak"><span>💵 نقدًا</span><b>${fmtMoney(data.by_method.cash || 0)}</b><small>من ${fmtMoney(data.total)} كل المداخيل</small></div>
-      <div class="ak out"><span>🧾 مصاريف المحاسبة</span><b>${fmtMoney(expTotal)}</b><small>${data.expenses.length} مصروف</small></div>
-      <div class="ak ${missing ? 'warn' : 'ok'}"><span>📎 الوصولات</span><b>${missing ? `${missing} ناقصة` : 'كاملة ✓'}</b><small>${data.documents.length} ملف هذا الشهر</small></div>`;
-    // ---- البنك ----
+      <div class="ak in"><span>🏦 مداخيل البنك · ${esc(shortMonth(mo))}</span><b>${fmtMoney(data.bank_total)}</b><small>${data.bank.length} معاملة</small></div>
+      <div class="ak"><span>💵 نقدًا (خارج البنك)</span><b>${fmtMoney(data.by_method.cash || 0)}</b><small>كل المداخيل ${fmtMoney(data.total)}</small></div>
+      <div class="ak out"><span>🧾 مدفوعات المحاسبة</span><b>${fmtMoney(expTotal)}</b><small>${data.expenses.length} عملية هذا الشهر</small></div>
+      <div class="ak ${missing ? 'warn' : 'ok'}"><span>📎 الوصولات</span><b>${missing ? `${missing} ناقصة` : 'كاملة ✓'}</b><small>${data.documents.length} ملف مرفق</small></div>`;
+    // البنك
     $('#ac-bank').innerHTML = `<section class="card">
-      <div class="section-head"><h3>🏦 المداخيل عبر البنك · ${esc(monthLabel(month))}</h3><span class="muted small">بنك الشركة، تحويل، صك</span></div>
+      <div class="section-head"><div><h3>🏦 ما دخل عبر حساب المركز البنكي · ${esc(monthLabel(mo))}</h3><p class="muted small">الدفوعات بـ«بنك الشركة»، التحويل والصكّ. أرفق وصل كل معاملة.</p></div>
+        <button class="btn ghost small" id="ac-csv">⬇ Excel</button></div>
       ${
         data.bank.length
           ? `<ul class="acc-list">${data.bank
@@ -880,16 +890,13 @@ async function viewAccounting(el) {
                   ${attachCell(docsFor((d) => d.receipt_no === l.receipt_no), `data-attach-receipt="${l.receipt_no}"`)}
                 </li>`)
               .join('')}</ul>
-            <div class="acc-total"><span>المجموع عبر البنك</span><b>${fmtMoney(data.bank_total)}</b></div>`
+            <div class="acc-total"><span>مجموع مداخيل البنك</span><b>${fmtMoney(data.bank_total)}</b></div>`
           : '<div class="empty-state"><span>🏦</span><p>لا مداخيل عبر البنك في هذا الشهر.</p><small>عند تسجيل دفعة، اختر «بنك الشركة» كطريقة دفع.</small></div>'
       }
-      ${Object.keys(data.by_method).length > 1 ? `<div class="method-bar">${Object.entries(data.by_method).map(([k, v]) => `<span><i class="m-${k}"></i>${esc(PAYMENT_LABELS[k] || k)} <b>${fmtMoney(v)}</b></span>`).join('')}</div>` : ''}
     </section>`;
-    // ---- المصاريف ----
-    const byCat = Object.keys(cats).map((k) => [k, data.expenses.filter((x) => x.category === k).reduce((t, x) => t + x.amount, 0)]).filter(([, v]) => v);
+    // تفاصيل الشهر
     $('#ac-exp').innerHTML = `<section class="card">
-      <div class="section-head"><h3>🧾 مصاريف المحاسبة · ${esc(monthLabel(month))}</h3><button class="btn small" id="ac-add">+ مصروف</button></div>
-      ${byCat.length ? `<div class="cat-chips">${byCat.map(([k, v]) => `<span class="cat-chip"><i>${ACC_CAT_ICON[k] || '🧾'}</i>${esc(cats[k])}<b>${fmtMoney(v)}</b></span>`).join('')}</div>` : ''}
+      <div class="section-head"><h3>🧾 مدفوعات ${esc(monthLabel(mo))}</h3><button class="btn small" id="ac-add">+ دفعة</button></div>
       ${
         data.expenses.length
           ? `<ul class="acc-list">${data.expenses
@@ -902,90 +909,157 @@ async function viewAccounting(el) {
                 </li>`)
               .join('')}</ul>
             <div class="acc-total"><span>المجموع</span><b>${fmtMoney(expTotal)}</b></div>`
-          : '<div class="empty-state"><span>🧾</span><p>لا مصاريف محاسبة في هذا الشهر.</p><small>القباضة، الرسوم الشهرية، التصريح السنوي…</small></div>'
+          : '<div class="empty-state small"><p>لا مدفوعات مسجّلة في هذا الشهر.</p></div>'
       }
     </section>`;
-    // ---- وثائق الشهر ----
-    $('#ac-docs').innerHTML = `<section class="card">
-      <div class="section-head"><div><h3>📁 وثائق ${esc(monthLabel(month))}</h3><p class="muted small">كشف البنك، فواتير، وصولات غير مرتبطة بمعاملة…</p></div></div>
-      <label class="drop-zone" id="ac-drop"><span>⬆</span><b>اسحب الملفات هنا أو اضغط للاختيار</b><small>PDF أو صور، 4 ميغا كحد أقصى للملف</small><input type="file" id="ac-month-file" multiple hidden></label>
-      <div class="doc-grid">${monthDocs.map(docTile).join('')}</div>
-    </section>`;
-
-    const up = async (files, extra) => {
-      if (!files.length) return;
-      try {
-        await uploadDocs(files, { folder: 'month', month, ...extra });
-        toast('تم رفع الملف');
-      } catch (err) {
-        toast(err.message, true);
-      }
-      load();
-    };
-    $('#ac-month-file').addEventListener('change', (e) => up([...e.target.files], {}));
-    const dz = $('#ac-drop');
-    ['dragenter', 'dragover'].forEach((t) => dz.addEventListener(t, (e) => (e.preventDefault(), dz.classList.add('over'))));
-    ['dragleave', 'drop'].forEach((t) => dz.addEventListener(t, () => dz.classList.remove('over')));
-    dz.addEventListener('drop', (e) => (e.preventDefault(), up([...e.dataTransfer.files], {})));
-    el.querySelectorAll('[data-attach-receipt]').forEach((i) => i.addEventListener('change', () => up([...i.files], { receipt_no: i.dataset.attachReceipt })));
-    el.querySelectorAll('[data-attach-ledger]').forEach((i) => i.addEventListener('change', () => up([...i.files], { ledger_id: i.dataset.attachLedger })));
-    $('#ac-add').addEventListener('click', () => {
-      openModal(
-        '🧾 مصروف محاسبة',
-        `<div class="cat-pick">${Object.entries(cats)
-          .map(([k, v], i) => `<label><input type="radio" name="category" value="${k}" ${i ? '' : 'checked'}><span><i>${ACC_CAT_ICON[k] || '🧾'}</i>${esc(v)}</span></label>`)
-          .join('')}</div>
-         <div class="row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" required></label>
-           <label>التاريخ<input type="date" name="date" value="${month === today().slice(0, 7) ? today() : month + '-01'}"></label></div>
-         <label>البيان<input name="description" placeholder="إجباري لـ«أخرى»"></label>
-         <label class="drop-zone small"><span>📎</span><b id="exp-file-name">إرفاق الوصل (اختياري)</b><input type="file" name="file" hidden></label>`,
-        async (f) => {
-          const file = $('#modal input[name=file]').files[0];
-          const { id } = await api('POST', '/api/accounting/expenses', { category: f.category, description: f.description, amount: f.amount, date: f.date });
-          if (file) await uploadDocs([file], { folder: 'month', month, ledger_id: id });
-          toast('تمت الإضافة');
-          load();
-        }
-      );
-      $('#modal input[name=file]').addEventListener('change', (e) => ($('#exp-file-name').textContent = e.target.files[0]?.name || 'إرفاق الوصل (اختياري)'));
-    });
+    el.querySelectorAll('[data-attach-receipt]').forEach((i) => i.addEventListener('change', () => up([...i.files], { folder: 'month', month: mo, receipt_no: i.dataset.attachReceipt }, load)));
+    el.querySelectorAll('[data-attach-ledger]').forEach((i) => i.addEventListener('change', () => up([...i.files], { folder: 'month', month: mo, ledger_id: i.dataset.attachLedger }, load)));
+    $('#ac-add').addEventListener('click', () => addPayment());
     el.querySelectorAll('[data-del-exp]').forEach((b) =>
       b.addEventListener('click', async () => {
-        if (!confirmAction('حذف هذا المصروف؟')) return;
+        if (!confirmAction('حذف هذه الدفعة؟')) return;
         await api('DELETE', `/api/accounting/expenses/${b.dataset.delExp}`).catch((err) => toast(err.message, true));
         load();
+        loadYear();
+      })
+    );
+    $('#ac-csv').addEventListener('click', () => {
+      const rows = [['التاريخ', 'رقم الوصل', 'المستفيد', 'البرنامج', 'الطريقة', 'المبلغ'], ...data.bank.map((l) => [l.paid_on, l.receipt_no ?? '', l.beneficiary, l.program, PAYMENT_LABELS[l.method] || l.method, l.amount])];
+      rows.push([], ['المجموع عبر البنك', '', '', '', '', data.bank_total]);
+      const csv = '﻿' + rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      a.download = `bank-${data.month}.csv`;
+      a.click();
+    });
+  };
+
+  // ---------- جدول السنة: نوع × شهر ----------
+  const loadYear = async () => {
+    if (!month()) return;
+    year = await api('GET', '/api/accounting/year?month=' + month());
+    if (!$('#ac-year')) return;
+    const cur = month();
+    const v = (n) => (n ? fmtMoney(n).replace(/\s*د\.ت$/, '') : '<span class="zero">—</span>');
+    const head = year.months.map((m) => `<th class="${m === cur ? 'cur' : ''}" data-goto-month="${m}">${esc(shortMonth(m))}</th>`).join('');
+    const body = year.groups
+      .map(
+        (g) => `<tr class="grp"><th colspan="${year.months.length + 2}">${ACC_GROUP_ICON[g.key] || ''} ${esc(g.label)}</th></tr>${g.rows
+          .map((r) => `<tr><th class="rl">${esc(r.label.replace(/^القباضة · /, ''))}</th>${r.months.map((n, i) => `<td class="${year.months[i] === cur ? 'cur' : ''} ${n ? 'has' : ''}">${v(n)}</td>`).join('')}<td class="tot">${v(r.total)}</td></tr>`)
+          .join('')}`
+      )
+      .join('');
+    $('#ac-year').innerHTML = `<section class="card">
+      <div class="section-head"><div><h3>📊 جدول المدفوعات · السنة ${esc(year.year)}</h3><p class="muted small">كل خانة = ما دُفع في ذلك الشهر (د.ت). اضغط على شهر لرؤية تفاصيله.</p></div>
+        <button class="btn small" id="ac-add2">+ دفعة</button></div>
+      <div class="yr-wrap"><table class="yr-table">
+        <thead><tr><th class="rl">النوع</th>${head}<th class="tot">المجموع</th></tr></thead>
+        <tbody>${body}</tbody>
+        <tfoot>
+          <tr class="sum"><th class="rl">مجموع المدفوعات</th>${year.month_totals.map((n, i) => `<td class="${year.months[i] === cur ? 'cur' : ''}">${v(n)}</td>`).join('')}<td class="tot">${v(year.totals.expenses)}</td></tr>
+          <tr class="bank"><th class="rl">🏦 مداخيل البنك</th>${year.bank.map((n, i) => `<td class="${year.months[i] === cur ? 'cur' : ''}">${v(n)}</td>`).join('')}<td class="tot">${v(year.totals.bank)}</td></tr>
+        </tfoot>
+      </table></div>
+    </section>`;
+    $('#ac-add2').addEventListener('click', () => addPayment());
+    $('#ac-year').querySelectorAll('[data-goto-month]').forEach((th) =>
+      th.addEventListener('click', () => {
+        $('#ac-month').value = th.dataset.gotoMonth;
+        $('#ac-month').dispatchEvent(new Event('change'));
       })
     );
   };
+
+  // ---------- إضافة دفعة ----------
+  const addPayment = () => {
+    const cats = data?.expense_categories || {};
+    const list = data?.new_categories || [];
+    const mo = month();
+    openModal(
+      '🧾 دفعة للمحاسبة',
+      `<div class="cat-pick">${list
+        .map((k, i) => `<label><input type="radio" name="category" value="${k}" ${i ? '' : 'checked'}><span><i>${ACC_CAT_ICON[k] || '🧾'}</i>${esc(cats[k] || k)}</span></label>`)
+        .join('')}</div>
+       <div class="row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" required></label>
+         <label>تاريخ الدفع<input type="date" name="date" value="${mo === today().slice(0, 7) ? today() : mo + '-01'}"></label></div>
+       <label>البيان<input name="description" placeholder="مثال: قسط الثلاثي الأول، أجرة المحاسب لشهر أكتوبر… (إجباري لـ«أخرى»)"></label>
+       <label class="drop-zone small"><span>📎</span><b id="exp-file-name">إرفاق الوصل (اختياري)</b><input type="file" name="file" hidden></label>`,
+      async (f) => {
+        const file = $('#modal input[name=file]').files[0];
+        const { id } = await api('POST', '/api/accounting/expenses', { category: f.category, description: f.description, amount: f.amount, date: f.date });
+        if (file) await uploadDocs([file], { folder: 'month', month: f.date.slice(0, 7), ledger_id: id });
+        toast('تمت الإضافة');
+        load();
+        loadYear();
+      }
+    );
+    $('#modal input[name=file]').addEventListener('change', (e) => ($('#exp-file-name').textContent = e.target.files[0]?.name || 'إرفاق الوصل (اختياري)'));
+  };
+
+  // ---------- الملفات: المركز، كشوفات البنك، محاضر الاجتماعات ----------
+  const loadFiles = async () => {
+    const [{ documents: center }, { documents: bank }, { documents: pvDocs }, { meetings }] = await Promise.all([
+      api('GET', '/api/documents?folder=center'),
+      api('GET', '/api/documents?folder=bank'),
+      api('GET', '/api/documents?folder=pv'),
+      api('GET', '/api/accounting/pv'),
+    ]);
+    if (!$('#ac-files')) return;
+    const byMonth = {};
+    for (const d of bank) (byMonth[d.month] ||= []).push(d);
+    const mo = month();
+    $('#ac-files').innerHTML = `
+      <div class="folders">
+        <a class="folder-card f-center" href="#fd-center"><span>🗂</span><b>ملفات المركز</b><small>${center.length} ملف</small></a>
+        <a class="folder-card f-bank" href="#fd-bank"><span>🏦</span><b>Les extraits bancaires</b><small>${bank.length} كشف · ${Object.keys(byMonth).length} شهر</small></a>
+        <a class="folder-card f-pv" href="#fd-pv"><span>📝</span><b>محاضر الاجتماعات (PV)</b><small>${meetings.length} اجتماع · ${pvDocs.length} ملف</small></a>
+      </div>
+      <section class="card" id="fd-center"><div class="section-head"><div><h3>🗂 ملفات المركز</h3><p class="muted small">وثائق دائمة: السجل التجاري، المعرّف الجبائي، العقود، التصاريح، الشهادات…</p></div></div>
+        <label class="drop-zone"><span>⬆</span><b>اسحب الملفات هنا أو اضغط للاختيار</b><small>PDF أو صور، 4 ميغا كحدّ أقصى</small><input type="file" multiple hidden></label>
+        <div class="doc-grid">${center.map(docTile).join('') || '<p class="muted">لا ملفات بعد.</p>'}</div></section>
+      <section class="card" id="fd-bank"><div class="section-head"><div><h3>🏦 Les extraits bancaires</h3><p class="muted small">كشف الحساب البنكي لكل شهر، يرسله البنك وتضعه هنا للمحاسب.</p></div></div>
+        <div class="bank-up"><label>الشهر<input type="month" id="bk-month" value="${esc(mo)}"></label>
+          <label class="drop-zone small"><span>⬆</span><b>رفع كشف الشهر</b><input type="file" multiple hidden></label></div>
+        ${
+          Object.keys(byMonth).length
+            ? Object.entries(byMonth)
+                .map(([m, docs]) => `<div class="bank-month"><b>${esc(monthLabel(m))}</b><div class="doc-grid">${docs.map(docTile).join('')}</div></div>`)
+                .join('')
+            : '<p class="muted">لا كشوفات بعد.</p>'
+        }</section>
+      <section class="card" id="fd-pv"><div class="section-head"><div><h3>📝 محاضر الاجتماعات (PV)</h3><p class="muted small">ملخّص كل اجتماع من «الاجتماعات والقرارات»، والمحاضر الممضاة كملفات.</p></div>
+        <a class="btn ghost small" href="#/meetings">+ اجتماع</a></div>
+        ${
+          meetings.length
+            ? `<ul class="pv-list">${meetings
+                .map((m) => `<li><span class="pv-date"><b>${fmtDate(m.date).slice(0, 5)}</b><small>${m.date.slice(0, 4)}</small></span>
+                    <div><b>${esc(m.title)}</b>${m.summary ? `<p>${esc(m.summary)}</p>` : ''}<small>${m.attendees ? `👥 ${esc(m.attendees)}` : ''}${m.decisions ? ` · 📌 ${m.decisions} قرار` : ''}</small></div></li>`)
+                .join('')}</ul>`
+            : '<p class="muted">لا اجتماعات مسجّلة.</p>'
+        }
+        <label class="drop-zone small"><span>📎</span><b>رفع محضر ممضى (PV)</b><input type="file" multiple hidden></label>
+        <div class="doc-grid">${pvDocs.map(docTile).join('')}</div></section>`;
+    bindDrop($('#fd-center .drop-zone'), (f) => up(f, { folder: 'center' }, loadFiles));
+    bindDrop($('#fd-bank .drop-zone'), (f) => up(f, { folder: 'bank', month: $('#bk-month').value || mo, title: `Extrait ${$('#bk-month').value || mo}` }, loadFiles));
+    bindDrop($('#fd-pv .drop-zone'), (f) => up(f, { folder: 'pv', doc_date: today() }, loadFiles));
+    $('#ac-files').querySelectorAll('.folder-card').forEach((a) =>
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        $(a.getAttribute('href'))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      })
+    );
+  };
+
   el.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-del-doc]');
     if (!b) return;
     if (!confirmAction('حذف هذا الملف؟')) return;
     await api('DELETE', `/api/documents/${b.dataset.delDoc}`).catch((err) => toast(err.message, true));
     load();
-    loadCenter();
+    loadFiles();
   });
-  $('#ac-center-file').addEventListener('change', async (e) => {
-    try {
-      await uploadDocs([...e.target.files], { folder: 'center' });
-      toast('تم رفع الملف');
-    } catch (err) {
-      toast(err.message, true);
-    }
-    loadCenter();
-  });
-  $('#ac-csv').addEventListener('click', () => {
-    if (!data) return;
-    const rows = [['التاريخ', 'رقم الوصل', 'المستفيد', 'البرنامج', 'الطريقة', 'المبلغ'], ...data.bank.map((l) => [l.paid_on, l.receipt_no ?? '', l.beneficiary, l.program, PAYMENT_LABELS[l.method] || l.method, l.amount])];
-    rows.push([], ['المجموع عبر البنك', '', '', '', '', data.bank_total]);
-    const csv = '﻿' + rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    a.download = `bank-${data.month}.csv`;
-    a.click();
-  });
-  bindMonth('ac-month', load);
-  await Promise.all([load(), loadCenter()]);
+  bindMonth('ac-month', () => Promise.all([load(), loadYear()]));
+  await Promise.all([load(), loadYear(), loadFiles()]);
 }
 
 // ---------- الصندوق اليومي ----------

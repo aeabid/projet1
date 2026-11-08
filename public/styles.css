@@ -1736,3 +1736,41 @@ body.kb-dragging { cursor: grabbing; user-select: none; }
 .rc-title h2 { white-space: nowrap; } .rc-title span { display: block; }
 @media (max-width: 560px) { .rc-band { flex-wrap: nowrap; gap: .7rem; } .rc-title span { font-size: .68rem; } .rc-no b { font-size: 1.25rem; } }
 .rc-lines tbody tr:nth-child(odd) td { background: transparent; }
+
+/* ===== فضاء المحاسبة: جدول السنة والملفات ===== */
+.yr-wrap { overflow-x: auto; margin: 0 -.2rem; border-radius: 14px; border: 1px solid var(--border); }
+.yr-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .82rem; min-width: 860px; }
+.yr-table th, .yr-table td { padding: .5rem .45rem; text-align: center; white-space: nowrap; border-bottom: 1px solid #f0eaf7; }
+.yr-table thead th { background: #f3ecfb; color: #4c0480; font-weight: 700; cursor: pointer; position: sticky; top: 0; }
+.yr-table thead th:hover { background: #e9ddfa; }
+.yr-table .rl { text-align: start; position: sticky; inset-inline-start: 0; background: var(--card); z-index: 1; min-width: 150px; font-weight: 600; }
+.yr-table thead .rl { background: #f3ecfb; z-index: 2; cursor: default; }
+.yr-table tr.grp th { text-align: start; background: #faf7ff; color: var(--feed-purple); font-size: .8rem; padding: .4rem .6rem; position: static; }
+.yr-table td { font-family: 'Tajawal', sans-serif; color: var(--text); }
+.yr-table td .zero { color: #d4cbe0; }
+.yr-table td.has { color: #be185d; font-weight: 700; }
+.yr-table .cur { background: #fff8e6 !important; }
+.yr-table thead th.cur { background: #fde9b8 !important; color: #8a5a00; }
+.yr-table .tot { font-weight: 800; background: #faf7ff; }
+.yr-table tfoot tr.sum th, .yr-table tfoot tr.sum td { background: #fdf2f8; color: #be185d; font-weight: 800; border-top: 2px solid #f5d0e4; }
+.yr-table tfoot tr.bank th, .yr-table tfoot tr.bank td { background: #ecfdf3; color: #15803d; font-weight: 800; }
+.yr-table tfoot .rl { background: inherit; }
+.empty-state.small { padding: .8rem; } .empty-state.small p { font-weight: 500; color: var(--muted); }
+.folders { display: grid; grid-template-columns: repeat(3, 1fr); gap: .7rem; margin-bottom: 1rem; }
+@media (max-width: 640px) { .folders { grid-template-columns: 1fr; } }
+.folder-card { display: flex; flex-direction: column; gap: .15rem; padding: 1rem; border-radius: 18px; text-decoration: none; color: inherit; border: 1px solid var(--border); background: var(--card); box-shadow: var(--shadow-sm); position: relative; overflow: hidden; transition: transform .12s; }
+.folder-card:hover { transform: translateY(-2px); }
+.folder-card span { font-size: 1.8rem; } .folder-card b { font-size: 1rem; } .folder-card small { color: var(--muted); }
+.folder-card::after { content: ''; position: absolute; inset-inline-end: -30px; top: -30px; width: 100px; height: 100px; border-radius: 50%; opacity: .5; }
+.f-center::after { background: #ede4ff; } .f-bank::after { background: #dcfce7; } .f-pv::after { background: #fff1d6; }
+.bank-up { display: flex; flex-wrap: wrap; gap: .7rem; align-items: stretch; margin-bottom: 1rem; }
+.bank-up > label:first-child { margin: 0; min-width: 160px; }
+.bank-up .drop-zone { flex: 1; margin: 0; }
+.bank-month { margin-bottom: .9rem; } .bank-month > b { display: block; margin-bottom: .4rem; color: var(--feed-purple); }
+.pv-list { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-direction: column; gap: .5rem; }
+.pv-list li { display: grid; grid-template-columns: 3.4rem 1fr; gap: .75rem; padding: .7rem .8rem; border-radius: 14px; background: var(--soft-2); }
+.pv-date { display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--card); border-radius: 12px; line-height: 1.2; }
+.pv-date b { direction: ltr; font-size: .9rem; color: var(--feed-purple); } .pv-date small { font-size: .7rem; color: var(--muted); }
+.pv-list p { margin: .2rem 0; font-size: .85rem; color: var(--text); white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pv-list small { color: var(--muted); font-size: .76rem; }
+.cat-pick { grid-template-columns: repeat(3, 1fr); }

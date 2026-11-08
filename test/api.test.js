@@ -1287,3 +1287,25 @@ test('alerts: the bell number clears once the alerts page is opened', async () =
   await admin('POST', '/api/alerts/seen');
   assert.strictEqual((await admin('GET', '/api/alerts')).body.count, 0);
 });
+
+test('accounting space: yearly table by type, bank statements and PV folders', async () => {
+  const admin = await login('admin', 'admin123');
+  assert.strictEqual((await admin('POST', '/api/accounting/expenses', { category: 'tax_quarterly', amount: 420, date: '2026-10-15' })).status, 201);
+  assert.strictEqual((await admin('POST', '/api/accounting/expenses', { category: 'accountant_fee', amount: 200, date: '2026-10-30' })).status, 201);
+  assert.strictEqual((await admin('POST', '/api/accounting/expenses', { category: 'bilan_annual', amount: 600, date: '2027-03-02' })).status, 201);
+  assert.strictEqual((await admin('POST', '/api/accounting/expenses', { category: 'salary', amount: 5, date: '2026-10-02' })).status, 400);
+  const y = (await admin('GET', '/api/accounting/year?month=2026-11')).body;
+  assert.strictEqual(y.year, '2026-2027');
+  assert.strictEqual(y.months.length, 12);
+  const row = (c) => y.groups.flatMap((g) => g.rows).find((r) => r.category === c);
+  assert.ok(row('tax_quarterly').months[1] >= 420);
+  assert.ok(row('accountant_fee').months[1] >= 200);
+  assert.ok(row('bilan_annual').months[6] >= 600);
+  assert.ok(y.groups.find((g) => g.key === 'recette').rows.some((r) => r.category === 'tax_monthly'));
+  const pdf = 'data:application/pdf;base64,' + Buffer.from('%PDF-1.4 test').toString('base64');
+  assert.strictEqual((await admin('POST', '/api/documents', { folder: 'bank', month: '2026-10', filename: 'extrait.pdf', data: pdf })).status, 201);
+  assert.strictEqual((await admin('POST', '/api/documents', { folder: 'pv', doc_date: '2026-11-03', filename: 'pv.pdf', data: pdf })).status, 201);
+  assert.ok((await admin('GET', '/api/documents?folder=bank')).body.documents.some((d) => d.month === '2026-10'));
+  assert.ok((await admin('GET', '/api/documents?folder=pv')).body.documents.some((d) => d.doc_date === '2026-11-03'));
+  assert.ok(Array.isArray((await admin('GET', '/api/accounting/pv')).body.meetings));
+});
