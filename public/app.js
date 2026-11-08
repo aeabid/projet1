@@ -409,10 +409,13 @@ const can = (perm) => !state.user || state.user.role !== 'admin' || state.user.s
 const HASH_PERM = {
   '#/board': 'stats', '#/finance': 'stats', '#/general': 'stats', '#/dashboard': 'school', '#/program/board': 'school',
   '#/payroll': 'salaries', '#/program/pay': 'salaries', '#/salaries': 'salaries', '#/staff': 'salaries',
-  '#/fees': 'fees', '#/accounting': 'accounting', '#/cash': 'cash', '#/support/teachers': 'accounts', '#/ledger': 'expenses',
-  '#/partners': 'super', '#/permissions': 'super', '#/admins': 'super', '#/center-debts': 'expenses',
+  '#/fees': 'fees', '#/accounting': 'accounting', '#/cash': 'cash', '#/ledger': 'expenses',
+  '#/partners': 'partners', '#/permissions': 'super', '#/admins': 'super', '#/center-debts': 'expenses',
+  '#/people': 'school', '#/parents': 'school', '#/parent-requests': 'school', '#/students': 'school', '#/program': 'school',
+  '#/attendance': 'school', '#/messages': 'school', '#/broadcast': 'school', '#/whatsapp': 'school', '#/courses': 'school',
+  '#/support/teachers': 'accounts', '#/program/staff': 'accounts', '#/debts': 'school',
 };
-const GROUP_PERM = { 'دروس الدعم': 'school', 'البرنامج التربوي': 'school' };
+const GROUP_PERM = { 'دروس الدعم': 'school', 'البرنامج التربوي': 'school', 'التواصل': 'school' };
 const navAllowed = (h) => {
   const p = HASH_PERM[h];
   if (!p || state.user?.role !== 'admin') return true;
@@ -655,7 +658,7 @@ function renderTopbar() {
        <button class="side-out" id="side-logout" title="خروج">${icon('logout')}</button></div>`;
   $('#side-logout').addEventListener('click', () => $('#logout').click());
   // شريط التنقل السفلي (الهاتف)
-  const tabs = TABS[navKey] || TABS.parent;
+  const tabs = (TABS[navKey] || TABS.parent).filter(([h]) => navAllowed(h));
   $('#tabbar').hidden = false;
   $('#tabbar').innerHTML =
     tabs.map(([h, l, ic]) => `<a href="${h}" class="${isActive(h) ? 'on' : ''}">${icon(ic)}<span>${l}</span></a>`).join('') +

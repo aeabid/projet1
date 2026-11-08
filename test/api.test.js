@@ -1326,3 +1326,21 @@ test('new initial password for a teacher or parent, and salaries over the whole 
   assert.ok(Array.isArray(y.groups));
   for (const g of y.groups) for (const p of g.people) assert.strictEqual(p.months.length, y.months.length);
 });
+
+test('partner account: statistics and partner share, no students or pedagogical data', async () => {
+  const admin = await login('admin', 'admin123');
+  const u = (await admin('POST', '/api/users', { role: 'admin', username: 'partner-x', full_name: 'شريك', password: 'secret1' })).body.user;
+  const perms = { school: false, stats: true, edit_payments: false, expenses: false, salaries: true, fees: false, delete: false, accounts: false, accounting: true, cash: true, partners: true };
+  assert.strictEqual((await admin('PUT', `/api/users/${u.id}/permissions`, { perms })).status, 200);
+  const p = await login('partner-x', 'secret1');
+  assert.strictEqual((await p('GET', '/api/partners')).status, 200);
+  assert.strictEqual((await p('PUT', '/api/partners/settings', { partners: [] })).status, 403);
+  const y = (await p('GET', '/api/dashboard/year?mode=school')).body;
+  assert.ok(y.totals.shares);
+  assert.strictEqual((await p('GET', '/api/kpis')).status, 200);
+  assert.strictEqual((await p('GET', '/api/cash')).status, 200);
+  for (const path of ['/api/students', '/api/program', '/api/attendance?level=7', '/api/center/people', '/api/courses']) {
+    assert.strictEqual((await p('GET', path)).status, 403, path);
+  }
+  assert.strictEqual((await p('GET', '/api/program/staff-pay')).status, 200);
+});

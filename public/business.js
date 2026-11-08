@@ -87,7 +87,7 @@ const BOARD_TABS = [
 ];
 async function viewBoardHub(el, tab = '') {
   el.innerHTML = `
-    <div class="board-tabs" role="tablist">${BOARD_TABS.filter(([k]) => k !== 'cash' || can('cash'))
+    <div class="board-tabs" role="tablist">${BOARD_TABS.filter(([k]) => (k !== 'cash' || can('cash')) && (k !== 'absences' || can('school')))
       .map(([k, i, l]) => `<a href="#/board${k ? '/' + k : ''}" class="${k === tab ? 'on' : ''}" role="tab"><span>${i}</span>${l}<b class="bt-badge" data-badge="${k}" hidden></b></a>`)
       .join('')}</div>
     <div id="board-page"></div>`;
@@ -1786,7 +1786,7 @@ async function viewPartners(el) {
     <div class="page-head"><div><a href="#/home" class="muted small">→ الرئيسية</a><h2>🤝 الشركاء والمرابيح</h2>
       <p class="muted">مرابيح كل شهر = مداخيله − مصاريفه، وكل مبلغ يُحتسب في الشهر الذي يخصّه (دفعة متأخرة تُضاف إلى شهرها فيتحدّث نصيب الشريك).
         ما يُعطى للشريك يُسجَّل «تسبقة»، والباقي = المتخلّد الإجمالي − التسبقات.</p></div>
-      <div class="actions"><button class="btn ghost" id="pt-settings">⚙️ النسب</button><button class="btn" id="pt-pay">+ تسبقة للشريك</button></div></div>
+      ${state.user.super_admin ? '<div class="actions"><button class="btn ghost" id="pt-settings">⚙️ النسب</button><button class="btn" id="pt-pay">+ تسبقة للشريك</button></div>' : ''}</div>
     <div class="fb-kpis">${d.summary
       .map(
         (s) => `<div class="fb-kpi net"><span>${esc(s.name)} — ${s.share}% منذ ${esc(monthLabel(s.from))}</span>
@@ -1797,7 +1797,7 @@ async function viewPartners(el) {
       )
       .join('')}</div>
     ${
-      d.owner_summary
+      d.owner_summary && state.user.super_admin
         ? `<section class="card owner-card"><div class="section-head"><h3>👤 حساب ${esc(d.owner)} (صاحب المشروع)</h3><a class="link small" href="#/cash">الصندوق ←</a></div>
             <div class="owner-grid">
               <div><small>نصيبك من المرابيح</small><b>${fmtMoney(d.owner_summary.due)}</b></div>
@@ -1843,12 +1843,12 @@ async function viewPartners(el) {
         ? `<ul class="levels">${d.payments
             .map(
               (p) => `<li><span>${fmtDate(p.paid_on)} — <b>${esc(p.partner)}</b>${p.note ? ` <span class="muted small">${esc(p.note)}</span>` : ''}</span>
-                <span><b>${fmtMoney(p.amount)}</b> <button class="link danger small" data-del="${p.id}">حذف</button></span></li>`
+                <span><b>${fmtMoney(p.amount)}</b>${state.user.super_admin ? ` <button class="link danger small" data-del="${p.id}">حذف</button>` : ''}</span></li>`
             )
             .join('')}</ul>`
         : '<p class="muted">لا دفعات بعد. الدفعات قبل شهر البداية تظهر منفصلة في البطاقة.</p>'
     }</section>`;
-  $('#pt-pay').addEventListener('click', () =>
+  $('#pt-pay')?.addEventListener('click', () =>
     openModal(
       'تسبقة للشريك',
       `<div class="row"><label>الشريك<select name="partner">${d.partners.map((p) => `<option>${esc(p.name)}</option>`).join('')}</select></label>
@@ -1862,7 +1862,7 @@ async function viewPartners(el) {
       }
     )
   );
-  $('#pt-settings').addEventListener('click', () =>
+  $('#pt-settings')?.addEventListener('click', () =>
     openModal(
       'نسب الشركاء',
       `<label>صاحب المركز (يأخذ الباقي)<input name="owner" value="${esc(d.owner)}"></label>
