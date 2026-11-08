@@ -1801,3 +1801,31 @@ body.kb-dragging { cursor: grabbing; user-select: none; }
 .lg.ok { background: #effaf4; color: #15803d; } .lg.part { background: #fff7e6; color: #b45309; } .lg.due { background: #fdf0f5; color: #be185d; }
 .seg button { border: 1px solid var(--border); background: var(--card); border-radius: 999px; padding: .45rem 1rem; font: inherit; font-weight: 700; color: var(--muted); cursor: pointer; }
 .seg button.on { background: var(--feed-purple); border-color: var(--feed-purple); color: #fff; }
+
+/* ===== جدول أوقات البرنامج التربوي ===== */
+.pt-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: .9rem; }
+.pt-group { background: var(--card); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; }
+.pt-group > header { display: flex; justify-content: space-between; align-items: flex-start; gap: .6rem; padding: .85rem 1rem; background: linear-gradient(120deg, hsl(var(--h) 85% 96%), hsl(var(--h) 80% 92%)); border-bottom: 3px solid hsl(var(--h) 65% 55%); }
+.pt-group h3 { margin: 0; color: hsl(var(--h) 60% 30%); font-size: 1.05rem; }
+.pt-group header small { color: hsl(var(--h) 25% 40%); font-size: .76rem; }
+.pt-slots { list-style: none; margin: 0; padding: .6rem; display: flex; flex-direction: column; gap: .4rem; }
+.pt-slots li { display: grid; grid-template-columns: 4.6rem auto 1fr auto; align-items: center; gap: .55rem; padding: .5rem .6rem; border-radius: 14px; background: var(--soft-2); }
+.pt-day { font-weight: 800; color: hsl(var(--h) 60% 35%); font-size: .88rem; }
+.pt-time { font-family: 'Tajawal', sans-serif; font-weight: 800; background: var(--card); border-radius: 10px; padding: .2rem .5rem; font-size: .88rem; white-space: nowrap; }
+.pt-meta { display: flex; flex-direction: column; min-width: 0; } .pt-meta b { font-size: .86rem; } .pt-meta small { color: var(--muted); font-size: .74rem; }
+.pt-acts { display: flex; gap: .3rem; }
+.pt-group footer { margin-top: auto; padding: .45rem 1rem .7rem; color: var(--muted); font-size: .78rem; }
+.pt-empty { padding: 1.2rem 1rem; color: var(--muted); text-align: center; font-size: .88rem; }
+@media (max-width: 520px) { .pt-slots li { grid-template-columns: 4rem 1fr auto; } .pt-meta { grid-column: 1 / -1; grid-row: 2; } }
+.pt-week { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .7rem; }
+.pt-wday { background: var(--soft-2); border-radius: 18px; padding: .6rem; }
+.pt-wday h4 { margin: .1rem .3rem .5rem; color: var(--feed-purple); }
+.pt-block { background: hsl(var(--h) 85% 95%); border-inline-start: 4px solid hsl(var(--h) 65% 55%); border-radius: 12px; padding: .45rem .6rem; margin-bottom: .4rem; display: flex; flex-direction: column; gap: .05rem; }
+.pt-block span { font-family: 'Tajawal', sans-serif; font-weight: 800; font-size: .85rem; text-align: start; }
+.pt-block b { color: hsl(var(--h) 60% 30%); font-size: .88rem; } .pt-block small { color: var(--muted); font-size: .74rem; }
+.pt-legend { display: flex; flex-wrap: wrap; gap: .4rem .9rem; margin-top: .8rem; font-size: .8rem; color: var(--muted); }
+.pt-legend i { display: inline-block; width: .7rem; height: .7rem; border-radius: 4px; background: hsl(var(--h) 65% 55%); margin-inline-end: .3rem; vertical-align: middle; }
+.day-pick { display: flex; flex-wrap: wrap; gap: .35rem; }
+.day-pick label { margin: 0; position: relative; } .day-pick input { position: absolute; opacity: 0; }
+.day-pick span { display: inline-block; padding: .4rem .75rem; border-radius: 999px; background: var(--soft-2); border: 2px solid transparent; font-weight: 700; font-size: .85rem; cursor: pointer; }
+.day-pick input:checked + span { background: #f3ecff; border-color: var(--feed-purple); color: var(--feed-purple); }

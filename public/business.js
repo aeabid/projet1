@@ -501,12 +501,14 @@ const ageOf = (birth) => {
 async function viewProgram(el) {
   if (state.user.role === 'teacher') return viewProgramTeacher(el);
   const { classes, children } = await api('GET', '/api/program');
-  const [{ users: parents }, { users: teachers }, { students }] = await Promise.all([
+  const [{ users: parents }, { users: teachers }, { students }, { slots: progSlots }] = await Promise.all([
     api('GET', '/api/users?role=parent'),
     api('GET', '/api/users?role=teacher'),
     api('GET', '/api/students'),
+    api('GET', '/api/program/slots').catch(() => ({ slots: [] })),
   ]);
   const lists = { classes, parents, teachers, students, children };
+  const timesOf = (id) => progSlots.filter((x) => x.class_id === id).map((x) => `${DAYS_AR[x.day - 1]} ${x.start_time}–${x.end_time}`).join('، ');
   const filter = sessionStorage.getItem('progClass') || '';
   const active = children.filter((c) => c.status === 'active');
   const monthlyExpected = active.filter((c) => !c.free).reduce((t, c) => t + (c.monthly_fee || 0), 0);
@@ -553,7 +555,7 @@ async function viewProgram(el) {
     const k = classes.find((x) => String(x.id) === f);
     $('#pf-edit-class').hidden = !k;
     $('#pf-edit-class').dataset.editClass = k ? k.id : '';
-    $('#pf-class-info').textContent = k ? [k.age_range, k.teacher_name && `المؤطّر: ${k.teacher_name}`, k.notes].filter(Boolean).join(' · ') : '';
+    $('#pf-class-info').textContent = k ? [k.age_range, k.teacher_name && `المؤطّر: ${k.teacher_name}`, timesOf(k.id) && `🗓 ${timesOf(k.id)}`, k.notes].filter(Boolean).join(' · ') : '';
     const list0 = children.filter(
       (c) => (!f || String(c.class_id) === f) && (!st || c.status === st) && (!q || c.full_name.toLowerCase().includes(q) || String(c.contact_name || '').toLowerCase().includes(q))
     );
@@ -1556,67 +1558,114 @@ async function viewProgramBoard(el) {
   await activityBoard($('#program-board'), 'program');
 }
 
+// جدول أوقات البرنامج التربوي: توقيت كل مجموعة، ونظرة أسبوعية
+const PROG_HUES = [262, 330, 200, 150, 28, 290, 180, 0];
 async function viewProgramTimetable(el) {
   const [{ slots }, { classes }, { users: teachers }] = await Promise.all([
     api('GET', '/api/program/slots'),
     api('GET', '/api/program'),
-    api('GET', '/api/users?role=teacher'),
+    api('GET', '/api/users?role=teacher').catch(() => ({ users: [] })),
   ]);
+  if (!el.isConnected) return;
   const admin = state.user.role === 'admin';
-  const filter = sessionStorage.getItem('progTtClass') || '';
-  const shown = slots.filter((s) => !filter || String(s.class_id) === filter);
-  el.innerHTML = `
-    <div class="page-head"><div><a href="#/home" class="muted small">→ الرئيسية</a><h2>🗓 جدول أوقات البرنامج التربوي</h2></div>
-      ${admin ? '<div class="actions"><button class="btn" id="slot-add">+ حصة</button></div>' : ''}</div>
-    <div class="filters"><select id="tt-class"><option value="">كل الأقسام</option>${classes
-      .map((k) => `<option value="${k.id}" ${filter === String(k.id) ? 'selected' : ''}>${esc(k.name)}</option>`)
-      .join('')}</select></div>
-    ${
-      shown.length
-        ? DAYS_AR.map((d, i) => {
-            const day = shown.filter((s) => s.day === i + 1);
-            return day.length
-              ? `<section class="card"><h3>${d}</h3><ul class="levels">${day
-                  .map(
-                    (s) => `<li><span><b>${esc(s.start_time)} – ${esc(s.end_time)}</b> ${esc(s.title || '')}
-                      <span class="muted small">${esc(s.class_name)}${s.teacher_name ? ' · ' + esc(s.teacher_name) : ''}${s.room ? ' · ' + esc(s.room) : ''}</span></span>
-                      ${admin ? `<span><button class="link" data-edit="${s.id}">تعديل</button> <button class="link danger" data-del="${s.id}">حذف</button></span>` : ''}</li>`
-                  )
-                  .join('')}</ul></section>`
-              : '';
-          }).join('')
-        : '<div class="card muted">لا توجد حصص بعد.</div>'
-    }`;
-  const form = (s) =>
+  const hue = (id) => PROG_HUES[classes.findIndex((k) => k.id === id) % PROG_HUES.length] ?? 262;
+  let view = sessionStorage.getItem('progTtView') || 'groups';
+  const dur = (s) => {
+    const [h1, m1] = s.start_time.split(':').map(Number);
+    const [h2, m2] = s.end_time.split(':').map(Number);
+    const m = h2 * 60 + m2 - (h1 * 60 + m1);
+    return m >= 60 ? `${Math.floor(m / 60)}س${m % 60 ? ` ${m % 60}د` : ''}` : `${m}د`;
+  };
+  const weekly = (list) => {
+    const m = list.reduce((t, s) => { const [a1, b1] = s.start_time.split(':').map(Number); const [a2, b2] = s.end_time.split(':').map(Number); return t + (a2 * 60 + b2) - (a1 * 60 + b1); }, 0);
+    return m ? `${Math.floor(m / 60)}س${m % 60 ? ` ${m % 60}د` : ''} في الأسبوع` : '';
+  };
+  const render = () => {
+    el.innerHTML = `
+      <div class="page-head"><div><a href="#/program" class="muted small">→ البرنامج التربوي</a><h2>🗓 جدول أوقات البرنامج التربوي</h2>
+        <p class="muted small">توقيت كل مجموعة طيلة الأسبوع. ${admin ? 'اضغط «+ توقيت» في بطاقة المجموعة لإضافة حصصها.' : ''}</p></div>
+        ${admin ? '<div class="actions"><button class="btn" id="slot-add">+ توقيت</button></div>' : ''}</div>
+      <div class="seg"><button type="button" data-v="groups" class="${view === 'groups' ? 'on' : ''}">👥 حسب المجموعة</button><button type="button" data-v="week" class="${view === 'week' ? 'on' : ''}">📅 الأسبوع</button></div>
+      ${view === 'groups' ? groupsHtml() : weekHtml()}`;
+    bind();
+  };
+  const groupsHtml = () => `<div class="pt-groups">${classes
+    .map((k) => {
+      const list = slots.filter((s) => s.class_id === k.id);
+      return `<article class="pt-group" style="--h:${hue(k.id)}">
+        <header><div><h3>${esc(k.name)}</h3><small>${[k.age_range, k.teacher_name && `👤 ${k.teacher_name}`, `${k.children} طفل`].filter(Boolean).map(esc).join(' · ')}</small></div>
+          ${admin ? `<button class="btn small" data-add="${k.id}">+ توقيت</button>` : ''}</header>
+        ${
+          list.length
+            ? `<ul class="pt-slots">${list
+                .map(
+                  (s) => `<li><span class="pt-day">${DAYS_AR[s.day - 1]}</span>
+                    <span class="pt-time" dir="ltr">${esc(s.start_time)} – ${esc(s.end_time)}</span>
+                    <span class="pt-meta">${s.title ? `<b>${esc(s.title)}</b>` : ''}<small>${[dur(s), s.teacher_name, s.room && `🚪 ${s.room}`].filter(Boolean).map(esc).join(' · ')}</small></span>
+                    ${admin ? `<span class="pt-acts"><button class="link small" data-edit="${s.id}">تعديل</button><button class="link danger small" data-del="${s.id}">✕</button></span>` : ''}</li>`
+                )
+                .join('')}</ul><footer>${weekly(list)}</footer>`
+            : `<div class="pt-empty">لا توقيت بعد لهذه المجموعة.</div>`
+        }
+      </article>`;
+    })
+    .join('')}</div>`;
+  const weekHtml = () => {
+    const days = [...new Set(slots.map((s) => s.day))].sort((a, b) => a - b);
+    if (!days.length) return '<div class="card muted">لا توجد حصص بعد. أضف توقيت كل مجموعة من «حسب المجموعة».</div>';
+    return `<div class="pt-week">${days
+      .map(
+        (d) => `<section class="pt-wday"><h4>${DAYS_AR[d - 1]}</h4>${slots
+          .filter((s) => s.day === d)
+          .map((s) => `<div class="pt-block" style="--h:${hue(s.class_id)}"><span dir="ltr">${esc(s.start_time)} – ${esc(s.end_time)}</span><b>${esc(s.class_name)}</b>${s.title ? `<small>${esc(s.title)}</small>` : ''}${s.teacher_name ? `<small>👤 ${esc(s.teacher_name)}</small>` : ''}</div>`)
+          .join('')}</section>`
+      )
+      .join('')}</div>
+      <div class="pt-legend">${classes.map((k) => `<span style="--h:${hue(k.id)}"><i></i>${esc(k.name)}</span>`).join('')}</div>`;
+  };
+  const form = (s, classId) => {
+    const staff = teachers.filter((t) => t.program_staff || t.program_classes);
+    const k = classes.find((x) => x.id === (s?.class_id ?? classId));
     openModal(
-      s ? 'تعديل حصة' : 'حصة جديدة',
-      `<label>القسم<select name="class_id">${classes.map((k) => `<option value="${k.id}" ${(s?.class_id ?? Number(filter)) === k.id ? 'selected' : ''}>${esc(k.name)}</option>`).join('')}</select></label>
-       <label>اليوم<select name="day">${DAYS_AR.map((d, i) => `<option value="${i + 1}" ${s?.day === i + 1 ? 'selected' : ''}>${d}</option>`).join('')}</select></label>
+      s ? 'تعديل التوقيت' : `🗓 توقيت ${k ? esc(k.name) : 'مجموعة'}`,
+      `<label>المجموعة<select name="class_id">${classes.map((x) => `<option value="${x.id}" ${(s?.class_id ?? classId) === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+       ${
+         s
+           ? `<label>اليوم<select name="day">${DAYS_AR.map((d, i) => `<option value="${i + 1}" ${s.day === i + 1 ? 'selected' : ''}>${d}</option>`).join('')}</select></label>`
+           : `<fieldset><legend>الأيام (نفس التوقيت)</legend><div class="day-pick">${DAYS_AR.map((d, i) => `<label><input type="checkbox" name="days" value="${i + 1}"><span>${d}</span></label>`).join('')}</div></fieldset>`
+       }
        <div class="row"><label>من<input type="time" name="start_time" value="${esc(s?.start_time || '')}" required></label>
          <label>إلى<input type="time" name="end_time" value="${esc(s?.end_time || '')}" required></label></div>
-       <label>النشاط / المحتوى<input name="title" value="${esc(s?.title || '')}" placeholder="مثال: أفلا ينظرون"></label>
-       <label>المؤطّر<select name="teacher_id"><option value="">—</option>${teachers.filter((t) => t.program_staff || t.program_classes).map((t) => `<option value="${t.id}" ${s?.teacher_id === t.id ? 'selected' : ''}>${esc(t.full_name)}</option>`).join('')}</select></label>
-       <label>القاعة<input name="room" value="${esc(s?.room || '')}"></label>`,
+       <label>النشاط / المحتوى<input name="title" value="${esc(s?.title || '')}" placeholder="مثال: أفلا ينظرون، لسان العرب، تحفيظ…"></label>
+       <div class="row"><label>المؤطّر<select name="teacher_id"><option value="">${k?.teacher_name ? `مؤطّر المجموعة (${esc(k.teacher_name)})` : '—'}</option>${staff.map((t) => `<option value="${t.id}" ${s?.teacher_id === t.id ? 'selected' : ''}>${esc(t.full_name)}</option>`).join('')}</select></label>
+         <label>القاعة<input name="room" value="${esc(s?.room || '')}"></label></div>`,
       async (data) => {
         if (s) await api('PUT', `/api/program/slots/${s.id}`, data);
-        else await api('POST', '/api/program/slots', data);
+        else {
+          const days = [...$('#modal').querySelectorAll('input[name=days]:checked')].map((x) => x.value);
+          if (!days.length) throw new Error('اختر يومًا واحدًا على الأقل');
+          const teacher = data.teacher_id || classes.find((x) => x.id === Number(data.class_id))?.teacher_id || '';
+          for (const day of days) await api('POST', '/api/program/slots', { ...data, day, teacher_id: teacher });
+        }
         toast('تم الحفظ');
         viewProgramTimetable(el);
       }
     );
-  $('#tt-class').addEventListener('change', (e) => {
-    sessionStorage.setItem('progTtClass', e.target.value);
-    viewProgramTimetable(el);
-  });
-  $('#slot-add')?.addEventListener('click', () => form(null));
-  el.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => form(slots.find((s) => s.id === Number(b.dataset.edit)))));
-  el.querySelectorAll('[data-del]').forEach((b) =>
-    b.addEventListener('click', async () => {
-      if (!confirmAction('حذف الحصة؟')) return;
-      await api('DELETE', `/api/program/slots/${b.dataset.del}`).catch((err) => toast(err.message, true));
-      viewProgramTimetable(el);
-    })
-  );
+  };
+  const bind = () => {
+    el.querySelectorAll('[data-v]').forEach((b) => b.addEventListener('click', () => { view = b.dataset.v; sessionStorage.setItem('progTtView', view); render(); }));
+    $('#slot-add')?.addEventListener('click', () => form(null, classes[0]?.id));
+    el.querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', () => form(null, Number(b.dataset.add))));
+    el.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => form(slots.find((s) => s.id === Number(b.dataset.edit)))));
+    el.querySelectorAll('[data-del]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirmAction('حذف هذا التوقيت؟')) return;
+        await api('DELETE', `/api/program/slots/${b.dataset.del}`).catch((err) => toast(err.message, true));
+        viewProgramTimetable(el);
+      })
+    );
+  };
+  render();
 }
 
 async function viewProgramNotes(el) {
