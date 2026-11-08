@@ -1494,6 +1494,7 @@ const QA_ICONS = {
   mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/>',
   report: '<path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
   edit: '<path d="M12 20h8"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  key: '<circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.2-8.2M17 6l2 2M15 8l2 2"/>',
   phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2Z"/>',
 };
 function quickActions(items) {
@@ -2339,6 +2340,119 @@ function bindFinance(el, f, { kind, id }, reload) {
 }
 
 // ---------- المستخدمون ----------
+// ---------- كلمة سر أوّلية + إرسالها عبر واتساب ----------
+const ROLE_WORD = { parent: 'الولي', teacher: 'المدرّس', admin: 'الإداري' };
+async function issuePassword(u, onDone) {
+  if (!confirmAction(`إصدار كلمة سر جديدة لـ ${u.full_name}؟\nكلمة السر القديمة تتبطّل، ويخرج من حسابه في كل الأجهزة.`)) return;
+  let r;
+  try {
+    r = await api('POST', `/api/users/${u.id}/new-password`);
+  } catch (err) {
+    return toast(err.message, true);
+  }
+  const link = location.origin;
+  const hello = r.role === 'parent' ? 'مرحبا' : 'مرحبا أستاذ(ة)';
+  const msg = `${hello} ${r.full_name} 🌿\nحسابك في منصّة مركز فيد:\n🔗 ${link}\n👤 اسم المستخدم: ${r.username}\n🔑 كلمة السر: ${r.password}\nننصحك بتغيير كلمة السر بعد أوّل دخول (حسابي ← كلمة السر).`;
+  const phone = u.phone || r.phone;
+  openModal(
+    '🔑 كلمة السر الجديدة',
+    `<div class="pw-card">
+       <div><small>اسم المستخدم</small><b dir="ltr">${esc(r.username)}</b></div>
+       <div><small>كلمة السر</small><b dir="ltr" class="pw">${esc(r.password)}</b></div>
+     </div>
+     <p class="muted small">ابعثها لـ${esc(ROLE_WORD[r.role] || '')} ${esc(r.full_name)} عبر واتساب، ولا انسخها. ما تظهرش مرّة أخرى.</p>
+     <div class="pw-acts">
+       ${waNumber(phone) ? `<a class="btn wa" target="_blank" rel="noopener" href="${esc(waUrl(phone, msg))}">${WA_ICON} إرسال عبر واتساب</a>` : '<span class="muted small">لا رقم هاتف لإرسال واتساب.</span>'}
+       <button type="button" class="btn ghost" id="pw-copy">📋 نسخ الرسالة</button>
+     </div>`,
+    async () => {}
+  );
+  $('#modal-form button[type=submit]').textContent = 'تم';
+  $('#pw-copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(msg);
+      toast('تم النسخ');
+    } catch {
+      toast('تعذّر النسخ', true);
+    }
+  });
+  onDone?.();
+}
+
+// ---------- قائمة المدرّسين / المؤطّرين: بطاقات أو جدول ----------
+function viewStaffList(el, users, { prog, title, addLabel, reload, edit }) {
+  let view = studentsView(prog ? 'progStaffView' : 'teachersView');
+  const phones = (u) => String(u.phone || '').split(/\s*[\/,;]\s*/).filter(Boolean);
+  const subj = (u) => (prog ? (u.program_classes ? `<span class="pk-chip prog">🎨 ${u.program_classes} قسم</span>` : '') : (u.subjects || []).map((x) => `<span class="pk-chip">${esc(x.name)}${x.teach_levels?.length ? `<i>${esc(x.teach_levels.join('، '))}</i>` : ''}</span>`).join(''));
+  const pay = (u) =>
+    prog
+      ? u.monthly_salary ? `${fmtMoney(u.monthly_salary)} / شهر` : u.pay_per_child ? `${fmtMoney(u.pay_per_child)} / طفل` : '<span class="muted">الأجرة غير محدّدة</span>'
+      : u.hourly_rate != null ? `${fmtMoney(u.hourly_rate)} / ساعة` : '<span class="error">معلوم الساعة غير محدّد</span>';
+  const payLink = (u) => (prog ? '#/program/pay' : `#/payroll/${u.id}`);
+  el.innerHTML = `
+    <div class="page-head"><h2>${esc(title)} <span class="muted small">(${users.length})</span></h2><button class="btn" id="add-user">${esc(addLabel)}</button></div>
+    <div class="filters"><input id="sq" type="search" placeholder="بحث بالاسم أو الهاتف أو المادة…">${viewToggle()}</div>
+    <div id="s-list"></div>`;
+  const render = () => {
+    const q = $('#sq').value.trim().toLowerCase();
+    const list = users.filter((u) => !q || [u.full_name, u.phone, u.username, ...(u.subjects || []).map((x) => x.name)].some((x) => String(x || '').toLowerCase().includes(q)));
+    $('#s-list').innerHTML = !list.length
+      ? '<div class="card muted">لا توجد حسابات.</div>'
+      : view === 'cards'
+      ? `<div class="pcards">${list
+          .map(
+            (u) => `<article class="pcard staff ${u.approved === false ? 'pending' : ''}">
+              <div class="pc-head">${avatar({ full_name: u.full_name }, 'md')}
+                <div><h3>${esc(u.full_name)}</h3><span class="pc-rate">${pay(u)}</span></div>
+                ${u.approved === false ? '<span class="badge average">ينتظر الموافقة</span>' : ''}</div>
+              <div class="pc-phones">${phones(u).length ? phones(u).map((p) => `<span class="pc-phone"><span dir="ltr">${esc(p)}</span><a class="pc-call" href="tel:${esc(p)}" aria-label="اتصال">📞</a>${waButton(p)}</span>`).join('') : '<span class="muted small">لا هاتف</span>'}</div>
+              <div class="pc-kids">${subj(u) || '<span class="muted small">—</span>'}</div>
+              <div class="pc-foot"><span class="muted small" dir="ltr">👤 ${esc(u.username)}</span>
+                <span>${u.approved === false ? `<button class="btn small" data-approve="${u.id}">✔ تفعيل</button>` : ''}<a class="btn ghost small" href="${payLink(u)}">${prog ? 'الأجرة' : 'الساعات'}</a><button class="btn ghost small" data-pw="${u.id}" title="كلمة سر جديدة">🔑</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
+            </article>`
+          )
+          .join('')}</div>`
+      : `<div class="table-wrap as-table"><table>
+          <thead><tr><th>الاسم</th><th>الهاتف</th><th>${prog ? 'الأقسام' : 'المواد'}</th><th>${prog ? 'الأجرة' : 'معلوم الساعة'}</th><th>اسم المستخدم</th><th></th></tr></thead>
+          <tbody>${list
+            .map(
+              (u) => `<tr>
+                <td><span class="who-cell">${avatar({ full_name: u.full_name }, 'sm')}<b>${esc(u.full_name)}</b></span>${u.approved === false ? ' <span class="badge average">ينتظر الموافقة</span>' : ''}</td>
+                <td>${phones(u).map((p) => `<span class="phone-line"><span dir="ltr">${esc(p)}</span>${waButton(p)}</span>`).join('') || '<span class="muted">—</span>'}</td>
+                <td><div class="pc-kids">${subj(u) || '<span class="muted">—</span>'}</div></td>
+                <td class="nowrap">${pay(u)} <a class="small" href="${payLink(u)}">←</a></td>
+                <td class="nowrap" dir="ltr">${esc(u.username)}</td>
+                <td class="row-actions">${u.approved === false ? `<button class="btn small" data-approve="${u.id}">✔ تفعيل</button>` : ''}<button class="btn ghost small" data-pw="${u.id}" title="كلمة سر جديدة">🔑 كلمة سر</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button><button class="btn danger small" data-del="${u.id}">حذف</button></td>
+              </tr>`
+            )
+            .join('')}</tbody></table></div>`;
+    const find = (id) => users.find((u) => u.id === Number(id));
+    $('#s-list').querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => edit(find(b.dataset.edit))));
+    $('#s-list').querySelectorAll('[data-pw]').forEach((b) => b.addEventListener('click', () => issuePassword(find(b.dataset.pw))));
+    $('#s-list').querySelectorAll('[data-approve]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const u = find(b.dataset.approve);
+        if (!confirmAction(`تفعيل حساب ${u.full_name}؟ (راجع موادّه ومستوياته بزر «تعديل»)`)) return;
+        await api('POST', `/api/users/${u.id}/approve`).catch((e) => toast(e.message, true));
+        reload();
+      })
+    );
+    $('#s-list').querySelectorAll('[data-del]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const u = find(b.dataset.del);
+        if (!confirmAction(`حذف حساب ${u.full_name}؟`)) return;
+        await api('DELETE', `/api/users/${u.id}`).catch((e) => toast(e.message, true));
+        reload();
+      })
+    );
+  };
+  bindViewToggle(el, prog ? 'progStaffView' : 'teachersView', () => view, (v) => (view = v), render);
+  let timer;
+  $('#sq').addEventListener('input', () => (clearTimeout(timer), (timer = setTimeout(render, 150))));
+  $('#add-user').addEventListener('click', () => edit(null));
+  render();
+}
+
 // قائمة الأولياء: بطاقات أو جدول
 function viewParentsList(el, users, reload, edit) {
   const kidsOf = (u) => [
@@ -2366,7 +2480,7 @@ function viewParentsList(el, users, reload, edit) {
               <div class="pc-phones">${phones(u).length ? phones(u).map((p) => `<span class="pc-phone"><span dir="ltr">${esc(p)}</span><a class="pc-call" href="tel:${esc(p)}" aria-label="اتصال">📞</a>${waButton(p)}</span>`).join('') : '<span class="muted small">لا هاتف</span>'}</div>
               <div class="pc-kids">${kidsOf(u).join('') || '<span class="muted small">—</span>'}</div>
               <div class="pc-foot"><span class="muted small" dir="ltr">${esc(u.username)}${u.cin ? ` · ${esc(u.cin)}` : ''}</span>
-                <span><a class="btn ghost small" href="#/parents/${u.id}">الملف</a><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
+                <span><a class="btn ghost small" href="#/parents/${u.id}">الملف</a><button class="btn ghost small" data-pw="${u.id}" title="كلمة سر جديدة">🔑</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
             </article>`
           )
           .join('')}</div>`
@@ -2379,11 +2493,12 @@ function viewParentsList(el, users, reload, edit) {
                 <td>${phones(u).map((p) => `<span class="phone-line"><span dir="ltr">${esc(p)}</span>${waButton(p)}</span>`).join('') || '<span class="muted">—</span>'}</td>
                 <td><div class="pc-kids">${kidsOf(u).join('') || '<span class="muted">—</span>'}</div></td>
                 <td class="nowrap" dir="ltr">${esc(u.username)}</td>
-                <td class="row-actions"><button class="btn ghost small" data-edit="${u.id}">تعديل</button>${u.id !== state.user.id ? `<button class="btn danger small" data-del="${u.id}">حذف</button>` : ''}</td>
+                <td class="row-actions"><button class="btn ghost small" data-pw="${u.id}">🔑 كلمة سر</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button>${u.id !== state.user.id ? `<button class="btn danger small" data-del="${u.id}">حذف</button>` : ''}</td>
               </tr>`
             )
             .join('')}</tbody></table></div>`;
     $('#p-list').querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => edit(users.find((u) => u.id === Number(b.dataset.edit)))));
+    $('#p-list').querySelectorAll('[data-pw]').forEach((b) => b.addEventListener('click', () => issuePassword(users.find((u) => u.id === Number(b.dataset.pw)))));
     $('#p-list').querySelectorAll('[data-del]').forEach((b) =>
       b.addEventListener('click', async () => {
         const u = users.find((x) => x.id === Number(b.dataset.del));
@@ -2409,7 +2524,7 @@ async function viewUsers(el, role, scope = null) {
   if (scope === 'support') users = users.filter((u) => !isProgram(u));
   if (scope === 'program') users = users.filter(isProgram);
   const prog = scope === 'program';
-  if (role !== 'parent') el.innerHTML = `
+  if (role === 'admin') el.innerHTML = `
     <div class="page-head">
       <h2>${titles[role]}</h2>
       <button class="btn" id="add-user">${addLabels[role]}</button>
@@ -2500,6 +2615,7 @@ async function viewUsers(el, role, scope = null) {
 
   // الأولياء: عرض بطاقات أو جدول، مع بحث
   if (role === 'parent') return viewParentsList(el, users, reload, form);
+  if (role === 'teacher') return viewStaffList(el, users, { prog, title: titles[role], addLabel: addLabels[role], reload, edit: form });
   $('#add-user').addEventListener('click', () => form(null));
   el.querySelectorAll('[data-approve]').forEach((b) =>
     b.addEventListener('click', async () => {

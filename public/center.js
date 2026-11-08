@@ -1228,6 +1228,7 @@ async function viewParent(el, id) {
       phones[0] ? { href: `tel:${phones[0]}`, icon: 'phone', label: 'اتصال', tone: 'blue' } : null,
       waNumber(p.phone) ? { href: waUrl(p.phone, ''), icon: 'wa', label: 'واتساب', tone: 'green' } : null,
       { id: 'pp-edit', icon: 'edit', label: 'تعديل المعطيات', tone: 'gray' },
+      { id: 'pp-pw', icon: 'key', label: 'كلمة سر جديدة', tone: 'purple' },
     ])}
     <section class="card info-card"><div class="section-head"><h3>🪪 معطيات الولي</h3></div>
       ${infoGrid([
@@ -1252,4 +1253,5 @@ async function viewParent(el, id) {
       }
     </section>`;
   $('#pp-edit').addEventListener('click', () => parentQuickEdit(id, () => viewParent(el, id)));
+  $('#pp-pw').addEventListener('click', () => issuePassword(p));
 }

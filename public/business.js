@@ -2050,18 +2050,60 @@ async function viewProducts(el) {
 async function viewSalaries(el) {
   el.innerHTML = `
     <div class="page-head"><div><a href="#/home" class="muted small">→ الرئيسية</a><h2>💼 الأجور</h2>
-      <p class="muted">كل أجور الشهر في مكان واحد: مدرّسو دروس الدعم، مؤطّرو البرنامج التربوي، الإدارة والنظافة.</p></div>
+      <p class="muted">كل الأجور في مكان واحد: مدرّسو دروس الدعم، مؤطّرو البرنامج التربوي، الإدارة والنظافة.</p></div>
       ${monthPicker('sal-month')}</div>
+    <div class="seg" role="tablist"><button type="button" data-sal="month" class="on">📅 الشهر</button><button type="button" data-sal="year">📆 السنة كاملة</button></div>
     <div id="sal-body"><p class="muted">جاري التحميل…</p></div>`;
+  let mode = sessionStorage.getItem('salMode') || 'month';
   const ICONS = { support: '📚', program: '🎨', admin: '🏢' };
   const LINKS = {
     support: '<a class="btn ghost small" href="#/payroll">خلاص المدرّسين ←</a>',
     program: '<a class="btn ghost small" href="#/program/staff">قائمة المؤطّرين ←</a>',
     admin: '<a class="btn ghost small" href="#/staff">إدارة القائمة (+ شخص) ←</a>',
   };
+  const loadYear = async () => {
+    const month = $('#sal-month').value;
+    $('#sal-body').innerHTML = '<p class="muted">جاري حساب السنة كاملة…</p>';
+    const y = await api('GET', '/api/salaries/year?month=' + month);
+    if (!$('#sal-body') || mode !== 'year') return;
+    const v = (n) => (n ? fmtMoney(n).replace(/\s*د\.ت$/, '') : '<span class="zero">—</span>');
+    const cell = (c) => {
+      if (!c || (!c.due && !c.paid)) return '<td><span class="zero">—</span></td>';
+      const st = c.paid >= c.due - 0.5 ? 'ok' : c.paid > 0 ? 'part' : 'due';
+      return `<td class="sc ${st}" title="مستحق ${fmtMoney(c.due)} · مدفوع ${fmtMoney(c.paid)}"><b>${v(c.due)}</b>${st !== 'ok' ? `<small>${c.paid ? `دُفع ${v(c.paid)}` : 'لم يُدفع'}</small>` : '<small>✓</small>'}</td>`;
+    };
+    const short = (m) => monthLabel(m).split(' ')[0];
+    const T = y.totals;
+    $('#sal-body').innerHTML = `
+      <div class="fb-kpis">
+        <div class="fb-kpi out"><span>كل الأجور المستحقة · ${esc(y.year)}</span><b>${fmtMoney(T.due)}</b><small>${y.months.length} أشهر</small></div>
+        <div class="fb-kpi in"><span>مدفوع</span><b>${fmtMoney(T.paid)}</b><small>${T.due ? Math.round((T.paid / T.due) * 100) : 0}%</small></div>
+        <div class="fb-kpi net ${T.remaining > 0.5 ? 'neg' : ''}"><span>باقي للخلاص</span><b>${fmtMoney(Math.max(T.remaining, 0))}</b><small>${T.remaining > 0.5 ? 'على كامل السنة' : 'كل الأجور خالصة'}</small></div>
+      </div>
+      <section class="card"><div class="section-head"><div><h3>📆 الأجور طيلة السنة ${esc(y.year)}</h3>
+        <p class="muted small">كل خانة: المستحق في ذلك الشهر. <span class="lg ok">خالص</span> <span class="lg part">دُفع جزء</span> <span class="lg due">لم يُدفع</span></p></div></div>
+        <div class="yr-wrap"><table class="yr-table sal-year">
+          <thead><tr><th class="rl">الاسم</th>${y.months.map((m) => `<th>${esc(short(m))}</th>`).join('')}<th class="tot">المستحق</th><th class="tot">المدفوع</th><th class="tot">الباقي</th></tr></thead>
+          <tbody>${y.groups
+            .map(
+              (g) => `<tr class="grp"><th colspan="${y.months.length + 4}">${ICONS[g.key] || ''} ${esc(g.label)} · مستحق ${fmtMoney(g.due)} · مدفوع ${fmtMoney(g.paid)}</th></tr>${g.people
+                .map(
+                  (p) => `<tr><th class="rl">${p.link ? `<a href="${p.link}">${esc(p.name)}</a>` : esc(p.name)}</th>${p.months.map(cell).join('')}
+                    <td class="tot">${v(p.due)}</td><td class="tot in">${v(p.paid)}</td><td class="tot ${p.remaining > 0.5 ? 'owe' : ''}">${p.remaining > 0.5 ? v(p.remaining) : '✓'}</td></tr>`
+                )
+                .join('')}`
+            )
+            .join('')}</tbody>
+          <tfoot><tr class="sum"><th class="rl">المجموع</th>${y.month_totals.map((t) => `<td>${v(t.due)}${t.due - t.paid > 0.5 ? `<small>باقي ${v(t.due - t.paid)}</small>` : ''}</td>`).join('')}
+            <td class="tot">${v(T.due)}</td><td class="tot">${v(T.paid)}</td><td class="tot">${T.remaining > 0.5 ? v(T.remaining) : '✓'}</td></tr></tfoot>
+        </table></div></section>`;
+  };
   const load = async () => {
+    el.querySelectorAll('[data-sal]').forEach((b) => b.classList.toggle('on', b.dataset.sal === mode));
+    if (mode === 'year') return loadYear();
     const month = $('#sal-month').value;
     const r = await api('GET', '/api/salaries?month=' + month);
+    if (!$('#sal-body') || mode !== 'month') return; // تبدّل العرض قبل اكتمال التحميل
     const rest = Math.max(r.due - r.paid, 0);
     $('#sal-body').innerHTML = `
       <div class="fb-kpis">
@@ -2120,6 +2162,13 @@ async function viewSalaries(el) {
       })
     );
   };
+  el.querySelectorAll('[data-sal]').forEach((b) =>
+    b.addEventListener('click', () => {
+      mode = b.dataset.sal;
+      sessionStorage.setItem('salMode', mode);
+      load();
+    })
+  );
   bindMonth('sal-month', load);
   await load();
 }

@@ -1774,3 +1774,30 @@ body.kb-dragging { cursor: grabbing; user-select: none; }
 .pv-list p { margin: .2rem 0; font-size: .85rem; color: var(--text); white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .pv-list small { color: var(--muted); font-size: .76rem; }
 .cat-pick { grid-template-columns: repeat(3, 1fr); }
+
+/* ===== كلمة السر الأوّلية ===== */
+.pw-card { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin-bottom: .6rem; }
+.pw-card > div { background: #f5efff; border-radius: 14px; padding: .7rem .8rem; display: flex; flex-direction: column; gap: .15rem; }
+.pw-card small { color: var(--muted); font-size: .75rem; }
+.pw-card b { font-size: 1.15rem; font-family: ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: .03em; }
+.pw-card .pw { color: var(--feed-purple); font-size: 1.3rem; }
+.pw-acts { display: flex; flex-wrap: wrap; gap: .5rem; }
+/* بطاقات المدرّسين */
+.pcard.staff .pc-head { align-items: flex-start; }
+.pcard.staff .pc-head > div { flex: 1; }
+.pc-rate { display: inline-block; margin-top: .15rem; font-size: .82rem; font-weight: 700; color: var(--feed-purple); background: #f3ecff; border-radius: 999px; padding: .1rem .55rem; }
+.pc-rate .error, .pc-rate .muted { font-weight: 600; }
+.pcard.pending { border-color: #fcd34d; background: linear-gradient(180deg, #fffbeb, var(--card) 40%); }
+.pc-foot > span:last-child { flex-wrap: wrap; justify-content: flex-end; }
+/* الأجور السنوية */
+.sal-year td { vertical-align: middle; }
+.sal-year td small { display: block; font-size: .66rem; font-family: inherit; font-weight: 600; }
+.sal-year td.sc.ok { background: #effaf4; } .sal-year td.sc.ok small { color: #15803d; }
+.sal-year td.sc.part { background: #fff7e6; } .sal-year td.sc.part small { color: #b45309; }
+.sal-year td.sc.due { background: #fdf0f5; } .sal-year td.sc.due small { color: #be185d; }
+.sal-year td.tot.in { color: var(--good); } .sal-year td.tot.owe { color: #be185d; }
+.sal-year .rl a { color: inherit; text-decoration: none; } .sal-year .rl a:hover { color: var(--feed-purple); }
+.lg { display: inline-block; padding: 0 .45rem; border-radius: 6px; font-size: .72rem; margin-inline-start: .3rem; }
+.lg.ok { background: #effaf4; color: #15803d; } .lg.part { background: #fff7e6; color: #b45309; } .lg.due { background: #fdf0f5; color: #be185d; }
+.seg button { border: 1px solid var(--border); background: var(--card); border-radius: 999px; padding: .45rem 1rem; font: inherit; font-weight: 700; color: var(--muted); cursor: pointer; }
+.seg button.on { background: var(--feed-purple); border-color: var(--feed-purple); color: #fff; }

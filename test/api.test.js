@@ -1309,3 +1309,20 @@ test('accounting space: yearly table by type, bank statements and PV folders', a
   assert.ok((await admin('GET', '/api/documents?folder=pv')).body.documents.some((d) => d.doc_date === '2026-11-03'));
   assert.ok(Array.isArray((await admin('GET', '/api/accounting/pv')).body.meetings));
 });
+
+test('new initial password for a teacher or parent, and salaries over the whole school year', async () => {
+  const admin = await login('admin', 'admin123');
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'pw-t', full_name: 'مدرّس كلمة سر', password: 'secret1', phone: '22111333' })).body.user;
+  const r = await admin('POST', `/api/users/${t.id}/new-password`);
+  assert.strictEqual(r.status, 200);
+  assert.match(r.body.password, /^feed[a-z]{2}\d{4}$/);
+  assert.strictEqual(r.body.username, 'pw-t');
+  await login('pw-t', r.body.password); // تدخل بكلمة السر الجديدة
+  const old = await call('POST', '/api/login', { username: 'pw-t', password: 'secret1' });
+  assert.strictEqual(old.status, 401);
+  const y = (await admin('GET', '/api/salaries/year?month=2026-10')).body;
+  assert.strictEqual(y.year, '2026-2027');
+  assert.ok(y.months[0] === '2026-09');
+  assert.ok(Array.isArray(y.groups));
+  for (const g of y.groups) for (const p of g.people) assert.strictEqual(p.months.length, y.months.length);
+});
