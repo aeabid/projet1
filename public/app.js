@@ -54,6 +54,9 @@ function avatar(st, cls = '') {
     : `<span class="avatar ${cls}">${initial}</span>`;
 }
 
+// الرابط الرسمي للمنصّة: كل رابط يُرسَل للأولياء والمدرّسين يكون بهذا العنوان
+const PUBLIC_URL = 'https://education.feed.tn';
+
 // ---------- واتساب ----------
 // رقم دولي لواتساب: الرقم الأول فقط، والأرقام التونسية (8 أرقام) يُضاف لها 216
 function waNumber(phone) {
@@ -97,7 +100,7 @@ function fillTemplate(text, vars) {
     .replaceAll('{التلميذ}', vars.student || '')
     .replaceAll('{المبلغ}', vars.amount || '')
     .replaceAll('{التاريخ}', fmtDate(today()))
-    .replaceAll('{الرابط}', location.origin);
+    .replaceAll('{الرابط}', PUBLIC_URL);
 }
 
 async function copyText(text) {
@@ -848,7 +851,7 @@ async function viewDashboard(el) {
     }
     <div class="card share">
       <span>🔗 رابط تسجيل الأولياء:</span>
-      <code dir="ltr" id="reg-link">${esc(location.origin)}/#/register</code>
+      <code dir="ltr" id="reg-link">${PUBLIC_URL}/#/register</code>
       <button class="btn small ghost" id="copy-reg">نسخ</button>
     </div>
     <div id="support-board"></div>
@@ -2033,7 +2036,7 @@ function closePaySheet() {
   document.body.classList.remove('sel-open');
 }
 function receiptWaText(r) {
-  const link = `${location.origin}${location.pathname}#/receipt/${r.kind}/${r.id}`;
+  const link = `${PUBLIC_URL}/#/receipt/${r.kind}/${r.id}`;
   return `السلام عليكم ${r.payer || ''}،\nتسلّمنا خلاصكم — مركز فيد 🌿\nوصل رقم ${r.receipt_no} · ${fmtDate(r.paid_on)}\n${r.beneficiary}: ${r.months
     .map(monthLabel)
     .join('، ')}\nالمبلغ: ${fmtMoney(r.total)}\n\nالوصل في حسابكم على التطبيقة:\n${link}\nشكرًا لكم.`;
@@ -2356,7 +2359,7 @@ async function issuePassword(u, onDone) {
   } catch (err) {
     return toast(err.message, true);
   }
-  const link = location.origin;
+  const link = PUBLIC_URL;
   const hello = r.role === 'parent' ? 'مرحبا' : 'مرحبا أستاذ(ة)';
   const msg = `${hello} ${r.full_name} 🌿\nحسابك في منصّة مركز فيد:\n🔗 ${link}\n👤 اسم المستخدم: ${r.username}\n🔑 كلمة السر: ${r.password}\nننصحك بتغيير كلمة السر بعد أوّل دخول (حسابي ← كلمة السر).`;
   const phone = u.phone || r.phone;
