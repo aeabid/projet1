@@ -1458,3 +1458,26 @@ test('login works when the password or username is pasted with spaces or invisib
   assert.strictEqual(rtl.status, 200);
   assert.strictEqual((await call('POST', '/api/login', { username: 'paste-t', password: 'feedab9999' })).status, 401);
 });
+
+test('class task with a video link and attached files, visible to the parents of that level', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const math = meta.subjects.find((x) => x.name === 'الرياضيات').id;
+  const t = (await admin('POST', '/api/tasks', { level: '7', subject_id: math, title: 'درس الكسور', video_url: 'https://youtu.be/dQw4w9WgXcQ' })).body.task;
+  assert.strictEqual((await admin('POST', '/api/tasks', { level: '7', subject_id: math, title: 'x', video_url: 'javascript:alert(1)' })).status, 400);
+  const pdf = 'data:application/pdf;base64,' + Buffer.from('%PDF-1.4 cours').toString('base64');
+  const f = await admin('POST', `/api/tasks/${t.id}/files`, { filename: 'cours.pdf', data: pdf });
+  assert.strictEqual(f.status, 201);
+  const list = (await admin('GET', '/api/tasks')).body.tasks.find((x) => x.id === t.id);
+  assert.strictEqual(list.video_url, 'https://youtu.be/dQw4w9WgXcQ');
+  assert.deepStrictEqual(list.files.map((x) => x.filename), ['cours.pdf']);
+  // ولي تلميذ في السابعة يحمّل الملف، وولي في مستوى آخر لا
+  const p7 = (await admin('POST', '/api/users', { role: 'parent', username: 'tf-p7', full_name: 'ولي سابعة', password: 'secret1' })).body.user;
+  await admin('POST', '/api/students', { full_name: 'تلميذ سابعة', level: '7', parent_id: p7.id, start_date: '2026-11-01' });
+  const p5 = (await admin('POST', '/api/users', { role: 'parent', username: 'tf-p5', full_name: 'ولي خامسة', password: 'secret1' })).body.user;
+  await admin('POST', '/api/students', { full_name: 'تلميذ خامسة', level: '5', parent_id: p5.id, start_date: '2026-11-01' });
+  const res7 = await handle(new Request(`http://localhost/api/task-files/${f.body.id}`, { headers: { cookie: (await call('POST', '/api/login', { username: 'tf-p7', password: 'secret1' })).headers.get('set-cookie').split(';')[0] } }));
+  assert.strictEqual(res7.status, 200);
+  const res5 = await handle(new Request(`http://localhost/api/task-files/${f.body.id}`, { headers: { cookie: (await call('POST', '/api/login', { username: 'tf-p5', password: 'secret1' })).headers.get('set-cookie').split(';')[0] } }));
+  assert.strictEqual(res5.status, 403);
+});

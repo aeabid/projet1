@@ -3056,7 +3056,18 @@ function taskItem(t, canDelete) {
     </div>
     <b>${esc(t.title)}</b>
     ${t.description ? `<p>${esc(t.description)}</p>` : ''}
+    ${t.video_url ? videoBlock(t.video_url) : ''}
+    ${(t.files || []).length ? `<div class="t-attach">${t.files.map((f) => `<a class="t-file" href="/api/task-files/${f.id}" target="_blank" rel="noopener">${fileIcon(f.mime)}<span>${esc(f.filename)}</span><small>${fmtSize(f.size)}</small></a>`).join('')}</div>` : ''}
   </li>`;
+}
+const fileIcon = (mime = '') => (/pdf/.test(mime) ? '📄' : /image/.test(mime) ? '🖼️' : /word|document/.test(mime) ? '📝' : /sheet|excel/.test(mime) ? '📊' : /presentation|powerpoint/.test(mime) ? '📽️' : /audio/.test(mime) ? '🎧' : /video/.test(mime) ? '🎞️' : '📎');
+const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} م.ب` : `${Math.max(1, Math.round(n / 1024))} ك.ب`);
+// فيديو: YouTube يُعرض داخل الصفحة، وغيره رابط
+function videoBlock(url) {
+  const m = /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/.exec(url);
+  return m
+    ? `<div class="t-video"><iframe src="https://www.youtube-nocookie.com/embed/${m[1]}" title="فيديو" loading="lazy" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe></div>`
+    : `<a class="t-file video" href="${esc(url)}" target="_blank" rel="noopener">🎬<span>مشاهدة الفيديو</span><small dir="ltr">${esc(url.replace(/^https?:\/\//, '').slice(0, 40))}</small></a>`;
 }
 
 // المواد التي يستطيع المستخدم العمل عليها (المعلم: مواده فقط)
@@ -3094,9 +3105,14 @@ async function viewTasks(el) {
               </div>
               <label>العنوان<input name="title" required placeholder="مثال: تمارين الصفحة 45"></label>
               <label>التفاصيل<textarea name="description" rows="3"></textarea></label>
-              <label>آخر أجل<input type="date" name="due_date"></label>
-              <button class="btn">نشر المهمة</button>
-              <p class="muted small">تظهر المهمة لكل أولياء تلاميذ هذا المستوى المسجّلين في المادة.</p>
+              <div class="row">
+                <label>🎬 رابط فيديو (اختياري)<input name="video_url" type="url" dir="ltr" placeholder="https://youtube.com/…"></label>
+                <label>آخر أجل<input type="date" name="due_date"></label>
+              </div>
+              <label class="drop-zone small" id="t-drop"><span>📎</span><b id="t-files-label">إرفاق ملفات (PDF، صور، Word…) — اختياري</b><input type="file" id="t-files" multiple hidden></label>
+              <ul class="t-files" id="t-files-list"></ul>
+              <button class="btn" id="t-submit">نشر المهمة</button>
+              <p class="muted small">تظهر المهمة (والفيديو والملفات) لكل أولياء تلاميذ هذا المستوى المسجّلين في المادة. الملف 4 ميغا على الأكثر.</p>
             </form>
           </div>`
         : '<div class="card muted">لم تُسند لك أي مادة بعد.</div>'
@@ -3107,14 +3123,39 @@ async function viewTasks(el) {
     </section>`;
   if ($('#task-form')) {
     bindSubjectLevel($('#t-subject'), $('#t-level'), sessionStorage.getItem('levelFilter'));
+    let files = [];
+    const showFiles = () => {
+      $('#t-files-list').innerHTML = files.map((f, i) => `<li><span>${fileIcon(f.type)} ${esc(f.name)} <small class="muted">${fmtSize(f.size)}</small></span><button type="button" class="link danger small" data-rm="${i}">✕</button></li>`).join('');
+      $('#t-files-list').querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', () => { files.splice(Number(b.dataset.rm), 1); showFiles(); }));
+    };
+    const addFiles = (list) => {
+      for (const f of list) {
+        if (f.size > 4 * 1024 * 1024) toast(`${f.name}: أكبر من 4 ميغا`, true);
+        else files.push(f);
+      }
+      showFiles();
+    };
+    $('#t-files').addEventListener('change', (e) => (addFiles([...e.target.files]), (e.target.value = '')));
+    const dz = $('#t-drop');
+    ['dragenter', 'dragover'].forEach((t) => dz.addEventListener(t, (e) => (e.preventDefault(), dz.classList.add('over'))));
+    ['dragleave', 'drop'].forEach((t) => dz.addEventListener(t, () => dz.classList.remove('over')));
+    dz.addEventListener('drop', (e) => (e.preventDefault(), addFiles([...e.dataTransfer.files])));
     $('#task-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const btn = $('#t-submit');
+      btn.disabled = true;
       try {
-        await api('POST', '/api/tasks', formData(e.target));
+        const { task } = await api('POST', '/api/tasks', formData(e.target));
+        for (const [i, f] of files.entries()) {
+          btn.textContent = `رفع الملفات ${i + 1}/${files.length}…`;
+          await api('POST', `/api/tasks/${task.id}/files`, { filename: f.name, data: await readFileData(f) });
+        }
         toast('تم نشر المهمة');
         viewTasks(el);
       } catch (err) {
         toast(err.message, true);
+        btn.disabled = false;
+        btn.textContent = 'نشر المهمة';
       }
     });
   }
