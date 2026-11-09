@@ -1956,3 +1956,6 @@ td div.phone-line { justify-content: flex-start; }
 .pr-expect { display: flex; justify-content: space-between; align-items: center; background: #f0f9ff; color: #0369a1; border-radius: 12px; padding: .4rem .7rem; font-size: .84rem; margin-bottom: .5rem; }
 .pr-expect b { font-family: 'Tajawal', sans-serif; font-size: 1rem; }
 .fb-kpis.four { grid-template-columns: repeat(4, minmax(0, 1fr)); } @media (max-width: 900px) { .fb-kpis.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.badge.also { display: inline-block; margin-top: .25rem; background: #fff1e6; color: #b45309; font-size: .72rem; }
+.vol-check { background: #ecfdf5; border-radius: 12px; padding: .5rem .7rem; margin: .3rem 0 .5rem; }
+.pay-fields input:disabled { opacity: .45; }

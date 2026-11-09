@@ -823,3 +823,8 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS doc_date DATE;
 -- ===== 20261122090000_impersonation.sql =====
 -- تجربة الواجهة: المدير يفتح التطبيقة بحساب آخر (للاطّلاع فقط)
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS impersonator_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+
+-- ===== 20261123090000_teacher_also_program.sql =====
+-- معلم الدعم يمكن أن يكون مؤطّرًا في البرنامج التربوي أيضًا (يحتفظ بمعلوم الساعة)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS also_program BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS volunteer BOOLEAN NOT NULL DEFAULT false;

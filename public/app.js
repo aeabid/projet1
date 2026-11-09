@@ -2476,18 +2476,49 @@ async function issuePassword(u, onDone) {
   onDone?.();
 }
 
+// أجرة المؤطّر: شهرية، أو عن كل طفل يدفع، أو متطوّع
+function programPayFields(u = {}) {
+  return `<label class="check vol-check"><input type="checkbox" name="volunteer" ${u.volunteer ? 'checked' : ''}> 🤝 <b>متطوّع</b> — بلا أجرة</label>
+    <div class="row pay-fields"><label>الأجرة الشهرية الثابتة (د.ت)<input name="monthly_salary" inputmode="decimal" value="${esc(u.monthly_salary ?? '')}" placeholder="مثال: 500"></label>
+      <label>أو مبلغ عن كل طفل يدفع (د.ت)<input name="pay_per_child" inputmode="decimal" value="${esc(u.pay_per_child ?? '')}" placeholder="مثال: 40"></label></div>`;
+}
+function bindProgramPay() {
+  const v = $('#modal input[name=volunteer]');
+  if (!v) return;
+  const sync = () => $('#modal .pay-fields').querySelectorAll('input').forEach((i) => (i.disabled = v.checked));
+  v.addEventListener('change', sync);
+  sync();
+}
+// معلم دعم يصبح مؤطّرًا أيضًا (أو تعديل أجرته في التربوي)
+function linkTeacherModal(allTeachers, u, reload) {
+  const candidates = allTeachers.filter((t) => !t.program_staff && (!t.also_program || t.id === u?.id));
+  openModal(
+    u ? `🎨 أجرة ${u.full_name} في التربوي` : '🎨 مؤطّر من المعلمين',
+    `${u ? '' : `<label>المعلم<select name="teacher_id" required><option value="">— اختر —</option>${candidates.map((t) => `<option value="${t.id}">${esc(t.full_name)}${t.subjects?.length ? ` (${esc(t.subjects.map((x) => x.name).join('، '))})` : ''}</option>`).join('')}</select></label>
+       <p class="muted small">يبقى معلّمًا في دروس الدعم بنفس معلوم الساعة، ويولّي زادة مؤطّرًا في البرنامج التربوي.</p>`}
+     ${programPayFields(u || {})}
+     <p class="muted small">القسم الذي يرافقه يُحدَّد من «الأطفال والأقسام» (تعديل القسم ← المؤطّر).</p>`,
+    async (data) => {
+      await api('POST', '/api/program/staff/link', { ...data, teacher_id: u?.id || data.teacher_id });
+      toast('تم الحفظ');
+      reload();
+    }
+  );
+  bindProgramPay();
+}
+
 // ---------- قائمة المدرّسين / المؤطّرين: بطاقات أو جدول ----------
-function viewStaffList(el, users, { prog, title, addLabel, reload, edit }) {
+function viewStaffList(el, users, { prog, title, addLabel, reload, edit, allTeachers = [] }) {
   let view = studentsView(prog ? 'progStaffView' : 'teachersView');
   const phones = (u) => String(u.phone || '').split(/\s*[\/,;]\s*/).filter(Boolean);
   const subj = (u) => (prog ? (u.program_classes ? `<span class="pk-chip prog">🎨 ${u.program_classes} قسم</span>` : '') : (u.subjects || []).map((x) => `<span class="pk-chip">${esc(x.name)}${x.teach_levels?.length ? `<i>${esc(x.teach_levels.join('، '))}</i>` : ''}</span>`).join(''));
   const pay = (u) =>
     prog
-      ? u.monthly_salary ? `${fmtMoney(u.monthly_salary)} / شهر` : u.pay_per_child ? `${fmtMoney(u.pay_per_child)} / طفل` : '<span class="muted">الأجرة غير محدّدة</span>'
+      ? u.volunteer ? '🤝 متطوّع' : u.monthly_salary ? `${fmtMoney(u.monthly_salary)} / شهر` : u.pay_per_child ? `${fmtMoney(u.pay_per_child)} / طفل` : '<span class="muted">الأجرة غير محدّدة</span>'
       : u.hourly_rate != null ? `${fmtMoney(u.hourly_rate)} / ساعة` : '<span class="error">معلوم الساعة غير محدّد</span>';
   const payLink = (u) => (prog ? '#/program/pay' : `#/payroll/${u.id}`);
   el.innerHTML = `
-    <div class="page-head"><h2>${esc(title)} <span class="muted small">(${users.length})</span></h2><button class="btn" id="add-user">${esc(addLabel)}</button></div>
+    <div class="page-head"><h2>${esc(title)} <span class="muted small">(${users.length})</span></h2><div class="actions">${prog ? '<button class="btn ghost" id="link-teacher">+ من المعلمين</button>' : ''}<button class="btn" id="add-user">${esc(addLabel)}</button></div></div>
     <div class="filters"><input id="sq" type="search" placeholder="بحث بالاسم أو الهاتف أو المادة…">${viewToggle()}</div>
     <div id="s-list"></div>`;
   const render = () => {
@@ -2500,7 +2531,7 @@ function viewStaffList(el, users, { prog, title, addLabel, reload, edit }) {
           .map(
             (u) => `<article class="pcard staff ${u.approved === false ? 'pending' : ''}">
               <div class="pc-head">${avatar({ full_name: u.full_name }, 'md')}
-                <div><h3>${esc(u.full_name)}</h3><span class="pc-rate">${pay(u)}</span></div>
+                <div><h3>${esc(u.full_name)}</h3><span class="pc-rate">${pay(u)}</span>${u.also_program ? `<span class="badge also">${prog ? '📚 معلم دعم أيضًا' : '🎨 مؤطّر أيضًا'}</span>` : ''}</div>
                 ${u.approved === false ? '<span class="badge average">ينتظر الموافقة</span>' : ''}</div>
               <div class="pc-phones">${phones(u).length ? phones(u).map((p) => `<span class="pc-phone"><span dir="ltr">${esc(p)}</span><a class="pc-call" href="tel:${esc(p)}" aria-label="اتصال">📞</a>${waButton(p)}</span>`).join('') : '<span class="muted small">لا هاتف</span>'}</div>
               <div class="pc-kids">${subj(u) || '<span class="muted small">—</span>'}</div>
@@ -2519,12 +2550,18 @@ function viewStaffList(el, users, { prog, title, addLabel, reload, edit }) {
                 <td><div class="pc-kids">${subj(u) || '<span class="muted">—</span>'}</div></td>
                 <td class="nowrap">${pay(u)} <a class="small" href="${payLink(u)}">←</a></td>
                 <td class="nowrap" dir="ltr">${esc(u.username)}</td>
-                <td class="row-actions">${u.approved === false ? `<button class="btn small" data-approve="${u.id}">✔ تفعيل</button>` : ''}<button class="btn ghost small" data-pw="${u.id}" title="كلمة سر جديدة">🔑 كلمة سر</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button><button class="btn danger small" data-del="${u.id}">حذف</button></td>
+                <td class="row-actions">${u.approved === false ? `<button class="btn small" data-approve="${u.id}">✔ تفعيل</button>` : ''}<button class="btn ghost small" data-pw="${u.id}" title="كلمة سر جديدة">🔑 كلمة سر</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button><button class="btn danger small" data-del="${u.id}">${prog && u.also_program ? 'إلغاء التأطير' : 'حذف'}</button></td>
               </tr>`
             )
             .join('')}</tbody></table></div>`;
     const find = (id) => users.find((u) => u.id === Number(id));
-    $('#s-list').querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => edit(find(b.dataset.edit))));
+    $('#s-list').querySelectorAll('[data-edit]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const u = find(b.dataset.edit);
+        if (prog && u.also_program) return linkTeacherModal(allTeachers, u, reload);
+        edit(u);
+      })
+    );
     $('#s-list').querySelectorAll('[data-pw]').forEach((b) => b.addEventListener('click', () => issuePassword(find(b.dataset.pw))));
     $('#s-list').querySelectorAll('[data-approve]').forEach((b) =>
       b.addEventListener('click', async () => {
@@ -2537,6 +2574,11 @@ function viewStaffList(el, users, { prog, title, addLabel, reload, edit }) {
     $('#s-list').querySelectorAll('[data-del]').forEach((b) =>
       b.addEventListener('click', async () => {
         const u = find(b.dataset.del);
+        if (prog && u.also_program) {
+          if (!confirmAction(`إلغاء دور ${u.full_name} كمؤطّر؟ يبقى معلّمًا في دروس الدعم.`)) return;
+          await api('DELETE', `/api/program/staff/${u.id}/link`).catch((e) => toast(e.message, true));
+          return reload();
+        }
         if (!confirmAction(`حذف حساب ${u.full_name}؟`)) return;
         await api('DELETE', `/api/users/${u.id}`).catch((e) => toast(e.message, true));
         reload();
@@ -2547,6 +2589,7 @@ function viewStaffList(el, users, { prog, title, addLabel, reload, edit }) {
   let timer;
   $('#sq').addEventListener('input', () => (clearTimeout(timer), (timer = setTimeout(render, 150))));
   $('#add-user').addEventListener('click', () => edit(null));
+  $('#link-teacher')?.addEventListener('click', () => linkTeacherModal(allTeachers, null, reload));
   render();
 }
 
@@ -2617,9 +2660,10 @@ async function viewUsers(el, role, scope = null) {
   const addLabels = { teacher: scope === 'program' ? '+ مؤطّر جديد' : '+ مدرّس جديد', parent: '+ ولي جديد', admin: '+ حساب إدارة' };
   let { users } = await api('GET', `/api/users?role=${role}`);
   // المدرّسون: من عنده مواد (دروس الدعم) / المؤطّرون: من عنده قسم في التربوي. الحساب الجديد بلا شيء يظهر في الاثنين
-  const isProgram = (u) => !!u.program_staff;
-  if (scope === 'support') users = users.filter((u) => !isProgram(u));
-  if (scope === 'program') users = users.filter(isProgram);
+  // معلم الدعم المؤطّر أيضًا (also_program) يظهر في القائمتين
+  const allTeachers = users;
+  if (scope === 'support') users = users.filter((u) => !u.program_staff);
+  if (scope === 'program') users = users.filter((u) => u.program_staff || u.also_program);
   const prog = scope === 'program';
   if (role === 'admin') el.innerHTML = `
     <div class="page-head">
@@ -2670,8 +2714,7 @@ async function viewUsers(el, role, scope = null) {
          <label>الهاتف<input name="phone" value="${esc(u.phone)}" dir="ltr"></label>
        </div>
        ${role === 'teacher' && !prog ? `<label>معلوم الساعة (د.ت)<input name="hourly_rate" inputmode="decimal" value="${esc(u.hourly_rate ?? '')}" placeholder="مثال: 20"></label>` : ''}
-       ${prog ? `<div class="row"><label>الأجرة الشهرية الثابتة (د.ت)<input name="monthly_salary" inputmode="decimal" value="${esc(u.monthly_salary ?? '')}" placeholder="مثال: 500"></label>
-         <label>أو مبلغ عن كل طفل يدفع (د.ت)<input name="pay_per_child" inputmode="decimal" value="${esc(u.pay_per_child ?? '')}" placeholder="مثال: 40"></label></div>
+       ${prog ? `${programPayFields(u)}
          <p class="muted small">القسم الذي يرافقه يُحدَّد من «الأطفال والأقسام» (تعديل القسم ← المؤطّر).</p>` : ''}
        <div class="row">
          <label>رقم بطاقة التعريف<input name="cin" value="${esc(u.cin)}" dir="ltr" inputmode="numeric"></label>
@@ -2711,6 +2754,7 @@ async function viewUsers(el, role, scope = null) {
         reload();
       }
     );
+    bindProgramPay();
     // المادة غير مفعّلة: أقسامها معطّلة؛ والتلميح يقول «كل الأقسام» أو عددها
     const sync = () =>
       $('#modal').querySelectorAll('.sl-row').forEach((row) => {
@@ -2726,7 +2770,7 @@ async function viewUsers(el, role, scope = null) {
 
   // الأولياء: عرض بطاقات أو جدول، مع بحث
   if (role === 'parent') return viewParentsList(el, users, reload, form);
-  if (role === 'teacher') return viewStaffList(el, users, { prog, title: titles[role], addLabel: addLabels[role], reload, edit: form });
+  if (role === 'teacher') return viewStaffList(el, users, { prog, title: titles[role], addLabel: addLabels[role], reload, edit: form, allTeachers });
   $('#add-user').addEventListener('click', () => form(null));
   el.querySelectorAll('[data-approve]').forEach((b) =>
     b.addEventListener('click', async () => {

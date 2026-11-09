@@ -1423,3 +1423,28 @@ test('levels: add, rename and order; a level with students cannot be deleted', a
   await admin('DELETE', `/api/students/${st.body.student.id}`);
   assert.strictEqual((await admin('PUT', '/api/levels', { levels: levels.map(({ code, label }) => ({ code, label })) })).status, 200);
 });
+
+test('a support teacher can also be a facilitator (keeps hourly rate), and a facilitator can be a volunteer', async () => {
+  const admin = await login('admin', 'admin123');
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'both-t', full_name: 'معلم ومؤطّر', password: 'secret1', hourly_rate: 15 })).body.user;
+  assert.strictEqual((await admin('POST', '/api/program/staff/link', { teacher_id: t.id, monthly_salary: 300 })).status, 200);
+  const users = (await admin('GET', '/api/users?role=teacher')).body.users;
+  const u = users.find((x) => x.id === t.id);
+  assert.deepStrictEqual([u.also_program, u.hourly_rate, u.monthly_salary, u.program_staff], [true, 15, 300, false]);
+  const staff = (await admin('GET', '/api/program/staff-pay?month=2026-11')).body.staff;
+  assert.ok(staff.some((s) => s.id === t.id && s.expected === 300));
+  const tl = await login('both-t', 'secret1');
+  assert.strictEqual((await tl('GET', '/api/me')).body.user.role_label, 'معلم · مؤطّر');
+  // متطوّع: بلا أجرة
+  await admin('POST', '/api/program/staff/link', { teacher_id: t.id, volunteer: true, monthly_salary: 300 });
+  const s2 = (await admin('GET', '/api/program/staff-pay?month=2026-11')).body.staff.find((s) => s.id === t.id);
+  assert.deepStrictEqual([s2.volunteer, s2.expected], [true, 0]);
+  // إلغاء التأطير: يبقى معلّمًا بنفس المعلوم
+  assert.strictEqual((await admin('DELETE', `/api/program/staff/${t.id}/link`)).status, 200);
+  const u2 = (await admin('GET', '/api/users?role=teacher')).body.users.find((x) => x.id === t.id);
+  assert.deepStrictEqual([u2.also_program, u2.hourly_rate], [false, 15]);
+  // مؤطّر جديد متطوّع
+  const v = (await admin('POST', '/api/users', { role: 'teacher', username: 'vol-x', full_name: 'متطوّعة', password: 'secret1', program_staff: true, volunteer: true, monthly_salary: 200 })).body.user;
+  const s3 = (await admin('GET', '/api/program/staff-pay?month=2026-11')).body.staff.find((s) => s.id === v.id);
+  assert.deepStrictEqual([s3.volunteer, s3.monthly_salary, s3.expected], [true, null, 0]);
+});
