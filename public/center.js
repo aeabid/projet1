@@ -305,7 +305,7 @@ async function viewFees(el) {
     <form id="fees-form">
       <section class="card">
         <h3>📚 دروس الدعم — سعر الباقة (كل المواد) لكل مستوى</h3>
-        <p class="muted small">الباقة = كل مواد المستوى، أو 5 حصص فأكثر في الأسبوع.</p>
+        <p class="muted small">الباقة = كل مواد المستوى، أو 4 حصص فأكثر في الأسبوع.</p>
         <div class="fee-grid">${state.meta.levels
           .map((l) => `<label>${esc(l.label)}<input name="s_${esc(l.code)}" inputmode="decimal" value="${esc(support[l.code] ?? '')}" placeholder="د.ت"></label>`)
           .join('')}</div>
@@ -323,8 +323,8 @@ async function viewFees(el) {
       </section>
       <section class="card">
         <h3>🧮 دروس الدعم — السعر حسب عدد الحصص في الأسبوع</h3>
-        <p class="muted small">عند تسجيل تلميذ جديد يُحسب سعره وحده حسب المواد التي يختارها (يمكن تغييره). 5 حصص فأكثر = سعر الباقة.</p>
-        <div class="fee-grid">${['1', '2', '3', '4']
+        <p class="muted small">عند تسجيل تلميذ جديد يُحسب سعره وحده حسب المواد التي يختارها (يمكن تغييره). <b>4 حصص فأكثر = سعر الباقة</b> (يُحدَّد لكل قسم في الأعلى).</p>
+        <div class="fee-grid">${['1', '2', '3']
           .map((n) => `<label>${n === '1' ? 'حصة واحدة' : n === '2' ? 'حصتان' : `${n} حصص`} في الأسبوع<input name="st_${n}" inputmode="decimal" value="${esc(steps[n] ?? '')}" placeholder="د.ت"></label>`)
           .join('')}</div>
         <h4>عدد حصص كل مادة في الأسبوع</h4>

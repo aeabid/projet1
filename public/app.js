@@ -483,8 +483,8 @@ const HASH_PERM = {
   '#/partners': 'partners', '#/permissions': 'super', '#/admins': 'super', '#/center-debts': 'expenses',
   '#/people': 'school', '#/parents': 'school', '#/parent-requests': 'school', '#/students': 'school', '#/program': 'school',
   '#/attendance': 'school', '#/messages': 'school', '#/broadcast': 'school', '#/whatsapp': 'school', '#/courses': 'school',
-  '#/support/teachers': 'accounts', '#/program/staff': 'accounts', '#/debts': 'school',
-  '#/levels': 'school', '#/broadcast/teachers': 'school', '#/broadcast/staff': 'school', '#/receipts': 'school', '#/products': 'school', '#/todo': 'school', '#/meetings': 'school', '#/alerts': 'school',
+  '#/support/teachers': 'accounts', '#/program/staff': 'accounts', '#/debts': 'expenses',
+  '#/levels': 'school', '#/broadcast/teachers': 'school', '#/broadcast/staff': 'school', '#/receipts': 'accounting', '#/products': 'expenses', '#/todo': 'school', '#/meetings': 'school', '#/alerts': 'school',
 };
 const GROUP_PERM = { 'دروس الدعم': 'school', 'البرنامج التربوي': 'school', 'التواصل': 'school', 'إدارة المركز': 'school' };
 const navAllowed = (h) => {
@@ -1259,9 +1259,9 @@ function suggestFee(level, pack, subjectIds, meta = state.meta) {
   const subs = meta.subjects.filter((s) => subjectIds.includes(s.id) && (!s.levels || s.levels.includes(level)));
   if (!subs.length) return null;
   const n = subs.reduce((t, s) => t + (Number(pr.units?.[s.id]) || 1), 0);
-  const step = n >= 5 ? packFee : Number(pr.steps?.[String(n)]) || null;
+  const step = n >= 4 ? packFee : Number(pr.steps?.[String(n)]) || null;
   const fee = packFee && step ? Math.min(step, packFee) : step || packFee;
-  return fee ? { fee, label: n >= 5 || fee === packFee ? `${n} حصص = الباقة` : `${n === 1 ? 'حصة' : n === 2 ? 'حصتان' : n + ' حصص'} في الأسبوع` } : null;
+  return fee ? { fee, label: n >= 4 || fee === packFee ? `${n} حصص = الباقة` : `${n === 1 ? 'حصة' : n === 2 ? 'حصتان' : n + ' حصص'} في الأسبوع` } : null;
 }
 
 // تغيير المعلوم في الاستمارة: من أي شهر يُطبَّق (الأشهر قبله تبقى بمعلومها)
