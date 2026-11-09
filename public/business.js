@@ -2144,7 +2144,7 @@ async function viewProducts(el) {
 async function viewSalaries(el) {
   el.innerHTML = `
     <div class="page-head"><div><a href="#/home" class="muted small">→ الرئيسية</a><h2>💼 الأجور</h2>
-      <p class="muted">كل الأجور في مكان واحد: مدرّسو دروس الدعم، مؤطّرو البرنامج التربوي، الإدارة والنظافة.</p></div>
+      <p class="muted">كل الأجور في مكان واحد: مدرّسو دروس الدعم، مؤطّرو البرنامج التربوي، الموارد البشرية الأخرى.</p></div>
       ${monthPicker('sal-month')}</div>
     <div class="seg" role="tablist"><button type="button" data-sal="month" class="on">📅 الشهر</button><button type="button" data-sal="year">📆 السنة كاملة</button></div>
     <div id="sal-body"><p class="muted">جاري التحميل…</p></div>`;
@@ -2270,7 +2270,7 @@ async function viewSalaries(el) {
 // ---------- لوحة المشرف العام: السنة كاملة ----------
 const BOARD_IN = { support: ['📚 دروس الدعم', '#6d28d9'], program: ['🎨 البرنامج التربوي', '#db2777'], courses: ['🏕️ الدورات والعطل', '#0ea5e9'], products: ['📗 المنتجات', '#10b981'], other: ['➕ مداخيل أخرى', '#94a3b8'] };
 const BOARD_EX = {
-  salaries_support: ['أجور مدرّسي الدعم', '#6d28d9'], salaries_program: ['أجور مؤطّري التربوي', '#db2777'], salaries_admin: ['أجور الإدارة والنظافة', '#f59e0b'],
+  salaries_support: ['أجور مدرّسي الدعم', '#6d28d9'], salaries_program: ['أجور مؤطّري التربوي', '#db2777'], salaries_admin: ['أجور الموارد البشرية الأخرى', '#f59e0b'],
   salaries_courses: ['أجور الدورات', '#0ea5e9'], rent: ['الكراء', '#64748b'], other: ['مصاريف أخرى', '#cbd5e1'],
 };
 async function viewBoard(el) {
