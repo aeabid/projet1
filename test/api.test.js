@@ -1401,3 +1401,21 @@ test('roles: add / edit / delete, assign to an account; director label; trial mo
   // غير المدير لا يجرّب
   assert.strictEqual((await s1('POST', '/api/impersonate', { user_id: t.id })).status, 403);
 });
+
+test('levels: add, rename and order; a level with students cannot be deleted', async () => {
+  const admin = await login('admin', 'admin123');
+  const { levels } = (await admin('GET', '/api/levels')).body;
+  assert.ok(levels.some((l) => l.code === '7'));
+  const next = [...levels.map(({ code, label }) => ({ code, label })), { code: '1s', label: 'الأولى ثانوي' }];
+  assert.strictEqual((await admin('PUT', '/api/levels', { levels: next })).status, 200);
+  assert.ok((await admin('GET', '/api/meta')).body.levels.some((l) => l.code === '1s'));
+  const st = await admin('POST', '/api/students', { full_name: 'تلميذ ثانوي', level: '1s', monthly_fee: 100, start_date: '2026-11-01' });
+  assert.strictEqual(st.status, 201);
+  // حذف قسم فيه تلميذ: مرفوض
+  assert.strictEqual((await admin('PUT', '/api/levels', { levels: next.filter((l) => l.code !== '1s') })).status, 409);
+  // رمز غير صالح
+  assert.strictEqual((await admin('PUT', '/api/levels', { levels: [...next, { code: 'ب ب', label: 'x' }] })).status, 400);
+  // نرجع القائمة الأصلية (بعد إخراج التلميذ)
+  await admin('DELETE', `/api/students/${st.body.student.id}`);
+  assert.strictEqual((await admin('PUT', '/api/levels', { levels: levels.map(({ code, label }) => ({ code, label })) })).status, 200);
+});

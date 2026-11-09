@@ -257,6 +257,70 @@ function confirmAction(message) {
   return window.confirm(message);
 }
 
+// اسم قصير للقسم (في الشارات): «السادسة أساسي (عن بعد)» ← «6 عن بعد»
+const LEVEL_SHORT = { 5: '5', 6: '6', '6-distance': '6 عن بعد', 7: '7', 8: '8', 9: '9' };
+const levelShort = (code) => LEVEL_SHORT[code] || levelLabel(code).replace(/\s*أساسي\s*/, ' ').trim();
+
+// ---------- الأقسام (المستويات): إضافة، تعديل، ترتيب، حذف ----------
+async function viewLevels(el) {
+  const { levels } = await api('GET', '/api/levels');
+  let list = levels.map((l) => ({ ...l }));
+  const render = () => {
+    el.innerHTML = `
+      <div class="page-head"><div><h2>🏫 الأقسام</h2>
+        <p class="muted small">مستويات دروس الدعم: تظهر في التلاميذ، المواد، جداول الأوقات واستمارة المدرّسين. قسم فيه تلاميذ لا يُحذف.</p></div>
+        <button class="btn" id="lv-add">+ قسم</button></div>
+      <ul class="lv-list">${list
+        .map(
+          (l, i) => `<li data-i="${i}">
+            <span class="lv-badge" style="--lv:${levelHue(l.code)}">${esc(levelShort(l.code) || '؟')}</span>
+            <label class="lv-name">اسم القسم<input data-f="label" value="${esc(l.label)}" placeholder="مثال: الأولى ثانوي"></label>
+            <label class="lv-code">الرمز<input data-f="code" value="${esc(l.code)}" dir="ltr" ${l.students !== undefined && l.saved !== false ? 'readonly' : ''} placeholder="مثال: 1s"></label>
+            <span class="lv-count">${l.students ? `👥 ${l.students}` : '<span class="muted small">فارغ</span>'}</span>
+            <span class="lv-acts">
+              <button type="button" class="icon-btn" data-up="${i}" ${i ? '' : 'disabled'} title="فوق">▲</button>
+              <button type="button" class="icon-btn" data-down="${i}" ${i < list.length - 1 ? '' : 'disabled'} title="لوطة">▼</button>
+              <button type="button" class="icon-btn danger" data-del="${i}" ${l.students ? 'disabled title="فيه تلاميذ"' : 'title="حذف"'}>✕</button>
+            </span>
+          </li>`
+        )
+        .join('')}</ul>
+      <div class="perm-foot sticky"><button class="btn" id="lv-save">💾 حفظ الأقسام</button><span class="muted small">الرمز ما يتبدّلش بعد الحفظ (مربوط بالتلاميذ والحصص)، أما الاسم والترتيب يتبدّلو وقت ما تحب.</span></div>`;
+    const read = () => el.querySelectorAll('.lv-list li').forEach((li) => {
+      const l = list[Number(li.dataset.i)];
+      li.querySelectorAll('[data-f]').forEach((x) => (l[x.dataset.f] = x.value.trim()));
+    });
+    const move = (i, d) => { read(); [list[i], list[i + d]] = [list[i + d], list[i]]; render(); };
+    el.querySelectorAll('[data-up]').forEach((b) => b.addEventListener('click', () => move(Number(b.dataset.up), -1)));
+    el.querySelectorAll('[data-down]').forEach((b) => b.addEventListener('click', () => move(Number(b.dataset.down), 1)));
+    el.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => {
+      read();
+      const l = list[Number(b.dataset.del)];
+      if (!confirmAction(`حذف قسم «${l.label}»؟`)) return;
+      list.splice(Number(b.dataset.del), 1);
+      render();
+    }));
+    $('#lv-add').addEventListener('click', () => {
+      read();
+      list.push({ code: '', label: '', saved: false });
+      render();
+      el.querySelector('.lv-list li:last-child input[data-f=label]').focus();
+    });
+    $('#lv-save').addEventListener('click', async () => {
+      read();
+      try {
+        await api('PUT', '/api/levels', { levels: list.map(({ code, label }) => ({ code, label })) });
+        state.meta = await api('GET', '/api/meta');
+        toast('تم حفظ الأقسام');
+        viewLevels(el);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  };
+  render();
+}
+
 function levelOptions(selected, withAll = false) {
   return (
     (withAll ? '<option value="">كل المستويات</option>' : '') +
@@ -292,6 +356,7 @@ const routes = [
   [/^#\/parent-requests$/, (el) => viewParentRequests(el)],
   [/^#\/register$/, viewRegister],
   [/^#\/attendance$/, viewAttendance],
+  [/^#\/levels$/, (el) => viewLevels(el)],
   [/^#\/tasks$/, viewTasks],
   [/^#\/timetable$/, viewTimetable],
   [/^#\/whatsapp$/, viewWhatsappGroups],
@@ -418,7 +483,7 @@ const HASH_PERM = {
   '#/people': 'school', '#/parents': 'school', '#/parent-requests': 'school', '#/students': 'school', '#/program': 'school',
   '#/attendance': 'school', '#/messages': 'school', '#/broadcast': 'school', '#/whatsapp': 'school', '#/courses': 'school',
   '#/support/teachers': 'accounts', '#/program/staff': 'accounts', '#/debts': 'school',
-  '#/receipts': 'school', '#/products': 'school', '#/todo': 'school', '#/meetings': 'school', '#/alerts': 'school',
+  '#/levels': 'school', '#/receipts': 'school', '#/products': 'school', '#/todo': 'school', '#/meetings': 'school', '#/alerts': 'school',
 };
 const GROUP_PERM = { 'دروس الدعم': 'school', 'البرنامج التربوي': 'school', 'التواصل': 'school', 'إدارة المركز': 'school' };
 const navAllowed = (h) => {
@@ -443,6 +508,7 @@ const NAV = {
         ['#/attendance', 'الغيابات'],
         ['', 'التنظيم'],
         ['#/timetable', 'جداول الأوقات'],
+        ['#/levels', 'الأقسام'],
         ['#/subjects', 'المواد'],
         ['', 'المدرّسون'],
         ['#/support/teachers', 'قائمة المدرّسين'],
@@ -2618,16 +2684,19 @@ async function viewUsers(el, role, scope = null) {
          <input name="password" type="text" dir="ltr" ${user ? '' : 'required'} minlength="6"></label>
        ${
          role === 'teacher' && !prog
-           ? `<fieldset><legend>المواد التي يدرّسها</legend><div class="checks">${state.meta.subjects
-               .map(
-                 (s) => `<div class="subject-levels"><label class="check"><input type="checkbox" name="subject_ids[]" value="${s.id}" ${ids.has(s.id) ? 'checked' : ''}> ${esc(s.name)}</label>
-                   <span class="lv-chips">${state.meta.levels
-                     .filter((l) => !s.levels || s.levels.includes(l.code))
-                     .map((l) => `<label class="chip-check"><input type="checkbox" data-lv="${s.id}" value="${l.code}" ${teach.get(s.id)?.includes(l.code) ? 'checked' : ''}> ${esc(l.code === '6-distance' ? '6 عن بعد' : l.code)}</label>`)
-                     .join('')}</span></div>`
-               )
-               .join('')}</div>
-               <p class="muted small">حدّد المستويات التي يدرّس فيها كل مادة. دون تحديد = كل مستويات المادة.</p></fieldset>`
+           ? `<fieldset class="sl-box"><legend>المواد والأقسام التي يدرّسها</legend>
+               <p class="muted small">فعّل المادة، ثم اختر أقسامها. دون اختيار قسم = يدرّسها في كل أقسامها.</p>
+               <div class="sl-list">${state.meta.subjects
+               .map((s) => {
+                 const lvls = state.meta.levels.filter((l) => !s.levels || s.levels.includes(l.code));
+                 return `<div class="sl-row ${ids.has(s.id) ? 'on' : ''}">
+                   <label class="sl-subj"><span class="switch"><input type="checkbox" name="subject_ids[]" value="${s.id}" ${ids.has(s.id) ? 'checked' : ''}><i></i></span><b>${esc(s.name)}</b><small class="sl-hint"></small></label>
+                   <div class="sl-levels">${lvls
+                     .map((l) => `<label class="sl-chip" title="${esc(l.label)}"><input type="checkbox" data-lv="${s.id}" value="${esc(l.code)}" ${teach.get(s.id)?.includes(l.code) ? 'checked' : ''}><span>${esc(levelShort(l.code))}</span></label>`)
+                     .join('') || '<span class="muted small">لا أقسام لهذه المادة</span>'}</div>
+                 </div>`;
+               })
+               .join('')}</div></fieldset>`
            : ''
        }`,
       async (data) => {
@@ -2642,6 +2711,17 @@ async function viewUsers(el, role, scope = null) {
         reload();
       }
     );
+    // المادة غير مفعّلة: أقسامها معطّلة؛ والتلميح يقول «كل الأقسام» أو عددها
+    const sync = () =>
+      $('#modal').querySelectorAll('.sl-row').forEach((row) => {
+        const on = row.querySelector('input[name="subject_ids[]"]').checked;
+        const picked = row.querySelectorAll('[data-lv]:checked').length;
+        row.classList.toggle('on', on);
+        row.querySelectorAll('[data-lv]').forEach((c) => (c.disabled = !on));
+        row.querySelector('.sl-hint').textContent = !on ? '' : picked ? `${picked} أقسام` : 'كل الأقسام';
+      });
+    $('#modal').querySelector('.sl-list')?.addEventListener('change', sync);
+    sync();
   };
 
   // الأولياء: عرض بطاقات أو جدول، مع بحث
@@ -2672,8 +2752,6 @@ async function viewUsers(el, role, scope = null) {
 function levelsText(levels) {
   return levels ? levels.map(levelShort).join('، ') : 'كل المستويات';
 }
-// اسم قصير للمستوى: «5»، «6 عن بعد»… (الاسم الكامل في التلميح)
-const levelShort = (code) => String(code).replace('-distance', ' عن بعد');
 const levelChips = (levels) =>
   levels
     ? `<span class="lv-chipset">${levels.map((c) => `<span class="lv-chip" title="${esc(levelLabel(c))}">${esc(levelShort(c))}</span>`).join('')}</span>`
