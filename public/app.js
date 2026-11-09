@@ -898,8 +898,6 @@ function viewLogin(el) {
           <button class="btn block">دخول</button>
           <div id="google-box" class="google-box" hidden><div class="or"><span>أو</span></div><div id="google-btn"></div>
             <p class="muted small center">للأولياء: ادخل بحساب Google واختر أبناءك.</p></div>
-          <p class="muted small center">ولي جديد؟ <a href="#/register"><b>سجّل أبناءك من هنا</b></a></p>
-          <p class="muted small center">مدرّس؟ <a href="#/register-teacher">أنشئ حسابك</a></p>
         </form>
       </div>
     </div>`;
