@@ -1876,3 +1876,26 @@ body.kb-dragging { cursor: grabbing; user-select: none; }
 body.read-only :is(#ac-add, #ac-add2, .att-add, .drop-zone, .dt-del, .al-del, [data-del], [data-edit], [data-del-doc], [data-del-exp], [data-undo],
   #add-task, #add-problem, #kb-add, #add-meeting, #cs-exp, #pt-pay, #pt-settings, .kb-add, [data-pay], .bank-up, #bm-exp, #bm-inc, #add-income, #add-expense, .pay-btn, [data-move]) { display: none !important; }
 body.read-only .kb-card { cursor: default; }
+
+/* ===== الأدوار وتجربة الواجهة ===== */
+.role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: .8rem; }
+.role-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .6rem; }
+.role-name { flex: 1; font-weight: 800; font-size: 1.05rem; border: 1px dashed transparent; background: var(--soft-2); }
+.role-name:focus { border-color: var(--feed-purple); background: var(--card); }
+.role-add { border: 2px dashed #c4b5fd; background: #faf7ff; border-radius: 20px; min-height: 120px; font: inherit; font-weight: 800; color: var(--feed-purple); cursor: pointer; }
+.role-add:hover { background: #f3ecff; }
+.perm-foot.sticky { position: sticky; bottom: 5.5rem; display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: .6rem .8rem; margin-top: .8rem; box-shadow: var(--shadow-sm); z-index: 5; }
+@media (min-width: 900px) { .perm-foot.sticky { bottom: 1rem; } }
+.role-pick { display: flex; flex-direction: column; gap: .2rem; margin: 0; min-width: 190px; font-size: .8rem; }
+#imp-bar { position: sticky; top: 0; z-index: 1000; display: flex; justify-content: center; align-items: center; gap: .8rem; flex-wrap: wrap; padding: .5rem 1rem; background: linear-gradient(90deg, #f59e0b, #f97316); color: #fff; font-size: .9rem; text-align: center; }
+#imp-bar .btn { background: #fff; color: #9a3412; border: 0; }
+.home-tile.try { background: linear-gradient(135deg, #f59e0b, #ea580c); }
+.try-types { display: grid; grid-template-columns: repeat(3, 1fr); gap: .4rem; margin: .5rem 0 .7rem; }
+.try-types button { display: flex; flex-direction: column; align-items: center; gap: .15rem; padding: .55rem .3rem; border-radius: 14px; border: 2px solid transparent; background: var(--soft-2); font: inherit; font-weight: 700; font-size: .82rem; cursor: pointer; position: relative; }
+.try-types button span { font-size: 1.4rem; }
+.try-types button i { position: absolute; top: .3rem; inset-inline-end: .4rem; font-style: normal; font-size: .68rem; color: var(--muted); }
+.try-types button.on { border-color: var(--feed-purple); background: #f5efff; color: var(--feed-purple); }
+.try-list { list-style: none; margin: .6rem 0 0; padding: 0; max-height: 45vh; overflow: auto; display: flex; flex-direction: column; gap: .3rem; }
+.try-list button { width: 100%; display: flex; align-items: center; gap: .6rem; padding: .5rem .6rem; border-radius: 12px; border: 0; background: var(--soft-2); font: inherit; cursor: pointer; text-align: start; }
+.try-list button b { flex: 1; } .try-list button small { color: var(--muted); } .try-list button span { color: var(--feed-purple); font-weight: 700; font-size: .82rem; }
+.try-list button:hover { background: #f3ecff; }

@@ -39,6 +39,46 @@ function bindMonth(id, load) {
   });
 }
 
+// ---------- تجربة الواجهة: المدير يختار حسابًا ويفتح التطبيقة به (للاطّلاع فقط) ----------
+const TRY_ICON = { admin: '🏢', partner: '🤝', accounting: '🧮', teacher: '👩‍🏫', program_staff: '🎨', parent: '👪' };
+async function tryAsModal() {
+  const { accounts, types } = await api('GET', '/api/impersonate/accounts');
+  let type = sessionStorage.getItem('tryType') || 'teacher';
+  openModal(
+    '👁 تجربة الواجهة',
+    `<p class="muted small">اختار نوع الحساب ثم الشخص: تتحلّ التطبيقة كيف يشوفها هو بالضبط. وضع التجربة <b>للاطّلاع فقط</b> (ما يتبدّل حتى شي)، وزر «رجوع إلى حسابي» في الأعلى.</p>
+     <div class="try-types">${types
+       .map((t) => `<button type="button" data-t="${esc(t.key)}"><span>${TRY_ICON[t.key] || '👤'}</span>${esc(t.name)}<i>${accounts.filter((a) => a.type === t.key).length}</i></button>`)
+       .join('')}</div>
+     <input id="try-q" type="search" placeholder="بحث بالاسم…">
+     <ul class="try-list" id="try-list"></ul>`,
+    async () => {}
+  );
+  $('#modal-form button[type=submit]').hidden = true;
+  const render = () => {
+    $('#modal').querySelectorAll('[data-t]').forEach((b) => b.classList.toggle('on', b.dataset.t === type));
+    const q = $('#try-q').value.trim().toLowerCase();
+    const list = accounts.filter((a) => a.type === type && (!q || a.full_name.toLowerCase().includes(q))).slice(0, 60);
+    $('#try-list').innerHTML = list.length
+      ? list.map((a) => `<li><button type="button" data-u="${a.id}">${avatar({ full_name: a.full_name }, 'sm')}<b>${esc(a.full_name)}</b>${a.type === 'parent' && a.kids ? `<small>${a.kids} أبناء</small>` : ''}<span>فتح ←</span></button></li>`).join('')
+      : '<li class="muted small">لا حسابات من هذا النوع.</li>';
+    $('#try-list').querySelectorAll('[data-u]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        try {
+          await api('POST', '/api/impersonate', { user_id: Number(b.dataset.u) });
+          location.hash = '#/home';
+          location.reload();
+        } catch (err) {
+          toast(err.message, true);
+        }
+      })
+    );
+  };
+  $('#modal').querySelectorAll('[data-t]').forEach((b) => b.addEventListener('click', () => { type = b.dataset.t; sessionStorage.setItem('tryType', type); render(); }));
+  $('#try-q').addEventListener('input', render);
+  render();
+}
+
 // ---------- الرئيسية: حوصلة الشهر ثم أيقونات الدخول ----------
 async function viewHome(el) {
   // الرئيسية: أيقونات الدخول فقط (الإحصائيات في «لوحة المشرف»)
@@ -50,6 +90,7 @@ async function viewHome(el) {
     can('school') && ['#/todo', '🗂️', 'إدارة المركز', 'المهام، الاجتماعات والقرارات، التنبيهات', 'alt'],
     (can('cash') || can('expenses') || can('accounting')) &&
       [can('cash') ? '#/cash' : can('expenses') ? '#/ledger' : '#/accounting', '💰', 'المالية والمحاسبة', 'الصندوق اليومي، المداخيل والمصاريف، الوصولات، الأجور، فضاء المحاسبة', 'alt'],
+    state.user.super_admin && ['#/try', '👁', 'تجربة الواجهة', 'افتح التطبيقة كأنك معلم، ولي، شريك أو إداري، وشوف بالضبط واش يشوف (للاطّلاع فقط)', 'try'],
   ].filter(Boolean);
   el.innerHTML = `
     ${heroBanner({ sub: 'مركز فيد: اختر الفضاء الذي تريد الدخول إليه.', art: '🌿' })}
@@ -57,6 +98,10 @@ async function viewHome(el) {
     <div class="home-tiles">${tiles
       .map(([h, i, t, sub, cls]) => `<a class="home-tile ${cls || ''}" href="${h}"><span class="ico">${i}</span><b>${t}</b><small>${sub}</small></a>`)
       .join('')}</div>`;
+  el.querySelector('a[href="#/try"]')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    tryAsModal();
+  });
   // نقل المعطيات إلى Supabase (يظهر فقط إن كانت قاعدة Supabase فارغة والقديمة فيها معطيات)
   if (state.user.super_admin)
     api('GET', '/api/admin/db-status').then((db) => {

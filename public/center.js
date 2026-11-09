@@ -797,51 +797,103 @@ const PERM_PRESETS = {
 };
 async function viewPermissions(el) {
   if (!state.user.super_admin) {
-    el.innerHTML = '<div class="card muted">هذه الصفحة للمشرف العام فقط.</div>';
+    el.innerHTML = '<div class="card muted">هذه الصفحة للمدير فقط.</div>';
     return;
   }
-  const { permissions, admins } = await api('GET', '/api/permissions');
-  el.innerHTML = `
-    <div class="page-head"><div><h2>🔐 الصلاحيات</h2>
-      <p class="muted">حدّد ما يراه ويفعله كل حساب إداري. المشرف العام له كل الصلاحيات دائمًا، ونصيب الشركاء لا يراه غيره.
-      لإضافة حساب جديد (مثلًا للمحاسبة): <a href="#/admins">الإدارة ← + حساب</a>، ثم ارجع هنا.</p></div></div>
-    ${admins
-      .map((a) =>
-        a.super_admin
-          ? `<section class="card perm-card"><div class="perm-head"><div><b>${esc(a.full_name)}</b><span class="muted small" dir="ltr">${esc(a.google_email || a.email || a.username)}</span></div>
-              <span class="badge pack">المشرف العام · كل الصلاحيات</span></div></section>`
-          : `<section class="card perm-card" data-id="${a.id}">
-              <div class="perm-head"><div><b>${esc(a.full_name)}</b><span class="muted small" dir="ltr">${esc(a.email || a.username)}${
-                a.google_email ? ' · Google ✓' : a.email ? ' · يدخل بـ Google بهذا البريد' : ''
-              }</span></div>
-                <div class="perm-presets">${Object.keys(PERM_PRESETS).map((n) => `<button type="button" class="chip" data-preset="${esc(n)}">${esc(n)}</button>`).join('')}</div></div>
-              <div class="perm-list">${Object.entries(permissions)
-                .map(
-                  ([k, l]) => `<label class="perm-row"><span>${esc(l)}</span>
-                    <span class="switch"><input type="checkbox" data-perm="${k}" ${a.perms[k] ? 'checked' : ''}><i></i></span></label>`
-                )
-                .join('')}</div>
-              <div class="perm-foot"><button class="btn small" data-save>حفظ الصلاحيات</button></div>
+  const data = await api('GET', '/api/permissions');
+  const { permissions, admins } = data;
+  let roles = data.roles.map((r) => ({ ...r, perms: { ...r.perms } }));
+  const switches = (perms, attr) =>
+    Object.entries(permissions)
+      .map(([k, l]) => `<label class="perm-row"><span>${esc(l)}</span><span class="switch"><input type="checkbox" ${attr}="${k}" ${perms[k] ? 'checked' : ''}><i></i></span></label>`)
+      .join('');
+  const countOf = (key) => admins.filter((a) => a.role_key === key).length;
+  const render = () => {
+    el.innerHTML = `
+      <div class="page-head"><div><h2>🔐 الأدوار والصلاحيات</h2>
+        <p class="muted">أنواع الحسابات: <b>المدير</b> (كل الصلاحيات) · <b>أدوار الإدارة</b> أسفله (الإدارة، شريك، محاسبة… تنجم تزيد وتنقّص) · المعلمون · المؤطّرون · الأولياء.
+        لإضافة حساب إداري جديد: <a href="#/admins">الإدارة ← + حساب</a>، ثم اختر دوره هنا.</p></div></div>
+      ${fileTabs([['roles', '🎭 الأدوار'], ['accounts', '👤 الحسابات']])}
+      <div class="tab-panel" data-panel="roles">
+        <div class="role-grid">${roles
+          .map(
+            (r, i) => `<section class="card role-card" data-i="${i}">
+              <div class="role-head"><input class="role-name" value="${esc(r.name)}" aria-label="اسم الدور"><span class="badge">${countOf(r.key)} حساب</span>
+                <button type="button" class="link danger small" data-del-role="${i}">حذف</button></div>
+              <div class="perm-list">${switches(r.perms, 'data-rp')}</div>
             </section>`
-      )
-      .join('')}`;
-  el.querySelectorAll('.perm-card[data-id]').forEach((card) => {
-    card.querySelectorAll('[data-preset]').forEach((b) =>
+          )
+          .join('')}
+          <button type="button" class="role-add" id="role-add">+ دور جديد</button>
+        </div>
+        <div class="perm-foot sticky"><button class="btn" id="roles-save">💾 حفظ الأدوار</button><span class="muted small">تعديل صلاحيات دور يُطبَّق على كل الحسابات اللي عندها هذا الدور.</span></div>
+      </div>
+      <div class="tab-panel" data-panel="accounts">
+        ${admins
+          .map((a) =>
+            a.super_admin
+              ? `<section class="card perm-card"><div class="perm-head"><div><b>${esc(a.full_name)}</b><span class="muted small" dir="ltr">${esc(a.google_email || a.email || a.username)}</span></div>
+                  <span class="badge pack">👑 المدير · كل الصلاحيات</span></div></section>`
+              : `<section class="card perm-card" data-id="${a.id}">
+                  <div class="perm-head"><div><b>${esc(a.full_name)}</b><span class="muted small" dir="ltr">${esc(a.email || a.username)}${a.google_email ? ' · Google ✓' : ''}</span></div>
+                    <label class="role-pick">الدور<select data-role>${roles.map((r) => `<option value="${esc(r.key)}" ${a.role_key === r.key ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}<option value="" ${!a.role_key ? 'selected' : ''}>صلاحيات مخصّصة</option></select></label></div>
+                  <div class="perm-list custom" ${a.role_key ? 'hidden' : ''}>${switches(a.perms, 'data-perm')}</div>
+                  <div class="perm-foot"><button class="btn small" data-save>حفظ</button></div>
+                </section>`
+          )
+          .join('')}
+      </div>`;
+    bindFileTabs(el);
+    const readRoles = () =>
+      el.querySelectorAll('.role-card').forEach((c) => {
+        const r = roles[Number(c.dataset.i)];
+        r.name = c.querySelector('.role-name').value;
+        c.querySelectorAll('[data-rp]').forEach((x) => (r.perms[x.dataset.rp] = x.checked));
+      });
+    $('#role-add').addEventListener('click', () => {
+      readRoles();
+      roles.push({ key: '', name: 'دور جديد', perms: Object.fromEntries(Object.keys(permissions).map((k) => [k, k === 'stats' || k === 'read_only'])) });
+      render();
+      el.querySelector('[data-tab="roles"]').click();
+      el.querySelector('.role-card:last-of-type .role-name')?.select();
+    });
+    el.querySelectorAll('[data-del-role]').forEach((b) =>
       b.addEventListener('click', () => {
-        const p = PERM_PRESETS[b.dataset.preset];
-        card.querySelectorAll('[data-perm]').forEach((c) => (c.checked = !!p[c.dataset.perm]));
+        const r = roles[Number(b.dataset.delRole)];
+        if (roles.length === 1) return toast('لازم يقعد دور واحد على الأقل', true);
+        if (!confirmAction(`حذف دور «${r.name}»؟${countOf(r.key) ? `\nالحسابات اللي عندها هذا الدور (${countOf(r.key)}) تقعد بصلاحياتها الحالية كصلاحيات مخصّصة.` : ''}`)) return;
+        readRoles();
+        roles.splice(Number(b.dataset.delRole), 1);
+        render();
+        el.querySelector('[data-tab="roles"]').click();
       })
     );
-    card.querySelector('[data-save]').addEventListener('click', async () => {
-      const perms = Object.fromEntries([...card.querySelectorAll('[data-perm]')].map((c) => [c.dataset.perm, c.checked]));
+    $('#roles-save').addEventListener('click', async () => {
+      readRoles();
       try {
-        await api('PUT', `/api/users/${card.dataset.id}/permissions`, { perms });
-        toast('تم حفظ الصلاحيات');
+        const r = await api('PUT', '/api/roles', { roles });
+        roles = r.roles;
+        toast('تم حفظ الأدوار');
+        viewPermissions(el);
       } catch (err) {
         toast(err.message, true);
       }
     });
-  });
+    el.querySelectorAll('.perm-card[data-id]').forEach((card) => {
+      const sel = card.querySelector('[data-role]');
+      sel.addEventListener('change', () => (card.querySelector('.perm-list.custom').hidden = !!sel.value));
+      card.querySelector('[data-save]').addEventListener('click', async () => {
+        const perms = Object.fromEntries([...card.querySelectorAll('[data-perm]')].map((c) => [c.dataset.perm, c.checked]));
+        try {
+          await api('PUT', `/api/users/${card.dataset.id}/permissions`, sel.value ? { role: sel.value } : { perms });
+          toast('تم الحفظ');
+        } catch (err) {
+          toast(err.message, true);
+        }
+      });
+    });
+  };
+  render();
 }
 
 // ---------- فضاء المحاسبة: مداخيل البنك، مصاريف المحاسبة، الوصولات والملفات ----------

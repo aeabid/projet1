@@ -1356,3 +1356,48 @@ test('read-only admin account: can read, cannot change anything', async () => {
   assert.strictEqual((await r('POST', '/api/todo', { title: 'x' })).status, 403);
   assert.strictEqual((await r('GET', '/api/me')).body.user.perms.read_only, true);
 });
+
+test('roles: add / edit / delete, assign to an account; director label; trial mode is view-only', async () => {
+  const admin = await login('admin', 'admin123');
+  assert.strictEqual((await admin('GET', '/api/me')).body.user.role_label, 'المدير');
+  const { body: perm } = await admin('GET', '/api/permissions');
+  assert.ok(perm.roles.some((r) => r.key === 'partner'));
+  const roles = [...perm.roles, { name: 'سكرتارية', perms: { school: true, cash: true } }];
+  const saved = (await admin('PUT', '/api/roles', { roles })).body.roles;
+  const sec = saved.find((r) => r.name === 'سكرتارية');
+  assert.ok(sec.key);
+  const u = (await admin('POST', '/api/users', { role: 'admin', username: 'sec-x', full_name: 'سكرتيرة', password: 'secret1' })).body.user;
+  assert.strictEqual((await admin('PUT', `/api/users/${u.id}/permissions`, { role: sec.key })).status, 200);
+  const s1 = await login('sec-x', 'secret1');
+  let me = (await s1('GET', '/api/me')).body.user;
+  assert.strictEqual(me.role_label, 'سكرتارية');
+  assert.strictEqual(me.perms.school, true);
+  assert.strictEqual(me.perms.stats, false);
+  // تعديل الدور يُطبَّق على حساباته
+  sec.perms.stats = true;
+  await admin('PUT', '/api/roles', { roles: saved });
+  assert.strictEqual((await s1('GET', '/api/me')).body.user.perms.stats, true);
+  // حذف الدور: الحساب يبقى بصلاحياته (مخصّصة)
+  await admin('PUT', '/api/roles', { roles: saved.filter((r) => r.key !== sec.key) });
+  me = (await s1('GET', '/api/me')).body.user;
+  assert.strictEqual(me.role_label, 'الإدارة');
+  assert.strictEqual(me.perms.stats, true);
+
+  // تجربة الواجهة: المدير يفتح حساب معلم، للاطّلاع فقط، ثم يرجع
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'try-t', full_name: 'معلم تجربة', password: 'secret1' })).body.user;
+  const list = (await admin('GET', '/api/impersonate/accounts')).body;
+  assert.ok(list.accounts.some((a) => a.id === t.id && a.type === 'teacher'));
+  const res = await admin('POST', '/api/impersonate', { user_id: t.id });
+  assert.strictEqual(res.status, 200);
+  const sid = res.headers.get('set-cookie').match(/sid=([^;]+)/)[1];
+  const as = (method, path, body) => call(method, path, body, `sid=${sid}`);
+  const m2 = (await as('GET', '/api/me')).body.user;
+  assert.deepStrictEqual([m2.id, m2.role_label, !!m2.impersonated_by], [t.id, 'معلم', true]);
+  assert.strictEqual((await as('POST', '/api/todo/reorder', { id: 1, status: 'done', ids: [] })).status, 403);
+  const back = await as('POST', '/api/impersonate/stop');
+  assert.strictEqual(back.status, 200);
+  const sid2 = back.headers.get('set-cookie').match(/sid=([^;]+)/)[1];
+  assert.strictEqual((await call('GET', '/api/me', undefined, `sid=${sid2}`)).body.user.role_label, 'المدير');
+  // غير المدير لا يجرّب
+  assert.strictEqual((await s1('POST', '/api/impersonate', { user_id: t.id })).status, 403);
+});

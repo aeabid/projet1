@@ -235,6 +235,7 @@ function openModal(title, bodyHtml, onSubmit) {
   const error = $('#modal-error');
   $('#modal-title').textContent = title;
   $('#modal-form button[type=submit]').textContent = 'حفظ';
+  $('#modal-form button[type=submit]').hidden = false;
   $('#modal-body').innerHTML = bodyHtml;
   error.hidden = true;
   form.onsubmit = async (e) => {
@@ -606,6 +607,25 @@ const TABS = {
 };
 
 function renderTopbar() {
+  // وضع التجربة: شريط في الأعلى للرجوع إلى حساب المدير
+  let ib = $('#imp-bar');
+  if (state.user?.impersonated_by) {
+    if (!ib) {
+      ib = document.createElement('div');
+      ib.id = 'imp-bar';
+      document.body.prepend(ib);
+    }
+    ib.innerHTML = `<span>👁 أنت تشاهد التطبيقة كـ <b>${esc(state.user.full_name)}</b> (${esc(state.user.role_label || '')}) — للاطّلاع فقط</span><button type="button" class="btn small" id="imp-stop">↩ رجوع إلى حسابي</button>`;
+    document.body.classList.add('impersonating');
+    $('#imp-stop').onclick = async () => {
+      await api('POST', '/api/impersonate/stop').catch((e) => toast(e.message, true));
+      location.hash = '#/home';
+      location.reload();
+    };
+  } else if (ib) {
+    ib.remove();
+    document.body.classList.remove('impersonating');
+  }
   document.body.classList.toggle('read-only', !!(state.user?.role === 'admin' && !state.user.super_admin && state.user.perms?.read_only));
   const bar = $('#topbar');
   closeSubnav();
@@ -642,7 +662,7 @@ function renderTopbar() {
       openSubnav(btn, nav[Number(btn.dataset.group)], isActive);
     })
   );
-  $('#who-name').textContent = `${state.user.full_name} · ${ROLE_LABELS[state.user.role]}`;
+  $('#who-name').textContent = `${state.user.full_name} · ${state.user.role_label || ROLE_LABELS[state.user.role]}`;
 
   // نسخة عمودية من نفس القائمة: المجموعة التي فيها الصفحة الحالية مفتوحة
   const initial = esc((state.user.full_name || '?').trim().charAt(0).toUpperCase());
@@ -659,7 +679,7 @@ function renderTopbar() {
       )
       .join('') +
     `</div>
-     <div class="vmenu-user"><span class="avatar sm">${initial}</span><div><b>${esc(state.user.full_name)}</b><small>${ROLE_LABELS[state.user.role]}</small></div>
+     <div class="vmenu-user"><span class="avatar sm">${initial}</span><div><b>${esc(state.user.full_name)}</b><small>${esc(state.user.role_label || ROLE_LABELS[state.user.role])}</small></div>
        <button class="side-out" id="side-logout" title="خروج">${icon('logout')}</button></div>`;
   $('#side-logout').addEventListener('click', () => $('#logout').click());
   // شريط التنقل السفلي (الهاتف)

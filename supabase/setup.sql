@@ -819,3 +819,7 @@ ALTER TABLE center_tasks ADD COLUMN IF NOT EXISTS checklist JSONB NOT NULL DEFAU
 ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_folder_check;
 ALTER TABLE documents ADD CONSTRAINT documents_folder_check CHECK (folder IN ('month', 'center', 'bank', 'pv'));
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS doc_date DATE;
+
+-- ===== 20261122090000_impersonation.sql =====
+-- تجربة الواجهة: المدير يفتح التطبيقة بحساب آخر (للاطّلاع فقط)
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS impersonator_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
