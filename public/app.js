@@ -357,6 +357,7 @@ const routes = [
   [/^#\/register$/, viewRegister],
   [/^#\/attendance$/, viewAttendance],
   [/^#\/levels$/, (el) => viewLevels(el)],
+  [/^#\/broadcast\/(teachers|staff)$/, (el, k) => viewStaffBroadcast(el, k)],
   [/^#\/tasks$/, viewTasks],
   [/^#\/timetable$/, viewTimetable],
   [/^#\/whatsapp$/, viewWhatsappGroups],
@@ -483,7 +484,7 @@ const HASH_PERM = {
   '#/people': 'school', '#/parents': 'school', '#/parent-requests': 'school', '#/students': 'school', '#/program': 'school',
   '#/attendance': 'school', '#/messages': 'school', '#/broadcast': 'school', '#/whatsapp': 'school', '#/courses': 'school',
   '#/support/teachers': 'accounts', '#/program/staff': 'accounts', '#/debts': 'school',
-  '#/levels': 'school', '#/receipts': 'school', '#/products': 'school', '#/todo': 'school', '#/meetings': 'school', '#/alerts': 'school',
+  '#/levels': 'school', '#/broadcast/teachers': 'school', '#/broadcast/staff': 'school', '#/receipts': 'school', '#/products': 'school', '#/todo': 'school', '#/meetings': 'school', '#/alerts': 'school',
 };
 const GROUP_PERM = { 'دروس الدعم': 'school', 'البرنامج التربوي': 'school', 'التواصل': 'school', 'إدارة المركز': 'school' };
 const navAllowed = (h) => {
@@ -569,7 +570,9 @@ const NAV = {
       label: 'التواصل',
       items: [
         ['#/messages', 'رسائل الأولياء'],
-        ['#/broadcast', 'رسالة جماعية'],
+        ['#/broadcast', 'رسالة جماعية للأولياء'],
+        ['#/broadcast/teachers', 'رسالة جماعية للمعلمين'],
+        ['#/broadcast/staff', 'رسالة جماعية للمؤطّرين'],
         ['#/whatsapp', 'مجموعات واتساب'],
       ],
     },
@@ -3428,6 +3431,89 @@ async function viewWhatsappGroups(el) {
 }
 
 // ---------- رسالة جماعية ----------
+// ---------- رسالة جماعية للمعلمين أو للمؤطّرين (واتساب، واحد بواحد) ----------
+const STAFF_TEMPLATES = {
+  meeting: ['اجتماع', 'السلام عليكم {الاسم}،\nندعوكم لاجتماع الإطار يوم ……… على الساعة ……… بمقرّ المركز.\nحضوركم مهمّ، شكرًا.\nإدارة فيد'],
+  cards: ['بطاقات التقييم', 'السلام عليكم {الاسم}،\nنذكّركم بإدخال بطاقات تقييم الشهر على المنصّة قبل يوم ……… :\n{الرابط}\nشكرًا لمجهوداتكم.\nإدارة فيد'],
+  timetable: ['تغيير في الجدول', 'السلام عليكم {الاسم}،\nنعلمكم بتغيير في جدول الأوقات ابتداءً من ………:\n………\nالجدول المحدّث على المنصّة: {الرابط}\nإدارة فيد'],
+  pay: ['الرواتب', 'السلام عليكم {الاسم}،\nنعلمكم أنّ رواتب شهر ……… جاهزة، يمكنكم المرور بالإدارة.\nشكرًا.\nإدارة فيد'],
+  free: ['رسالة حرّة', 'السلام عليكم {الاسم}،\n\nإدارة فيد'],
+};
+async function viewStaffBroadcast(el, kind) {
+  const prog = kind === 'staff';
+  const { users } = await api('GET', '/api/users?role=teacher');
+  const people = users.filter((u) => u.approved !== false && (prog ? u.program_staff || u.also_program : !u.program_staff));
+  el.innerHTML = `
+    <div class="page-head"><div><h2>📣 رسالة جماعية ${prog ? 'للمؤطّرين' : 'للمعلمين'}</h2>
+      <p class="muted small">اختر النموذج واكتب الرسالة، ثم اختر من تُرسل له. «{الاسم}» يُعوَّض باسم كل واحد، و«{الرابط}» برابط المنصّة.</p></div></div>
+    <div class="card">
+      <div class="tpl-chips">${Object.entries(STAFF_TEMPLATES).map(([k, [l]], i) => `<button type="button" class="chip ${i ? '' : 'on'}" data-tpl="${k}">${esc(l)}</button>`).join('')}</div>
+      <label>الرسالة<textarea id="sb-text" rows="7">${esc(STAFF_TEMPLATES.meeting[1])}</textarea></label>
+    </div>
+    <div class="card">
+      <div class="section-head"><h3>👥 ${prog ? 'المؤطّرون' : 'المعلمون'} <span class="muted small" id="sb-count"></span></h3>
+        <label class="check small"><input type="checkbox" id="sb-all" checked> الكل</label></div>
+      <ul class="recipients sb-list">${people
+        .map((u) => {
+          const ok = waNumber(u.phone);
+          return `<li class="${ok ? '' : 'no-phone'}"><label class="check"><input type="checkbox" data-u="${u.id}" ${ok ? 'checked' : 'disabled'}>
+              ${avatar({ full_name: u.full_name }, 'sm')}<b>${esc(u.full_name)}</b><span class="muted small">${ok ? esc(u.phone) : 'لا رقم هاتف'}</span></label>
+            ${ok ? `<a class="btn wa small" target="_blank" rel="noopener" data-send="${u.id}">${WA_ICON} إرسال</a>` : ''}</li>`;
+        })
+        .join('') || '<li class="muted">لا أحد.</li>'}</ul>
+      <div class="sb-foot"><p class="b-progress" id="sb-progress"></p>
+        <a class="btn wa" id="sb-next" target="_blank" rel="noopener">${WA_ICON} <span></span></a>
+        <button type="button" class="btn ghost" id="sb-copy">📋 نسخ الأرقام</button></div>
+      <p class="muted small">واتساب ما يسمحش ببعث رسالة لبرشا أرقام مرّة وحدة من رابط: «التالي» يحلّ محادثة كل واحد بالرسالة جاهزة. ولا انسخ الأرقام وحطّهم في قائمة بثّ واتساب.</p>
+    </div>`;
+  const msgFor = (u) => $('#sb-text').value.replaceAll('{الاسم}', u.full_name).replaceAll('{الرابط}', PUBLIC_URL);
+  const chosen = () => people.filter((u) => el.querySelector(`[data-u="${u.id}"]`)?.checked);
+  const sent = new Set();
+  const sync = () => {
+    const list = chosen();
+    const left = list.filter((u) => !sent.has(u.id));
+    $('#sb-count').textContent = `(${list.length} مختار)`;
+    $('#sb-progress').textContent = `تمّ فتح ${list.filter((u) => sent.has(u.id)).length} من ${list.length}`;
+    const next = $('#sb-next');
+    if (!left.length) {
+      next.classList.add('disabled');
+      next.removeAttribute('href');
+      next.querySelector('span').textContent = list.length ? '✓ تمّ الكل' : 'اختر شخصًا';
+    } else {
+      next.classList.remove('disabled');
+      next.href = waUrl(left[0].phone, msgFor(left[0]));
+      next.dataset.id = left[0].id;
+      next.querySelector('span').textContent = `${sent.size ? 'التالي' : 'ابدأ'}: ${left[0].full_name}`;
+    }
+    el.querySelectorAll('[data-send]').forEach((a) => {
+      const u = people.find((x) => x.id === Number(a.dataset.send));
+      a.href = waUrl(u.phone, msgFor(u));
+      a.classList.toggle('sent', sent.has(u.id));
+    });
+  };
+  const mark = (id) => setTimeout(() => (sent.add(Number(id)), sync()), 50);
+  $('#sb-next').addEventListener('click', (e) => e.currentTarget.dataset.id && mark(e.currentTarget.dataset.id));
+  el.querySelectorAll('[data-send]').forEach((a) => a.addEventListener('click', () => mark(a.dataset.send)));
+  el.querySelectorAll('[data-tpl]').forEach((b) =>
+    b.addEventListener('click', () => {
+      el.querySelectorAll('[data-tpl]').forEach((x) => x.classList.toggle('on', x === b));
+      $('#sb-text').value = STAFF_TEMPLATES[b.dataset.tpl][1];
+      sync();
+    })
+  );
+  $('#sb-text').addEventListener('input', sync);
+  el.querySelector('.sb-list').addEventListener('change', sync);
+  $('#sb-all').addEventListener('change', (e) => {
+    el.querySelectorAll('[data-u]:not(:disabled)').forEach((c) => (c.checked = e.target.checked));
+    sync();
+  });
+  $('#sb-copy').addEventListener('click', async () => {
+    const ok = await copyText(chosen().map((u) => '+' + waNumber(u.phone)).join('\n'));
+    toast(ok ? 'تم نسخ الأرقام' : 'تعذّر النسخ', !ok);
+  });
+  sync();
+}
+
 async function viewBroadcast(el) {
   const { groups } = await api('GET', '/api/whatsapp-groups');
   el.innerHTML = `

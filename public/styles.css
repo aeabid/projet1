@@ -1959,3 +1959,13 @@ td div.phone-line { justify-content: flex-start; }
 .badge.also { display: inline-block; margin-top: .25rem; background: #fff1e6; color: #b45309; font-size: .72rem; }
 .vol-check { background: #ecfdf5; border-radius: 12px; padding: .5rem .7rem; margin: .3rem 0 .5rem; }
 .pay-fields input:disabled { opacity: .45; }
+/* رسالة جماعية للمعلمين / المؤطّرين */
+.tpl-chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .7rem; }
+.chip.on { background: var(--feed-purple); color: #fff; border-color: var(--feed-purple); }
+.sb-list li { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+.sb-list li label { display: flex; align-items: center; gap: .55rem; margin: 0; flex: 1; min-width: 0; }
+.sb-list li label .muted { margin-inline-start: auto; direction: ltr; }
+.sb-list li.no-phone { opacity: .55; }
+.sb-list a.sent { opacity: .5; }
+.sb-foot { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-top: .8rem; }
+.sb-foot .b-progress { flex: 1; margin: 0; }
