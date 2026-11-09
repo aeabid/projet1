@@ -2615,6 +2615,12 @@ function viewStaffList(el, users, { prog, title, addLabel, reload, edit, allTeac
   render();
 }
 
+// زر «إرسال الدخول عبر واتساب» (اسم المستخدم + كلمة سر جديدة)
+const loginBtn = (u, small = false) =>
+  waNumber(u.phone)
+    ? `<button type="button" class="btn wa ${small ? 'small' : 'login-btn'}" data-pw="${u.id}" title="يرسل الرابط واسم المستخدم وكلمة سر جديدة عبر واتساب">${WA_ICON} إرسال الدخول</button>`
+    : `<button type="button" class="btn ghost ${small ? 'small' : 'login-btn'}" data-pw="${u.id}" title="لا رقم واتساب: تظهر البيانات للنسخ">🔑 بيانات الدخول</button>`;
+
 // قائمة الأولياء: بطاقات أو جدول
 function viewParentsList(el, users, reload, edit) {
   const kidsOf = (u) => [
@@ -2640,9 +2646,10 @@ function viewParentsList(el, users, reload, edit) {
               <a class="pc-head" href="#/parents/${u.id}">${avatar({ full_name: u.full_name }, 'md')}
                 <div><h3>${esc(u.full_name)}</h3><span class="muted small">${count(u) ? `${count(u)} ${count(u) === 1 ? 'ابن' : 'أبناء'}` : 'بلا أبناء'}${u.google_email ? ' · Google' : ''}</span></div></a>
               <div class="pc-phones">${phones(u).length ? phones(u).map((p) => `<span class="pc-phone"><span dir="ltr">${esc(p)}</span><a class="pc-call" href="tel:${esc(p)}" aria-label="اتصال">📞</a>${waButton(p)}</span>`).join('') : '<span class="muted small">لا هاتف</span>'}</div>
+              ${loginBtn(u)}
               <div class="pc-kids">${kidsOf(u).join('') || '<span class="muted small">—</span>'}</div>
               <div class="pc-foot"><span class="muted small" dir="ltr">${esc(u.username)}${u.cin ? ` · ${esc(u.cin)}` : ''}</span>
-                <span><a class="btn ghost small" href="#/parents/${u.id}">الملف</a><button class="btn ghost small" data-pw="${u.id}" title="إرسال الدخول (اسم المستخدم وكلمة السر) عبر واتساب">🔑</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
+                <span><a class="btn ghost small" href="#/parents/${u.id}">الملف</a><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
             </article>`
           )
           .join('')}</div>`
@@ -2655,7 +2662,7 @@ function viewParentsList(el, users, reload, edit) {
                 <td>${phones(u).map((p) => `<span class="phone-line"><span dir="ltr">${esc(p)}</span>${waButton(p)}</span>`).join('') || '<span class="muted">—</span>'}</td>
                 <td><div class="pc-kids">${kidsOf(u).join('') || '<span class="muted">—</span>'}</div></td>
                 <td class="nowrap" dir="ltr">${esc(u.username)}</td>
-                <td class="row-actions"><button class="btn ghost small" data-pw="${u.id}">🔑 إرسال الدخول</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button>${u.id !== state.user.id ? `<button class="btn danger small" data-del="${u.id}">حذف</button>` : ''}</td>
+                <td class="row-actions">${loginBtn(u, true)}<button class="btn ghost small" data-edit="${u.id}">تعديل</button>${u.id !== state.user.id ? `<button class="btn danger small" data-del="${u.id}">حذف</button>` : ''}</td>
               </tr>`
             )
             .join('')}</tbody></table></div>`;
