@@ -2755,25 +2755,44 @@ function levelsText(levels) {
 const levelChips = (levels) =>
   levels
     ? `<span class="lv-chipset">${levels.map((c) => `<span class="lv-chip" title="${esc(levelLabel(c))}">${esc(levelShort(c))}</span>`).join('')}</span>`
-    : '<span class="lv-chip all">كل المستويات</span>';
+    : '<span class="lv-chip all">كل الأقسام</span>';
 
 function subjectForm(subject, onDone) {
   const sel = new Set(subject?.levels || []);
   openModal(
     subject ? 'تعديل المادة' : 'مادة جديدة',
     `<label>اسم المادة<input name="name" value="${esc(subject?.name)}" required></label>
-     <fieldset><legend>المستويات (لا تختر شيئًا = كل المستويات)</legend><div class="checks">${state.meta.levels
-       .map(
-         (l) => `<label class="chip-check lg" title="${esc(l.label)}"><input type="checkbox" name="levels[]" value="${esc(l.code)}" ${sel.has(l.code) ? 'checked' : ''}> ${esc(levelShort(l.code))}</label>`
-       )
-       .join('')}</div></fieldset>`,
+     <div class="sf-levels">
+       <div class="sf-head"><b>الأقسام اللي تدرَّس فيها المادة</b><a class="link small" href="#/levels">إدارة الأقسام ←</a></div>
+       <div class="sf-modes">
+         <label><input type="radio" name="sf_mode" value="all" ${sel.size ? '' : 'checked'}><span>🏫 كل الأقسام</span></label>
+         <label><input type="radio" name="sf_mode" value="some" ${sel.size ? 'checked' : ''}><span>🎯 أقسام معيّنة</span></label>
+       </div>
+       <div class="sl-levels sf-chips">${state.meta.levels
+         .map((l) => `<label class="sl-chip" title="${esc(l.label)}"><input type="checkbox" name="levels[]" value="${esc(l.code)}" ${sel.has(l.code) ? 'checked' : ''}><span>${esc(l.label)}</span></label>`)
+         .join('')}</div>
+       <small class="muted" id="sf-hint"></small>
+     </div>`,
     async (data) => {
+      // «كل الأقسام»: لا أقسام محدّدة
+      if ($('#modal input[name=sf_mode]:checked').value === 'all') data.levels = [];
+      else if (!$('#modal').querySelectorAll('input[name="levels[]"]:checked').length) throw new Error('اختر قسمًا واحدًا على الأقل، أو «كل الأقسام»');
+      delete data.sf_mode;
       if (subject) await api('PUT', `/api/subjects/${subject.id}`, data);
       else await api('POST', '/api/subjects', data);
       toast('تم الحفظ');
       onDone();
     }
   );
+  const box = $('#modal .sf-levels');
+  const sync = () => {
+    const some = box.querySelector('input[name=sf_mode]:checked').value === 'some';
+    const n = box.querySelectorAll('input[name="levels[]"]:checked').length;
+    box.querySelector('.sf-chips').hidden = !some;
+    $('#sf-hint').textContent = some ? (n ? `${n} من ${state.meta.levels.length} أقسام` : 'اختر الأقسام') : `المادة تظهر في الأقسام الكل (${state.meta.levels.length})، وحتى في أي قسم جديد.`;
+  };
+  box.addEventListener('change', sync);
+  sync();
 }
 
 async function viewSubjects(el) {
@@ -2785,7 +2804,7 @@ async function viewSubjects(el) {
       <button class="btn" id="add-subject">+ مادة جديدة</button>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>المادة</th><th>المستويات</th><th></th></tr></thead>
+      <thead><tr><th>المادة</th><th>الأقسام</th><th></th></tr></thead>
       <tbody>${state.meta.subjects
         .map(
           (s) => `<tr><td><b>${esc(s.name)}</b></td><td>${levelChips(s.levels)}</td>

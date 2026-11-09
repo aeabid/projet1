@@ -1939,3 +1939,14 @@ td div.phone-line { justify-content: flex-start; }
   .lv-count { grid-column: 1 / 3; grid-row: 2; align-self: center; }
   .lv-acts { grid-column: 3; grid-row: 2; justify-content: flex-end; }
 }
+/* استمارة المادة: الأقسام */
+.sf-levels { background: var(--soft-2); border-radius: 16px; padding: .75rem .85rem; display: flex; flex-direction: column; gap: .6rem; }
+.sf-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+.sf-modes { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; }
+.sf-modes label { margin: 0; position: relative; } .sf-modes input { position: absolute; opacity: 0; }
+.sf-modes span { display: block; text-align: center; padding: .55rem; border-radius: 12px; background: var(--card); border: 2px solid transparent; font-weight: 700; cursor: pointer; }
+.sf-modes input:checked + span { border-color: var(--feed-purple); color: var(--feed-purple); background: #f5efff; }
+.sf-chips { padding: 0; margin: 0; }
+.sf-chips .sl-chip span { background: var(--card); }
+.sf-chips .sl-chip input:checked + span { background: var(--feed-purple); }
+.sl-chip input, .sf-modes input { inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; z-index: 1; }
