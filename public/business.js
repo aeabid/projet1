@@ -2151,7 +2151,7 @@ async function viewSalaries(el) {
   let mode = sessionStorage.getItem('salMode') || 'month';
   const ICONS = { support: '📚', program: '🎨', admin: '🏢' };
   const LINKS = {
-    support: '<a class="btn ghost small" href="#/payroll">خلاص المدرّسين ←</a>',
+    support: '<a class="btn ghost small" href="#/payroll">رواتب مدرّسي الدعم ←</a>',
     program: '<a class="btn ghost small" href="#/program/staff">قائمة المؤطّرين ←</a>',
     admin: '<a class="btn ghost small" href="#/staff">إدارة القائمة (+ شخص) ←</a>',
   };
@@ -2233,7 +2233,7 @@ async function viewSalaries(el) {
             }</section>`
         )
         .join('')}
-      <p class="muted small">مدرّسو الدعم يُخلَّصون بالساعة من «خلاص المدرّسين» (ساعات جدول الأوقات). كل أجرة تُسجَّل مصروفًا في نشاطها: الدعم، التربوي، أو المصاريف العامة للمركز.</p>`;
+      <p class="muted small">مدرّسو الدعم يُخلَّصون بالساعة من «رواتب مدرّسي الدعم» (ساعات جدول الأوقات). كل أجرة تُسجَّل مصروفًا في نشاطها: الدعم، التربوي، أو المصاريف العامة للمركز.</p>`;
     $('#sal-body').querySelectorAll('[data-pay]').forEach((b) =>
       b.addEventListener('click', () =>
         openModal(

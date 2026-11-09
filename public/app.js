@@ -448,7 +448,7 @@ const NAV = {
         ['#/support/teachers', 'قائمة المدرّسين'],
         ['#/support/teachers/timetable', 'جداول أوقات المدرّسين'],
         ['#/support/teachers/absences', 'غيابات المدرّسين'],
-        ['#/payroll', 'خلاص المدرّسين (الرواتب الشهرية)'],
+        ['#/payroll', 'رواتب مدرّسي الدعم'],
         ['', 'التقييم'],
         ['#/evaluations', 'إدخال الملاحظات'],
         ['#/overview', 'الرؤية الإجمالية والطباعة'],
@@ -853,7 +853,7 @@ async function viewDashboard(el) {
             <div class="ct-grid">
               <div class="bal"><small>المتخلّد بالذمّة</small><b>${fmtMoney(s.finance.outstanding)}</b><i>${s.finance.unpaid_count} تلميذ لم يدفع بعد</i></div>
               <div class="in"><small>المدخول اليوم</small><b>${fmtMoney(s.finance.today.income)}</b><i>${s.finance.today.payments} دفعة</i></div>
-              <div class="out"><small>المصاريف اليوم</small><b>${fmtMoney(s.finance.today.expense)}</b><i>خلاص المدرّسين ومصاريف الدعم</i></div>
+              <div class="out"><small>المصاريف اليوم</small><b>${fmtMoney(s.finance.today.expense)}</b><i>رواتب المدرّسين ومصاريف الدعم</i></div>
               <div class="${s.finance.today.income - s.finance.today.expense >= 0 ? 'in' : 'out'}"><small>الصافي اليوم</small><b>${fmtMoney(Math.round((s.finance.today.income - s.finance.today.expense) * 1000) / 1000)}</b></div>
             </div></section>`
         : ''
@@ -1012,7 +1012,9 @@ function bindPayButtons(root, reload) {
 // خانة الولي في الجداول (الدعم والتربوي): الاسم (رابط لملفه) ثم الهاتف وواتساب
 function parentCell(name, phone, parentId, admin = true) {
   const n = name ? (admin && parentId ? `<a href="#/parents/${parentId}">${esc(name)}</a>` : esc(name)) : '—';
-  return `${n}${phone ? `<div class="muted small phone-line"><span dir="ltr">${esc(phone)}</span>${admin ? waButton(phone) : ''}</div>` : ''}`;
+  // رقمان أو أكثر («99664944 / 94480056»): كل رقم في سطر، مصفوف تحت الاسم كبقية الأرقام
+  const tels = String(phone || '').split(/\s*[\/,;]\s*|\s+-\s+/).map((t) => t.trim()).filter(Boolean);
+  return `${n}${tels.map((t) => `<div class="muted small phone-line"><span dir="ltr">${esc(t)}</span>${admin ? waButton(t) : ''}</div>`).join('')}`;
 }
 
 // فلتر الخلاص في القوائم: الكل، لم يدفع بعد (باقي عليه)، خالص
@@ -1056,7 +1058,7 @@ function studentCards(students, role) {
         <div class="sc-subjects">${subjectsCell(s)}</div>
         <div class="sc-parent">
           <span class="sc-ico" aria-hidden="true">👤</span>
-          <div><b>${esc(s.parent_name || 'بدون ولي')}</b>${s.parent_phone ? `<span dir="ltr" class="muted small">${esc(s.parent_phone)}</span>` : ''}</div>
+          <div><b>${esc(s.parent_name || 'بدون ولي')}</b>${String(s.parent_phone || '').split(/\s*[\/,;]\s*/).filter(Boolean).map((t) => `<span dir="ltr" class="muted small">${esc(t)}</span>`).join('')}</div>
           ${admin && s.parent_phone ? waButton(s.parent_phone) : ''}
         </div>
         <div class="sc-stats">
@@ -3456,10 +3458,13 @@ async function viewTeacherAbsences(el) {
   await load();
 }
 
+// مفتاح «حصة 1:45 = ساعتان» لكل مدرّس (قرار المدير حسب المدرّس)
+const roundSwitch = (t, compact = false) =>
+  `<label class="round-sw ${compact ? 'compact' : ''}" title="كل حصة 1:45 تُحتسب ساعتين لهذا المدرّس"><span class="switch"><input type="checkbox" data-round="${t.id}" ${t.round_hours ? 'checked' : ''}><i></i></span>${compact ? '' : '<span>حصة 1:45 = ساعتان</span>'}</label>`;
 async function viewPayroll(el) {
   el.innerHTML = `
     <div class="page-head">
-      <div><h2>ساعات وخلاص المدرّسين</h2>
+      <div><h2>رواتب مدرّسي الدعم</h2>
         <p class="muted small">الساعات تُضاف وحدها يومًا بيوم من <a href="#/support/teachers/timetable">جدول الأوقات</a>، إلا غياب المدرّس (تسجّله الإدارة) أو فترة «إيقاف العدّ» (عطلة، امتحانات).</p></div>
       <input type="month" id="pay-month" value="${payMonth()}">
     </div>
@@ -3500,7 +3505,7 @@ async function viewPayroll(el) {
                 const pct = total ? Math.round((t.hours_done / total) * 100) : 0;
                 return `<article class="scard pr-card ${status(t)}" style="--lv:${status(t) === 'due' ? 330 : status(t) === 'ok' ? 152 : 230}">
                   <a class="sc-head" href="#/payroll/${t.id}">${avatar({ full_name: t.full_name }, 'md')}
-                    <div class="sc-id"><h3>${esc(t.full_name)}</h3><div class="sc-tags"><span class="sc-level">${rateCell(t)}</span>${t.round_hours ? '<span class="badge average">1:45 = 2س</span>' : ''}</div>${noSlots(t)}</div></a>
+                    <div class="sc-id"><h3>${esc(t.full_name)}</h3><div class="sc-tags"><span class="sc-level">${rateCell(t)}</span></div>${noSlots(t)}</div></a>
                   <div class="pr-bar"><i style="width:${pct}%"></i></div>
                   <div class="pr-hours"><span><b>${fmtHours(t.hours_done)}</b> منجزة</span><span class="muted">${fmtHours(t.hours_planned)} مبرمجة</span></div>
                   <div class="sc-stats">
@@ -3508,17 +3513,19 @@ async function viewPayroll(el) {
                     <div class="sc-stat"><b>${fmtMoney(t.due)}</b><span>المستحق</span></div>
                     <div class="sc-stat ${status(t) === 'due' ? 'owe' : status(t) === 'ok' ? 'ok' : ''}"><b>${t.remaining > 0 ? fmtMoney(t.remaining) : t.due > 0 ? '✓' : '—'}</b><span>${t.remaining > 0 ? 'الباقي' : t.due > 0 ? 'خالص' : 'الباقي'}</span></div>
                   </div>
+                  ${roundSwitch(t)}
                   <div class="sc-actions"><a class="btn ghost small" href="#/payroll/${t.id}">التفاصيل والخلاص</a>${waNumber(t.phone) ? waButton(t.phone) : ''}</div>
                 </article>`;
               })
               .join('')}</div>`
           : `<div class="table-wrap as-table"><table>
-              <thead><tr><th>المدرّس</th><th>معلوم الساعة</th><th>الحصص</th><th>الساعات</th><th>المستحق</th><th>المدفوع</th><th>الباقي</th></tr></thead>
+              <thead><tr><th>المدرّس</th><th>معلوم الساعة</th><th>1:45 = 2س</th><th>الحصص</th><th>الساعات</th><th>المستحق</th><th>المدفوع</th><th>الباقي</th></tr></thead>
               <tbody>${teachers
                 .map(
                   (t) => `<tr>
                     <td><a class="who-cell" href="#/payroll/${t.id}">${avatar({ full_name: t.full_name }, 'sm')}<b>${esc(t.full_name)}</b></a>${noSlots(t)}</td>
                     <td class="nowrap">${rateCell(t)}</td>
+                    <td>${roundSwitch(t, true)}</td>
                     <td>${t.sessions}${t.absences ? ` <span class="badge weak">${t.absences} غياب</span>` : ''}${t.paused ? ` <span class="badge status-left">${t.paused} موقوفة</span>` : ''}</td>
                     <td class="nowrap"><b>${fmtHours(t.hours_done)}</b>${t.hours_planned ? `<div class="muted small">+ ${fmtHours(t.hours_planned)} مبرمجة</div>` : ''}</td>
                     <td class="nowrap">${fmtMoney(t.due)}</td>
@@ -3529,6 +3536,18 @@ async function viewPayroll(el) {
                 .join('')}</tbody></table></div>`
       }`;
     bindViewToggle($('#pay-body'), 'payView', () => view, (v) => (view = v), render);
+    $('#pay-body').querySelectorAll('[data-round]').forEach((c) =>
+      c.addEventListener('change', async () => {
+        try {
+          await api('PUT', `/api/payroll/${c.dataset.round}/round-hours`, { on: c.checked });
+          toast(c.checked ? 'حصص 1:45 تُحتسب ساعتين لهذا المدرّس' : 'رجعت الحصص تُحتسب بمدّتها الحقيقية');
+          load();
+        } catch (err) {
+          toast(err.message, true);
+          c.checked = !c.checked;
+        }
+      })
+    );
     $('#pz-add').addEventListener('click', () =>
       openModal(
         '⏸ إيقاف عدّ الساعات',

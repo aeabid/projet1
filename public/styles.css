@@ -1899,3 +1899,7 @@ body.read-only .kb-card { cursor: default; }
 .try-list button { width: 100%; display: flex; align-items: center; gap: .6rem; padding: .5rem .6rem; border-radius: 12px; border: 0; background: var(--soft-2); font: inherit; cursor: pointer; text-align: start; }
 .try-list button b { flex: 1; } .try-list button small { color: var(--muted); } .try-list button span { color: var(--feed-purple); font-weight: 700; font-size: .82rem; }
 .try-list button:hover { background: #f3ecff; }
+.phone-line > span[dir="ltr"] { unicode-bidi: isolate; text-align: start; }
+td div.phone-line { justify-content: flex-start; }
+.round-sw { display: flex; align-items: center; gap: .5rem; margin: .1rem 0 .5rem; font-size: .84rem; font-weight: 600; color: var(--text); cursor: pointer; }
+.round-sw.compact { margin: 0; justify-content: center; }
