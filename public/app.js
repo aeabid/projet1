@@ -880,8 +880,8 @@ function viewLogin(el) {
           <h1>متابعة التلاميذ في منصّة <em>فيد</em> التعليميّة</h1>
         </div>
         <form id="login-form">
-          <label>اسم المستخدم (أو رقم بطاقة التعريف)<input name="username" autocomplete="username" required></label>
-          <label>كلمة السر<input name="password" type="password" autocomplete="current-password" required></label>
+          <label>اسم المستخدم (أو رقم بطاقة التعريف)<input name="username" autocomplete="username" dir="ltr" autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
+          <label>كلمة السر<input name="password" type="password" autocomplete="current-password" dir="ltr" autocapitalize="none" spellcheck="false" required></label>
           <p class="error" id="login-error" hidden></p>
           <button class="btn block">دخول</button>
           <div id="google-box" class="google-box" hidden><div class="or"><span>أو</span></div><div id="google-btn"></div>
@@ -2474,7 +2474,7 @@ async function issuePassword(u, onDone) {
     return toast(err.message, true);
   }
   const hello = r.role === 'parent' ? 'مرحبا' : r.role === 'teacher' ? 'مرحبا أستاذ(ة)' : 'مرحبا';
-  const msg = `${hello} ${r.full_name} 🌿\nحسابك في منصّة مركز فيد:\n🔗 ${PUBLIC_URL}\n👤 اسم المستخدم: ${r.username}\n🔑 كلمة السر: ${r.password}\nننصحك بتغيير كلمة السر بعد أوّل دخول (حسابي ← كلمة السر).`;
+  const msg = `${hello} ${r.full_name} 🌿\nحسابك في منصّة مركز فيد:\n🔗 ${PUBLIC_URL}\n👤 اسم المستخدم:\n${r.username}\n🔑 كلمة السر:\n${r.password}\nننصحك بتغيير كلمة السر بعد أوّل دخول (حسابي ← كلمة السر).`;
   if (win) {
     win.location.href = waUrl(phone, msg);
     toast(`فُتح واتساب برسالة الدخول لـ ${r.full_name}`);
@@ -4117,8 +4117,8 @@ async function viewRegister(el) {
           <label>العنوان<input name="p_address"></label>
         </div>
         <div class="row">
-          <label>كلمة السر (6 أحرف على الأقل)<input name="p_password" type="password" required minlength="6"></label>
-          <label>تأكيد كلمة السر<input name="p_password2" type="password" required></label>
+          <label>كلمة السر (6 أحرف على الأقل)<input name="p_password" type="password" dir="ltr" required minlength="6"></label>
+          <label>تأكيد كلمة السر<input name="p_password2" type="password" dir="ltr" required></label>
         </div>
         <input name="website" class="hp" tabindex="-1" autocomplete="off">
         <h3>الأبناء</h3>
@@ -4199,8 +4199,8 @@ function viewAccount(el) {
       ${u.subjects?.length ? `<p>المواد: ${u.subjects.map((s) => `<span class="pill">${esc(s.name)}</span>`).join(' ')}</p>` : ''}
       <h3>تغيير كلمة السر</h3>
       <form id="pw-form">
-        <label>كلمة السر الحالية<input name="current" type="password" required></label>
-        <label>كلمة السر الجديدة<input name="next" type="password" minlength="6" required></label>
+        <label>كلمة السر الحالية<input name="current" type="password" dir="ltr" required></label>
+        <label>كلمة السر الجديدة<input name="next" type="password" dir="ltr" minlength="6" required></label>
         <button class="btn">تغيير</button>
       </form>
     </div>`;

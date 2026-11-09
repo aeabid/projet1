@@ -1973,3 +1973,8 @@ td div.phone-line { justify-content: flex-start; }
 .adj-pay-row { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
 .adj-pay-row span { font-size: .85rem; } .adj-pay-row select { width: auto; min-width: 9rem; }
 .adj-keep { font-weight: 700; }
+
+/* اسم المستخدم وكلمة السر: دائمًا من اليسار إلى اليمين (حتى عند النسخ واللصق) */
+input[type=password], input[name=username], input[name=password], input[name=current], input[name=next], input[name=p_password], input[name=p_password2], input[name=password2] {
+  direction: ltr; text-align: left; unicode-bidi: plaintext; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; letter-spacing: .02em;
+}

@@ -1448,3 +1448,13 @@ test('a support teacher can also be a facilitator (keeps hourly rate), and a fac
   const s3 = (await admin('GET', '/api/program/staff-pay?month=2026-11')).body.staff.find((s) => s.id === v.id);
   assert.deepStrictEqual([s3.volunteer, s3.monthly_salary, s3.expected], [true, null, 0]);
 });
+
+test('login works when the password or username is pasted with spaces or invisible direction marks', async () => {
+  const admin = await login('admin', 'admin123');
+  await admin('POST', '/api/users', { role: 'teacher', username: 'paste-t', full_name: 'لصق', password: 'feedab2345' });
+  const ok = await call('POST', '/api/login', { username: ' paste-t‏ ', password: '‏eedab2345'.replace('‏eedab', '‏feedab') + ' ' });
+  assert.strictEqual(ok.status, 200);
+  const rtl = await call('POST', '/api/login', { username: '‫paste-t‬', password: '⁧feedab2345⁩' });
+  assert.strictEqual(rtl.status, 200);
+  assert.strictEqual((await call('POST', '/api/login', { username: 'paste-t', password: 'feedab9999' })).status, 401);
+});

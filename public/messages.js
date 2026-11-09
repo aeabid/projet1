@@ -265,8 +265,8 @@ async function viewRegisterTeacher(el) {
           <label>البريد الإلكتروني (اختياري)<input name="email" type="email" dir="ltr"></label>
         </div>
         <div class="row">
-          <label>كلمة السر (6 أحرف على الأقل)<input name="password" type="password" required minlength="6"></label>
-          <label>تأكيد كلمة السر<input name="password2" type="password" required></label>
+          <label>كلمة السر (6 أحرف على الأقل)<input name="password" type="password" dir="ltr" required minlength="6"></label>
+          <label>تأكيد كلمة السر<input name="password2" type="password" dir="ltr" required></label>
         </div>
         <fieldset><legend>المواد التي أدرّسها</legend><div class="checks">${meta.subjects
           .map((x) => `<label class="check"><input type="checkbox" name="subject_ids[]" value="${x.id}"> ${esc(x.name)}</label>`)
