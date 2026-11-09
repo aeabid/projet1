@@ -3575,9 +3575,10 @@ async function viewPayroll(el) {
     const noSlots = (t) => (t.slots_per_week ? '' : `<a class="pr-warn" href="#/support/teachers/timetable">⚠️ لا حصص له في الجدول</a>`);
     const remainCell = (t) => (t.remaining > 0 ? `<b class="owed">${fmtMoney(t.remaining)}</b>` : t.due > 0 ? '<span class="badge good">خالص</span>' : '—');
     $('#pay-body').innerHTML = `
-      <div class="fb-kpis">
+      <div class="fb-kpis four">
         <div class="fb-kpi net"><span>الساعات المنجزة · ${esc(monthLabel(month))}</span><b>${fmtHours(totals.hours_done)}</b><small>+ ${fmtHours(totals.hours_planned || 0)} مبرمجة لبقية الشهر</small></div>
         <div class="fb-kpi out"><span>المستحق إلى اليوم</span><b>${fmtMoney(totals.due)}</b><small>مدفوع ${fmtMoney(totals.paid)}</small></div>
+        <div class="fb-kpi expect"><span>المتوقّع إلى آخر الشهر</span><b>${fmtMoney(totals.expected ?? totals.due)}</b><small>إذا تُنجز كل الحصص المبرمجة (دون غيابات)</small></div>
         <div class="fb-kpi ${totals.remaining > 0 ? 'out' : 'in'}"><span>الباقي للخلاص</span><b>${fmtMoney(totals.remaining)}</b><small>${teachers.filter((t) => t.remaining > 0).length} مدرّس</small></div>
       </div>
       <section class="card pauses"><div class="section-head"><h3>⏸ إيقاف العدّ</h3><button class="btn small ghost" id="pz-add">+ عطلة / امتحانات</button></div>
@@ -3605,6 +3606,7 @@ async function viewPayroll(el) {
                     <div class="sc-id"><h3>${esc(t.full_name)}</h3><div class="sc-tags"><span class="sc-level">${rateCell(t)}</span></div>${noSlots(t)}</div></a>
                   <div class="pr-bar"><i style="width:${pct}%"></i></div>
                   <div class="pr-hours"><span><b>${fmtHours(t.hours_done)}</b> منجزة</span><span class="muted">${fmtHours(t.hours_planned)} مبرمجة</span></div>
+                  <div class="pr-expect"><span>المتوقّع آخر الشهر</span><b>${fmtMoney(t.expected ?? t.due)}</b></div>
                   <div class="sc-stats">
                     <div class="sc-stat ${t.absences ? 'warn' : ''}"><b>${t.sessions}</b><span>حصة${t.absences ? ` · ${t.absences} غياب` : ''}${t.paused ? ` · ${t.paused} موقوفة` : ''}</span></div>
                     <div class="sc-stat"><b>${fmtMoney(t.due)}</b><span>المستحق</span></div>
@@ -3616,7 +3618,7 @@ async function viewPayroll(el) {
               })
               .join('')}</div>`
           : `<div class="table-wrap as-table"><table>
-              <thead><tr><th>المدرّس</th><th>معلوم الساعة</th><th>1:45 = 2س</th><th>الحصص</th><th>الساعات</th><th>المستحق</th><th>المدفوع</th><th>الباقي</th></tr></thead>
+              <thead><tr><th>المدرّس</th><th>معلوم الساعة</th><th>1:45 = 2س</th><th>الحصص</th><th>الساعات</th><th>المستحق</th><th>المتوقّع آخر الشهر</th><th>المدفوع</th><th>الباقي</th></tr></thead>
               <tbody>${teachers
                 .map(
                   (t) => `<tr>
@@ -3626,6 +3628,7 @@ async function viewPayroll(el) {
                     <td>${t.sessions}${t.absences ? ` <span class="badge weak">${t.absences} غياب</span>` : ''}${t.paused ? ` <span class="badge status-left">${t.paused} موقوفة</span>` : ''}</td>
                     <td class="nowrap"><b>${fmtHours(t.hours_done)}</b>${t.hours_planned ? `<div class="muted small">+ ${fmtHours(t.hours_planned)} مبرمجة</div>` : ''}</td>
                     <td class="nowrap">${fmtMoney(t.due)}</td>
+                    <td class="nowrap expect-cell">${fmtMoney(t.expected ?? t.due)}</td>
                     <td class="nowrap">${fmtMoney(t.paid)}</td>
                     <td class="nowrap">${remainCell(t)}</td>
                   </tr>`

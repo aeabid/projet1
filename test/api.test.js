@@ -1155,6 +1155,10 @@ test('teacher hours: counted day by day from the timetable, except absences and 
   assert.strictEqual(after.sessions.filter((x) => x.status === 'paused').length, 1);
   const list = (await admin('GET', '/api/payroll?month=2026-10')).body;
   assert.strictEqual(list.teachers.find((x) => x.id === t.id).paused, 1);
+  // المتوقّع آخر الشهر = المستحق + الساعات المبرمجة × معلوم الساعة
+  const row = list.teachers.find((x) => x.id === t.id);
+  assert.strictEqual(row.expected, Math.round((row.due + row.hours_planned * 10) * 1000) / 1000);
+  assert.ok(list.totals.expected >= list.totals.due);
   assert.strictEqual(list.pauses.length >= 1, true);
   await admin('DELETE', `/api/payroll/pauses/${pz.body.id}`);
   assert.strictEqual((await admin('GET', `/api/payroll/${t.id}?month=2026-10`)).body.hours_done, mondays * 2);
