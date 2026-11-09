@@ -364,7 +364,7 @@ const routes = [
   [/^#\/broadcast$/, viewBroadcast],
   [/^#\/payroll$/, viewPayroll],
   [/^#\/home$/, (el) =>
-    state.user.role === 'teacher' ? (state.user.program_staff ? viewProgram(el) : viewTeacherHome(el)) : state.user.role === 'parent' ? viewParentHome(el) : viewHome(el)],
+    state.user.role === 'teacher' ? (state.user.program_staff ? viewFacilitatorHome(el) : viewTeacherHome(el)) : state.user.role === 'parent' ? viewParentHome(el) : viewHome(el)],
   [/^#\/program$/, (el) => viewProgram(el)],
   [/^#\/program\/child\/(\d+)$/, (el, id) => viewProgramChild(el, Number(id))],
   [/^#\/kid\/(\d+)$/, (el, id) => viewProgramChild(el, Number(id))],
@@ -608,6 +608,7 @@ const NAV = {
   // مؤطّر البرنامج التربوي: لا علاقة له بدروس الدعم
   program_staff: [
     ['#/home', 'الرئيسية'],
+    ['#/program', 'أطفالي والتقييم'],
     ['#/program/posts', 'أنشطة ورسائل قسمي'],
     ['#/program/attendance', 'الغيابات'],
     ['#/program/timetable', 'جدول الأوقات'],
@@ -671,7 +672,7 @@ const LINK_ICONS = {
 const TABS = {
   admin: [['#/home', 'الرئيسية', 'home'], ['#/students', 'الدعم', 'book'], ['#/program', 'التربوي', 'spark'], ['#/messages', 'الرسائل', 'chat']],
   teacher: [['#/home', 'الرئيسية', 'home'], ['#/students', 'تلاميذي', 'users'], ['#/attendance', 'الغيابات', 'check'], ['#/messages', 'الرسائل', 'chat']],
-  program_staff: [['#/home', 'الرئيسية', 'home'], ['#/program/posts', 'الأنشطة', 'star'], ['#/program/attendance', 'الغيابات', 'check'], ['#/program/pay', 'أجرتي', 'wallet']],
+  program_staff: [['#/home', 'الرئيسية', 'home'], ['#/program', 'أطفالي', 'smile'], ['#/program/attendance', 'الغيابات', 'check'], ['#/program/posts', 'الأنشطة', 'star']],
   parent: [['#/home', 'الرئيسية', 'home'], ['#/students', 'أبنائي', 'smile'], ['#/timetable', 'الجدول', 'calendar'], ['#/messages', 'الرسائل', 'chat']],
 };
 
@@ -770,6 +771,17 @@ function renderTopbar() {
   refreshMail();
   fitNav();
 }
+
+// الضغط على الجرس أو الرسائل: يختفي العدد فورًا
+document.addEventListener('click', (e) => {
+  const bell = e.target.closest('#bell');
+  const mail = e.target.closest('#mail');
+  if (!bell && !mail) return;
+  const badge = $(bell ? '#bell-count' : '#mail-count');
+  if (badge.hidden) return;
+  badge.hidden = true;
+  api('POST', bell ? '/api/alerts/seen' : '/api/threads/badge-seen').catch(() => {});
+});
 
 // جرس التنبيهات (الإدارة): يُحدَّث كل دقيقتين على الأكثر
 let bellAt = 0;
@@ -1640,6 +1652,63 @@ async function viewStudent(el, id) {
       ${n.content ? `<p>${esc(n.content)}</p>` : ''}
     </li>`;
 
+  const secTimetable = `    <section class="card">
+      <h3>🗓 جدول الأوقات</h3>
+      ${weekView(timetable, { showTeacher: true })}
+    </section>`;
+  const secTasks = `    <section class="card">
+      <h3>📌 مهام القسم</h3>
+      ${tasks.length ? `<ul class="tasks">${tasks.map((t) => taskItem(t, false)).join('')}</ul>` : '<p class="muted">لا توجد مهام.</p>'}
+    </section>`;
+  const secNotes = `    <section class="card">
+      <h3>🏫 ملاحظات الإدارة</h3>
+      ${adminNotes.length ? `<ul class="notes">${adminNotes.map(noteItem).join('')}</ul>` : '<p class="muted">لا توجد ملاحظات.</p>'}
+    </section>
+
+    <section class="card">
+      <h3>📚 ملاحظات المعلمين حسب المادة</h3>
+      ${
+        bySubject.size
+          ? [...bySubject.entries()]
+              .map(
+                ([subject, list]) => `<details class="subject" open>
+                  <summary>${esc(subject)} <span class="muted small">(${list.length})</span></summary>
+                  <ul class="notes">${list.map(noteItem).join('')}</ul>
+                </details>`
+              )
+              .join('')
+          : '<p class="muted">لا توجد ملاحظات.</p>'
+      }
+    </section>`;
+  const secAbsences = `    <section class="card">
+      <h3>📅 الغيابات</h3>
+      ${
+        absences.length
+          ? `<div class="table-wrap"><table>
+              <thead><tr><th>التاريخ</th><th>المادة</th><th>الحالة</th><th>السبب</th><th>سجّله</th>${role !== 'parent' ? '<th></th>' : ''}</tr></thead>
+              <tbody>${absences
+                .map(
+                  (a) => `<tr>
+                    <td>${fmtDate(a.date)}</td>
+                    <td>${esc(a.subject_name || '—')}</td>
+                    <td>${a.justified ? '<span class="badge good">مبرر</span>' : '<span class="badge weak">غير مبرر</span>'}</td>
+                    <td>${esc(a.reason || '—')}</td>
+                    <td class="muted small">${esc(a.recorded_by_name || '')}</td>
+                    ${
+                      role !== 'parent'
+                        ? `<td class="row-actions">
+                            ${role === 'admin' ? `<button class="link" data-justify="${a.id}" data-j="${a.justified ? 0 : 1}">${a.justified ? 'إلغاء التبرير' : 'تبرير'}</button>` : ''}
+                            ${canDelete(a.recorded_by) ? `<button class="link danger" data-del-abs="${a.id}">حذف</button>` : ''}
+                          </td>`
+                        : ''
+                    }
+                  </tr>`
+                )
+                .join('')}</tbody></table></div>`
+          : '<p class="muted">لا توجد غيابات 👏</p>'
+      }
+    </section>`;
+  const isParent = role === 'parent';
   el.innerHTML = `
     ${role !== 'parent' ? '<nav class="file-nav" id="file-nav" hidden></nav>' : ''}
     <div class="page-head">
@@ -1674,18 +1743,16 @@ async function viewStudent(el, id) {
       </div>
     </div>
 
-    ${fileTabs([
-      ['home', 'نظرة عامة'],
-      finance || program?.finance ? ['pay', 'الخلاص'] : null,
-      ['follow', 'المتابعة'],
-      ['info', 'المعلومات'],
-    ])}
+    ${fileTabs(
+      isParent
+        ? [['home', 'نظرة عامة'], ['tt', 'جدول الأوقات'], ['eval', 'التقييم'], ['abs', 'الغيابات'], finance || program?.finance ? ['pay', 'الخلاص'] : null, ['info', 'المعلومات']]
+        : [['home', 'نظرة عامة'], finance || program?.finance ? ['pay', 'الخلاص'] : null, ['follow', 'المتابعة'], ['info', 'المعلومات']]
+    )}
     <div class="tab-panel" data-panel="home">
       ${quickActions(
         role === 'parent'
           ? [
-              { id: 'new-thread', icon: 'mail', label: 'مراسلة', tone: 'purple' },
-              { href: `#/report/${student.id}`, icon: 'report', label: 'بطاقة التقييم', tone: 'blue' },
+              { id: 'new-thread', icon: 'mail', label: 'مراسلة المعلّم أو الإدارة', tone: 'purple' },
             ]
           : [
               { id: 'add-note', icon: 'note', label: 'ملاحظة', tone: 'purple', plus: true },
@@ -1698,12 +1765,12 @@ async function viewStudent(el, id) {
         ${finance ? `<button type="button" class="ov-card ov-pay ${finance.free ? '' : finance.balance > 0 ? 'due' : 'ok'}" data-goto="pay">
           <small>الخلاص</small><b>${finance.free ? 'مجاني' : finance.balance > 0 ? `${fmtMoney(finance.balance)} باقي` : 'خالص ✓'}</b>
           <span>${role === 'admin' ? '💰 تسجيل دفعة ←' : 'التفاصيل ←'}</span></button>` : ''}
-        <button type="button" class="ov-card" data-goto="follow"><small>الغيابات</small><b>${absences.length}</b>
+        <button type="button" class="ov-card" data-goto="${isParent ? 'abs' : 'follow'}"><small>الغيابات</small><b>${absences.length}</b>
           <span>${unjustified ? `${unjustified} غير مبرر` : 'كلها مبررة'}</span></button>
-        <button type="button" class="ov-card" data-goto="follow"><small>آخر ملاحظة</small>
+        <button type="button" class="ov-card" data-goto="${isParent ? 'eval' : 'follow'}"><small>آخر ملاحظة</small>
           <b class="ov-text">${notes[0] ? esc(notes[0].content || CATEGORY_LABELS[notes[0].category] || '') : '—'}</b>
           <span>${notes[0] ? fmtDate(notes[0].date) : 'لا توجد ملاحظات'}</span></button>
-        <a class="ov-card" href="#/report/${student.id}"><small>بطاقة التقييم</small><b>📄 الشهرية</b><span>فتح ←</span></a>
+        ${isParent ? `<button type="button" class="ov-card" data-goto="tt"><small>جدول الأوقات</small><b>🗓 ${new Set(timetable.map((x) => x.day)).size} أيام</b><span>فتح ←</span></button>` : `<a class="ov-card" href="#/report/${student.id}"><small>بطاقة التقييم</small><b>📄 الشهرية</b><span>فتح ←</span></a>`}
       </div>
     ${
       whatsapp_groups.length
@@ -1721,66 +1788,15 @@ async function viewStudent(el, id) {
       ${finance ? financeSection(finance, role, 'support', program ? '💰 الوضعية المالية — دروس الدعم' : '💰 الوضعية المالية', { registration: true }) : ''}
       ${program?.finance ? financeSection(program.finance, role, 'program', '💰 الوضعية المالية — البرنامج التربوي') : ''}
     </div>
-    <div class="tab-panel" data-panel="follow">
+    ${
+      isParent
+        ? `<div class="tab-panel" data-panel="tt">${secTimetable}</div>
+           <div class="tab-panel" data-panel="eval">${secNotes}${secTasks}${program ? classPostsSection(program.posts) + childFollowUpSection(program, role) : ''}</div>
+           <div class="tab-panel" data-panel="abs">${secAbsences}`
+        : `<div class="tab-panel" data-panel="follow">
       ${program ? classPostsSection(program.posts) + childFollowUpSection(program, role) : ''}
-    <section class="card">
-      <h3>🗓 جدول الأوقات</h3>
-      ${weekView(timetable, { showTeacher: true })}
-    </section>
-    <section class="card">
-      <h3>📌 مهام القسم</h3>
-      ${tasks.length ? `<ul class="tasks">${tasks.map((t) => taskItem(t, false)).join('')}</ul>` : '<p class="muted">لا توجد مهام.</p>'}
-    </section>
-
-    <section class="card">
-      <h3>🏫 ملاحظات الإدارة</h3>
-      ${adminNotes.length ? `<ul class="notes">${adminNotes.map(noteItem).join('')}</ul>` : '<p class="muted">لا توجد ملاحظات.</p>'}
-    </section>
-
-    <section class="card">
-      <h3>📚 ملاحظات المعلمين حسب المادة</h3>
-      ${
-        bySubject.size
-          ? [...bySubject.entries()]
-              .map(
-                ([subject, list]) => `<details class="subject" open>
-                  <summary>${esc(subject)} <span class="muted small">(${list.length})</span></summary>
-                  <ul class="notes">${list.map(noteItem).join('')}</ul>
-                </details>`
-              )
-              .join('')
-          : '<p class="muted">لا توجد ملاحظات.</p>'
-      }
-    </section>
-
-    <section class="card">
-      <h3>📅 الغيابات</h3>
-      ${
-        absences.length
-          ? `<div class="table-wrap"><table>
-              <thead><tr><th>التاريخ</th><th>المادة</th><th>الحالة</th><th>السبب</th><th>سجّله</th>${role !== 'parent' ? '<th></th>' : ''}</tr></thead>
-              <tbody>${absences
-                .map(
-                  (a) => `<tr>
-                    <td>${fmtDate(a.date)}</td>
-                    <td>${esc(a.subject_name || '—')}</td>
-                    <td>${a.justified ? '<span class="badge good">مبرر</span>' : '<span class="badge weak">غير مبرر</span>'}</td>
-                    <td>${esc(a.reason || '—')}</td>
-                    <td class="muted small">${esc(a.recorded_by_name || '')}</td>
-                    ${
-                      role !== 'parent'
-                        ? `<td class="row-actions">
-                            ${role === 'admin' ? `<button class="link" data-justify="${a.id}" data-j="${a.justified ? 0 : 1}">${a.justified ? 'إلغاء التبرير' : 'تبرير'}</button>` : ''}
-                            ${canDelete(a.recorded_by) ? `<button class="link danger" data-del-abs="${a.id}">حذف</button>` : ''}
-                          </td>`
-                        : ''
-                    }
-                  </tr>`
-                )
-                .join('')}</tbody></table></div>`
-          : '<p class="muted">لا توجد غيابات 👏</p>'
-      }
-    </section>    </div>
+${secTimetable}${secTasks}${secNotes}${secAbsences}`
+    }    </div>
     <div class="tab-panel" data-panel="info">
     <section class="card info-card">
       <div class="section-head"><h3>🪪 معلومات التلميذ</h3>${role === 'admin' ? '<button class="link small" id="info-edit">✏️ تعديل</button>' : ''}</div>
@@ -2529,6 +2545,38 @@ function linkTeacherModal(allTeachers, u, reload) {
   bindProgramPay();
 }
 
+// إضافة مجموعة لمؤطّر: مجموعة موجودة أو جديدة
+async function groupForStaff(u, reload) {
+  const { classes } = await api('GET', '/api/program');
+  const others = classes.filter((k) => k.teacher_id !== u.id);
+  const mine = classes.filter((k) => k.teacher_id === u.id);
+  openModal(
+    `🎨 مجموعة لـ ${u.full_name}`,
+    `${mine.length ? `<p class="muted small">مجموعاته الحالية: <b>${mine.map((k) => esc(k.name)).join('، ')}</b></p>` : ''}
+     <div class="sf-modes"><label><input type="radio" name="mode" value="new" checked><span>➕ مجموعة جديدة</span></label>
+       <label><input type="radio" name="mode" value="old" ${others.length ? '' : 'disabled'}><span>📂 مجموعة موجودة</span></label></div>
+     <div id="g-new"><label>اسم المجموعة<input name="name" placeholder="مثال: الصغار 2"></label>
+       <label>الأعمار / المستوى (اختياري)<input name="age_range" placeholder="مثال: 7-9 سنوات"></label></div>
+     <div id="g-old" hidden><label>المجموعة<select name="class_id">${others.map((k) => `<option value="${k.id}">${esc(k.name)}${k.teacher_name ? ` (حاليًا: ${esc(k.teacher_name)})` : ''}</option>`).join('')}</select></label>
+       <p class="muted small">إذا كانت المجموعة مسندة لمؤطّر آخر، تتحوّل لـ ${esc(u.full_name)}.</p></div>`,
+    async (d) => {
+      if (d.mode === 'old') await api('PATCH', `/api/program/classes/${d.class_id}/teacher`, { teacher_id: u.id });
+      else {
+        if (!String(d.name || '').trim()) throw new Error('اكتب اسم المجموعة');
+        await api('POST', '/api/program/classes', { name: d.name, age_range: d.age_range, teacher_id: u.id });
+      }
+      toast('تم إسناد المجموعة');
+      reload();
+    }
+  );
+  const sync = () => {
+    const old = $('#modal input[name=mode]:checked').value === 'old';
+    $('#g-new').hidden = old;
+    $('#g-old').hidden = !old;
+  };
+  $('#modal').querySelectorAll('input[name=mode]').forEach((r) => r.addEventListener('change', sync));
+}
+
 // ---------- قائمة المدرّسين / المؤطّرين: بطاقات أو جدول ----------
 function viewStaffList(el, users, { prog, title, addLabel, reload, edit, allTeachers = [] }) {
   let view = studentsView(prog ? 'progStaffView' : 'teachersView');
@@ -2553,17 +2601,17 @@ function viewStaffList(el, users, { prog, title, addLabel, reload, edit, allTeac
           .map(
             (u) => `<article class="pcard staff ${u.approved === false ? 'pending' : ''}">
               <div class="pc-head">${avatar({ full_name: u.full_name }, 'md')}
-                <div><h3>${esc(u.full_name)}</h3><span class="pc-rate">${pay(u)}</span>${u.also_program ? `<span class="badge also">${prog ? '📚 معلم دعم أيضًا' : '🎨 مؤطّر أيضًا'}</span>` : ''}</div>
+                <div><h3>${esc(u.full_name)}</h3><span class="pc-rate">${pay(u)}</span>${lastSeen(u)}${u.also_program ? `<span class="badge also">${prog ? '📚 معلم دعم أيضًا' : '🎨 مؤطّر أيضًا'}</span>` : ''}</div>
                 ${u.approved === false ? '<span class="badge average">ينتظر الموافقة</span>' : ''}</div>
               <div class="pc-phones">${phones(u).length ? phones(u).map((p) => `<span class="pc-phone"><span dir="ltr">${esc(p)}</span><a class="pc-call" href="tel:${esc(p)}" aria-label="اتصال">📞</a>${waButton(p)}</span>`).join('') : '<span class="muted small">لا هاتف</span>'}</div>
               <div class="pc-kids">${subj(u) || '<span class="muted small">—</span>'}</div>
               <div class="pc-foot"><span class="muted small" dir="ltr">👤 ${esc(u.username)}</span>
-                <span>${u.approved === false ? `<button class="btn small" data-approve="${u.id}">✔ تفعيل</button>` : ''}<a class="btn ghost small" href="${payLink(u)}">${prog ? 'الأجرة' : 'الساعات'}</a><button class="btn ghost small" data-pw="${u.id}" title="إرسال الدخول (اسم المستخدم وكلمة السر) عبر واتساب">🔑</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
+                <span>${u.approved === false ? `<button class="btn small" data-approve="${u.id}">✔ تفعيل</button>` : ''}${prog ? `<button class="btn ghost small" data-group="${u.id}">+ مجموعة</button>` : ''}<a class="btn ghost small" href="${payLink(u)}">${prog ? 'الأجرة' : 'الساعات'}</a><button class="btn ghost small" data-pw="${u.id}" title="إرسال الدخول (اسم المستخدم وكلمة السر) عبر واتساب">🔑</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
             </article>`
           )
           .join('')}</div>`
       : `<div class="table-wrap as-table"><table>
-          <thead><tr><th>الاسم</th><th>الهاتف</th><th>${prog ? 'الأقسام' : 'المواد'}</th><th>${prog ? 'الأجرة' : 'معلوم الساعة'}</th><th>اسم المستخدم</th><th></th></tr></thead>
+          <thead><tr><th>الاسم</th><th>الهاتف</th><th>${prog ? 'الأقسام' : 'المواد'}</th><th>${prog ? 'الأجرة' : 'معلوم الساعة'}</th><th>اسم المستخدم</th><th>آخر دخول</th><th></th></tr></thead>
           <tbody>${list
             .map(
               (u) => `<tr>
@@ -2572,6 +2620,7 @@ function viewStaffList(el, users, { prog, title, addLabel, reload, edit, allTeac
                 <td><div class="pc-kids">${subj(u) || '<span class="muted">—</span>'}</div></td>
                 <td class="nowrap">${pay(u)} <a class="small" href="${payLink(u)}">←</a></td>
                 <td class="nowrap" dir="ltr">${esc(u.username)}</td>
+                <td class="nowrap">${lastSeen(u)}</td>
                 <td class="row-actions">${u.approved === false ? `<button class="btn small" data-approve="${u.id}">✔ تفعيل</button>` : ''}<button class="btn ghost small" data-pw="${u.id}">🔑 إرسال الدخول</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button><button class="btn danger small" data-del="${u.id}">${prog && u.also_program ? 'إلغاء التأطير' : 'حذف'}</button></td>
               </tr>`
             )
@@ -2585,6 +2634,7 @@ function viewStaffList(el, users, { prog, title, addLabel, reload, edit, allTeac
       })
     );
     $('#s-list').querySelectorAll('[data-pw]').forEach((b) => b.addEventListener('click', () => issuePassword(find(b.dataset.pw))));
+    $('#s-list').querySelectorAll('[data-group]').forEach((b) => b.addEventListener('click', () => groupForStaff(find(b.dataset.group), reload)));
     $('#s-list').querySelectorAll('[data-approve]').forEach((b) =>
       b.addEventListener('click', async () => {
         const u = find(b.dataset.approve);
@@ -2613,6 +2663,14 @@ function viewStaffList(el, users, { prog, title, addLabel, reload, edit, allTeac
   $('#add-user').addEventListener('click', () => edit(null));
   $('#link-teacher')?.addEventListener('click', () => linkTeacherModal(allTeachers, null, reload));
   render();
+}
+
+// آخر دخول: «منذ 3 أيام» أو «لم يدخل بعد»
+function lastSeen(u) {
+  if (!u.last_seen) return '<span class="seen never">⚪ لم يدخل بعد</span>';
+  const d = (Date.now() - new Date(u.last_seen).getTime()) / 60000;
+  const t = d < 10 ? 'الآن' : d < 60 ? `منذ ${Math.round(d)} دقيقة` : d < 1440 ? `منذ ${Math.round(d / 60)} ساعة` : d < 2880 ? 'أمس' : d < 60 * 24 * 30 ? `منذ ${Math.round(d / 1440)} يوم` : fmtDate(String(u.last_seen).slice(0, 10));
+  return `<span class="seen ${d < 60 * 24 * 7 ? 'recent' : ''}" title="${esc(new Date(u.last_seen).toLocaleString('fr-FR'))}">🟢 آخر دخول ${t}</span>`;
 }
 
 // زر «إرسال الدخول عبر واتساب» (اسم المستخدم + كلمة سر جديدة)
@@ -2644,7 +2702,7 @@ function viewParentsList(el, users, reload, edit) {
           .map(
             (u) => `<article class="pcard">
               <a class="pc-head" href="#/parents/${u.id}">${avatar({ full_name: u.full_name }, 'md')}
-                <div><h3>${esc(u.full_name)}</h3><span class="muted small">${count(u) ? `${count(u)} ${count(u) === 1 ? 'ابن' : 'أبناء'}` : 'بلا أبناء'}${u.google_email ? ' · Google' : ''}</span></div></a>
+                <div><h3>${esc(u.full_name)}</h3><span class="muted small">${count(u) ? `${count(u)} ${count(u) === 1 ? 'ابن' : 'أبناء'}` : 'بلا أبناء'}${u.google_email ? ' · Google' : ''}</span>${lastSeen(u)}</div></a>
               <div class="pc-phones">${phones(u).length ? phones(u).map((p) => `<span class="pc-phone"><span dir="ltr">${esc(p)}</span><a class="pc-call" href="tel:${esc(p)}" aria-label="اتصال">📞</a>${waButton(p)}</span>`).join('') : '<span class="muted small">لا هاتف</span>'}</div>
               ${loginBtn(u)}
               <div class="pc-kids">${kidsOf(u).join('') || '<span class="muted small">—</span>'}</div>
@@ -2654,7 +2712,7 @@ function viewParentsList(el, users, reload, edit) {
           )
           .join('')}</div>`
       : `<div class="table-wrap as-table"><table>
-          <thead><tr><th>الولي</th><th>الهاتف</th><th>الأبناء</th><th>اسم المستخدم</th><th></th></tr></thead>
+          <thead><tr><th>الولي</th><th>الهاتف</th><th>الأبناء</th><th>اسم المستخدم</th><th>آخر دخول</th><th></th></tr></thead>
           <tbody>${list
             .map(
               (u) => `<tr>
@@ -2662,6 +2720,7 @@ function viewParentsList(el, users, reload, edit) {
                 <td>${phones(u).map((p) => `<span class="phone-line"><span dir="ltr">${esc(p)}</span>${waButton(p)}</span>`).join('') || '<span class="muted">—</span>'}</td>
                 <td><div class="pc-kids">${kidsOf(u).join('') || '<span class="muted">—</span>'}</div></td>
                 <td class="nowrap" dir="ltr">${esc(u.username)}</td>
+                <td class="nowrap">${lastSeen(u)}</td>
                 <td class="row-actions">${loginBtn(u, true)}<button class="btn ghost small" data-edit="${u.id}">تعديل</button>${u.id !== state.user.id ? `<button class="btn danger small" data-del="${u.id}">حذف</button>` : ''}</td>
               </tr>`
             )
@@ -2703,7 +2762,7 @@ async function viewUsers(el, role, scope = null) {
       users.length
         ? `<div class="table-wrap"><table>
             <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الهاتف</th>${role === 'parent' ? '<th>ب.ت.و</th>' : ''}
-              ${role === 'teacher' ? (prog ? '<th>الأقسام</th><th>الأجرة الشهرية</th>' : '<th>المواد</th><th>معلوم الساعة</th>') : ''}${role === 'parent' ? '<th>الأبناء</th>' : ''}<th></th></tr></thead>
+              ${role === 'teacher' ? (prog ? '<th>الأقسام</th><th>الأجرة الشهرية</th>' : '<th>المواد</th><th>معلوم الساعة</th>') : ''}${role === 'parent' ? '<th>الأبناء</th>' : ''}<th>آخر دخول</th><th></th></tr></thead>
             <tbody>${users
               .map(
                 (u) => `<tr>
@@ -2719,6 +2778,7 @@ async function viewUsers(el, role, scope = null) {
                       ? `<td>${u.children.map((c) => `<a href="#/students/${c.id}">${esc(c.full_name)}</a>`).join('، ') || '—'}</td>`
                       : ''
                   }
+                  <td class="nowrap">${lastSeen(u)}</td>
                   <td class="row-actions">
                     ${u.approved === false ? `<button class="btn small" data-approve="${u.id}">✔ تفعيل</button>` : ''}
                     ${u.super_admin ? '' : `<button class="btn ghost small" data-pw="${u.id}">🔑 إرسال الدخول</button>`}
@@ -3066,6 +3126,30 @@ function taskItem(t, canDelete) {
     ${t.video_url ? videoBlock(t.video_url) : ''}
     ${(t.files || []).length ? `<div class="t-attach">${t.files.map((f) => `<a class="t-file" href="/api/task-files/${f.id}" target="_blank" rel="noopener">${fileIcon(f.mime)}<span>${esc(f.filename)}</span><small>${fmtSize(f.size)}</small></a>`).join('')}</div>` : ''}
   </li>`;
+}
+// محتوى تعليمي (فيديو + ملفات) لعرضه تحت مهمة أو منشور
+const contentBlock = (videoUrl, files = [], base = '/api/task-files/') =>
+  `${videoUrl ? videoBlock(videoUrl) : ''}${(files || []).length ? `<div class="t-attach">${files.map((f) => `<a class="t-file" href="${base}${f.id}" target="_blank" rel="noopener">${fileIcon(f.mime)}<span>${esc(f.filename)}</span><small>${fmtSize(f.size)}</small></a>`).join('')}</div>` : ''}`;
+// خانة إرفاق الملفات (اختيار أو سحب)، تُرجع دالة تعطي الملفات المختارة
+const attachFields = (id) => `<label>🎬 رابط فيديو (اختياري)<input name="video_url" type="url" dir="ltr" placeholder="https://youtube.com/…"></label>
+  <label class="drop-zone small" id="${id}-drop"><span>📎</span><b>إرفاق ملفات (PDF، صور، Word…) — اختياري</b><input type="file" id="${id}-input" multiple hidden></label>
+  <ul class="t-files" id="${id}-list"></ul>`;
+function bindAttach(id) {
+  const files = [];
+  const show = () => {
+    $(`#${id}-list`).innerHTML = files.map((f, i) => `<li><span>${fileIcon(f.type)} ${esc(f.name)} <small class="muted">${fmtSize(f.size)}</small></span><button type="button" class="link danger small" data-rm="${i}">✕</button></li>`).join('');
+    $(`#${id}-list`).querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', () => (files.splice(Number(b.dataset.rm), 1), show())));
+  };
+  const add = (list) => {
+    for (const f of list) f.size > 4 * 1024 * 1024 ? toast(`${f.name}: أكبر من 4 ميغا`, true) : files.push(f);
+    show();
+  };
+  $(`#${id}-input`).addEventListener('change', (e) => (add([...e.target.files]), (e.target.value = '')));
+  const dz = $(`#${id}-drop`);
+  ['dragenter', 'dragover'].forEach((t) => dz.addEventListener(t, (e) => (e.preventDefault(), dz.classList.add('over'))));
+  ['dragleave', 'drop'].forEach((t) => dz.addEventListener(t, () => dz.classList.remove('over')));
+  dz.addEventListener('drop', (e) => (e.preventDefault(), add([...e.dataTransfer.files])));
+  return () => files;
 }
 const fileIcon = (mime = '') => (/pdf/.test(mime) ? '📄' : /image/.test(mime) ? '🖼️' : /word|document/.test(mime) ? '📝' : /sheet|excel/.test(mime) ? '📊' : /presentation|powerpoint/.test(mime) ? '📽️' : /audio/.test(mime) ? '🎧' : /video/.test(mime) ? '🎞️' : '📎');
 const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} م.ب` : `${Math.max(1, Math.round(n / 1024))} ك.ب`);

@@ -1481,3 +1481,32 @@ test('class task with a video link and attached files, visible to the parents of
   const res5 = await handle(new Request(`http://localhost/api/task-files/${f.body.id}`, { headers: { cookie: (await call('POST', '/api/login', { username: 'tf-p5', password: 'secret1' })).headers.get('set-cookie').split(';')[0] } }));
   assert.strictEqual(res5.status, 403);
 });
+
+test('last login, partner forecast, message badge, facilitator post with files and group assignment', async () => {
+  const admin = await login('admin', 'admin123');
+  const u = (await admin('POST', '/api/users', { role: 'parent', username: 'seen-p', full_name: 'ولي', password: 'secret1' })).body.user;
+  let row = (await admin('GET', '/api/users?role=parent')).body.users.find((x) => x.id === u.id);
+  assert.strictEqual(row.last_seen, null);
+  await login('seen-p', 'secret1');
+  row = (await admin('GET', '/api/users?role=parent')).body.users.find((x) => x.id === u.id);
+  assert.ok(row.last_seen);
+  // توقّع الشريك
+  const pt = (await admin('GET', '/api/partners')).body;
+  assert.ok(pt.forecast && typeof pt.forecast.net_expected === 'number');
+  assert.strictEqual(Math.round((pt.forecast.net_now - pt.forecast.salaries_left) * 1000) / 1000, pt.forecast.net_expected);
+  // عدد الرسائل يختفي بعد الضغط
+  assert.strictEqual((await admin('POST', '/api/threads/badge-seen')).status, 200);
+  assert.strictEqual((await admin('GET', '/api/threads/unread')).body.count, 0);
+  // مجموعة لمؤطّر + منشور بفيديو وملف
+  const f = (await admin('POST', '/api/users', { role: 'teacher', username: 'fac-g', full_name: 'مؤطّرة', password: 'secret1', program_staff: true, monthly_salary: 100 })).body.user;
+  const k = (await admin('POST', '/api/program/classes', { name: 'مجموعة اختبار', teacher_id: f.id })).body.class;
+  const k2 = (await admin('POST', '/api/program/classes', { name: 'مجموعة ثانية' })).body.class;
+  assert.strictEqual((await admin('PATCH', `/api/program/classes/${k2.id}/teacher`, { teacher_id: f.id })).status, 200);
+  const fl = await login('fac-g', 'secret1');
+  assert.strictEqual((await fl('GET', '/api/program')).body.classes.length, 2);
+  const post = (await fl('POST', '/api/program/posts', { class_id: k.id, title: 'نشاط', video_url: 'https://youtu.be/dQw4w9WgXcQ' })).body;
+  const pdf = 'data:application/pdf;base64,' + Buffer.from('%PDF').toString('base64');
+  assert.strictEqual((await fl('POST', `/api/program/posts/${post.id}/files`, { filename: 'a.pdf', data: pdf })).status, 201);
+  const p = (await fl('GET', '/api/program/posts')).body.posts.find((x) => x.id === post.id);
+  assert.deepStrictEqual([p.video_url, p.files.length], ['https://youtu.be/dQw4w9WgXcQ', 1]);
+});

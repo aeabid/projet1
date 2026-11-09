@@ -813,7 +813,7 @@ function classPostsSection(posts) {
     .map(
       (p) => `<li class="task"><div><b>${p.kind === 'message' ? '✉️' : '🧩'} ${esc(p.title)}</b>
         <span class="muted small">${fmtDate(String(p.created_at).slice(0, 10))}${p.author_name ? ' · ' + esc(p.author_name) : ''}${p.due_date ? ` · آخر أجل ${fmtDate(p.due_date)}` : ''}</span></div>
-        ${p.body ? `<p>${esc(p.body)}</p>` : ''}</li>`
+        ${p.body ? `<p>${esc(p.body)}</p>` : ''}${contentBlock(p.video_url, p.files, '/api/program-post-files/')}</li>`
     )
     .join('')}</ul></section>`;
 }
@@ -983,30 +983,87 @@ async function viewProgramChild(el, id) {
 }
 
 // المنشط: أقسامه وأطفالها
+// المؤطّر: ملاحظة تقييمية سريعة لطفل
+function quickChildNote(c, reload) {
+  openModal(
+    `📝 تقييم ${c.full_name}`,
+    `<div class="row"><label>النوع<select name="category">${Object.entries(PROGRAM_NOTE_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
+       <label>التقييم<select name="rating"><option value="">—</option>${Object.entries(LEVEL_WORDS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label></div>
+     <label>الملاحظة<textarea name="content" rows="4" required placeholder="مثال: حفظ ممتاز للسورة، يشارك بحماس…"></textarea></label>
+     <label>التاريخ<input type="date" name="date" value="${today()}"></label>
+     <p class="muted small">تظهر الملاحظة للولي في ملف ابنه (تبويب «التقييم»).</p>`,
+    async (d) => {
+      await api('POST', `/api/program/children/${c.id}/notes`, d);
+      toast('تم حفظ التقييم');
+      reload?.();
+    }
+  );
+}
+
+// أطفال المؤطّر حسب المجموعة، مع زر تقييم لكل طفل
+function facilitatorGroups(classes, children) {
+  return classes.length
+    ? classes
+        .map((k) => {
+          const list = children.filter((c) => c.class_id === k.id && c.status !== 'left');
+          return `<section class="card fac-group"><div class="section-head"><h3>🎨 ${esc(k.name)}${k.age_range ? ` <small class="muted">(${esc(k.age_range)})</small>` : ''}</h3><span class="badge">${list.length} طفل</span></div>
+            ${list.length
+              ? `<ul class="fac-kids">${list
+                  .map((c) => `<li><a href="#/program/child/${c.id}">${avatar({ full_name: c.full_name }, 'sm')}<b>${esc(c.full_name)}</b><small>${ageOf(c.birth_date)}</small></a>
+                      <span class="fac-meta"><span title="غيابات">📅 ${c.absence_count || 0}</span><span title="ملاحظات">📝 ${c.note_count || 0}</span></span>
+                      <button type="button" class="btn small" data-note-child="${c.id}">📝 تقييم</button></li>`)
+                  .join('')}</ul>`
+              : '<p class="muted">لا يوجد أطفال في هذه المجموعة.</p>'}
+          </section>`;
+        })
+        .join('')
+    : '<div class="card muted">لم تُسند إليك أي مجموعة في البرنامج التربوي. اتصل بالإدارة.</div>';
+}
+function bindFacilitatorGroups(el, children, reload) {
+  el.querySelectorAll('[data-note-child]').forEach((b) =>
+    b.addEventListener('click', () => quickChildNote(children.find((c) => c.id === Number(b.dataset.noteChild)), reload))
+  );
+}
+
 async function viewProgramTeacher(el) {
   const { classes, children } = await api('GET', '/api/program');
+  if (!el.isConnected) return;
   el.innerHTML = `
-    <div class="page-head"><h2>🎨 البرنامج التربوي</h2><a class="btn" href="#/program/attendance">تسجيل الغيابات</a></div>
-    ${
-      classes.length
-        ? classes
-            .map(
-              (k) => `<section class="card"><h3>${esc(k.name)}${k.age_range ? ` <small class="muted">(${esc(k.age_range)})</small>` : ''}</h3>
-                ${(() => {
-                  const list = children.filter((c) => c.class_id === k.id);
-                  return list.length
-                    ? `<ul class="levels">${list
-                        .map(
-                          (c) => `<li><a href="#/program/child/${c.id}"><b>${esc(c.full_name)}</b></a>
-                            <span class="muted small">${ageOf(c.birth_date)} · غيابات ${c.absence_count} · ملاحظات ${c.note_count}</span></li>`
-                        )
-                        .join('')}</ul>`
-                    : '<p class="muted">لا يوجد أطفال في هذا القسم.</p>';
-                })()}</section>`
-            )
-            .join('')
-        : '<div class="card muted">لم تُسند إليك أي مجموعة في البرنامج التربوي.</div>'
-    }`;
+    <div class="page-head"><div><h2>🎨 أطفالي والتقييم</h2><p class="muted small">اضغط «📝 تقييم» لإضافة ملاحظة لطفل، أو على اسمه لملفه كاملًا.</p></div>
+      <a class="btn" href="#/program/attendance">تسجيل الغيابات</a></div>
+    ${facilitatorGroups(classes, children)}`;
+  bindFacilitatorGroups(el, children, () => viewProgramTeacher(el));
+}
+
+// الرئيسية للمؤطّر: ملخّص كل شيء
+async function viewFacilitatorHome(el) {
+  const [{ classes, children }, { slots }, { posts }, pay] = await Promise.all([
+    api('GET', '/api/program'),
+    api('GET', '/api/program/slots').catch(() => ({ slots: [] })),
+    api('GET', '/api/program/posts').catch(() => ({ posts: [] })),
+    api('GET', '/api/program/staff-pay').catch(() => null),
+  ]);
+  if (!el.isConnected) return;
+  const ids = new Set(classes.map((k) => k.id));
+  const kids = children.filter((c) => ids.has(c.class_id) && c.status !== 'left');
+  const day = new Date().getDay() || 7;
+  const todays = slots.filter((x) => ids.has(x.class_id) && Number(x.day) === day);
+  const me = pay?.staff?.find((x) => x.id === state.user.id);
+  const notes = kids.reduce((t, c) => t + (c.note_count || 0), 0);
+  el.innerHTML = `
+    ${heroBanner({ sub: `${classes.length} مجموعة · ${kids.length} طفل`, art: '🎨', actions: '<a class="btn" href="#/program/attendance">تسجيل الغيابات</a><a class="btn ghost" href="#/program/posts">+ نشاط للقسم</a>' })}
+    <div class="ov-grid fac-kpis">
+      <div class="ov-card"><small>أطفالي</small><b>${kids.length}</b><span>${classes.length} مجموعة</span></div>
+      <div class="ov-card"><small>حصص اليوم</small><b>${todays.length}</b><span>${todays.length ? todays.map((x) => `${x.start_time}`).join('، ') : 'لا حصص اليوم'}</span></div>
+      <div class="ov-card"><small>التقييمات</small><b>${notes}</b><span>ملاحظة مسجّلة</span></div>
+      ${me ? `<a class="ov-card" href="#/program/pay"><small>أجرة الشهر</small><b>${me.volunteer ? '🤝 متطوّع' : fmtMoney(me.expected || 0)}</b><span>${me.payment ? 'تمّ الخلاص ✓' : 'لم تُخلَّص بعد'}</span></a>` : ''}
+    </div>
+    ${todays.length ? `<section class="card"><h3>🗓 حصص اليوم</h3><ul class="levels">${todays.map((x) => `<li><span><b dir="ltr">${esc(x.start_time)} – ${esc(x.end_time)}</b> ${esc(x.class_name)}${x.title ? ` · ${esc(x.title)}` : ''}</span></li>`).join('')}</ul></section>` : ''}
+    ${facilitatorGroups(classes, children)}
+    <section class="card"><div class="section-head"><h3>🧩 آخر الأنشطة المنشورة</h3><a class="link small" href="#/program/posts">الكل ←</a></div>
+      ${posts.length ? `<ul class="levels">${posts.slice(0, 4).map((p) => `<li><span>${p.kind === 'message' ? '✉️' : '🧩'} <b>${esc(p.title)}</b> <small class="muted">${esc(p.class_name)} · ${fmtDate(String(p.created_at).slice(0, 10))}</small></span></li>`).join('')}</ul>` : '<p class="muted">لم تنشر أي نشاط بعد.</p>'}
+    </section>`;
+  bindFacilitatorGroups(el, children, () => viewFacilitatorHome(el));
 }
 
 // الحضور لقسم: الكل حاضر، اضغط على الغائب
@@ -1841,6 +1898,17 @@ async function viewPartners(el) {
         <div class="fb-kpi in"><span>التسبقات المدفوعة</span><b>${fmtMoney(s.paid)}</b><small>منذ ${esc(monthLabel(s.from))}</small></div>`
       )
       .join('')}</div>
+    ${
+      d.forecast
+        ? `<section class="card forecast"><div class="section-head"><h3>🔮 ${esc(monthLabel(d.forecast.month))}: الربح الحالي والمتوقّع</h3></div>
+            <div class="fc-grid">
+              <div><small>الربح الحالي</small><b class="${d.forecast.net_now < 0 ? 'neg' : ''}">${fmtMoney(d.forecast.net_now)}</b><i>المداخيل − المصاريف المدفوعة إلى اليوم</i></div>
+              <div class="minus"><small>− الأجور المتبقّية إلى آخر الشهر</small><b>${fmtMoney(d.forecast.salaries_left)}</b><i>كل الحصص المبرمجة، دون غيابات</i></div>
+              <div class="eq"><small>= الربح الصافي المتوقّع</small><b class="${d.forecast.net_expected < 0 ? 'neg' : ''}">${fmtMoney(d.forecast.net_expected)}</b>
+                <i>${Object.entries(d.forecast.shares).map(([n, v]) => `${esc(n)}: ${fmtMoney(v)}`).join(' · ')}</i></div>
+            </div></section>`
+        : ''
+    }
     ${
       d.owner_summary && state.user.super_admin
         ? `<section class="card owner-card"><div class="section-head"><h3>👤 حساب ${esc(d.owner)} (صاحب المشروع)</h3><a class="link small" href="#/cash">الصندوق ←</a></div>

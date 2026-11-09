@@ -106,7 +106,8 @@ function newThreadForm(student, subjects) {
          ? `<label>إلى<select name="target_pick">
              <option value="admin">إدارة فيد</option>
              ${mine.map((x) => `<option value="${x.id}">أستاذ(ة) ${esc(x.name)}</option>`).join('')}
-           </select></label>`
+           </select></label>
+           <p class="muted small">تصل رسالتك للأستاذ(ة)، والإدارة تطّلع على كل الرسائل.</p>`
          : role === 'teacher'
            ? `<label>المادة<select name="target_pick">${mine.map((x) => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>`
            : '<input type="hidden" name="target_pick" value="admin">'
@@ -505,7 +506,8 @@ async function viewProgramPosts(el) {
             <label>العنوان<input name="title" required placeholder="مثال: حفظ سورة الملك"></label>
             <label>التفاصيل<textarea name="body" rows="4"></textarea></label>
             <label>آخر أجل (اختياري)<input type="date" name="due_date"></label>
-            <button class="btn">نشر لكامل القسم</button>
+            ${attachFields('pp')}
+            <button class="btn" id="pp-submit">نشر لكامل القسم</button>
           </form>`
         : '<div class="card muted">لا يوجد قسم مسند إليك.</div>'
     }
@@ -516,19 +518,28 @@ async function viewProgramPosts(el) {
               (p) => `<li class="task"><div><b>${p.kind === 'message' ? '✉️' : '🧩'} ${esc(p.title)}</b>
                 <span class="muted small">${esc(p.class_name)} · ${fmtDate(String(p.created_at).slice(0, 10))}${p.author_name ? ' · ' + esc(p.author_name) : ''}${p.due_date ? ` · آخر أجل ${fmtDate(p.due_date)}` : ''}</span>
                 ${state.user.role === 'admin' || p.author_id === state.user.id ? `<button class="link danger small" data-del="${p.id}">حذف</button>` : ''}</div>
-                ${p.body ? `<p>${esc(p.body)}</p>` : ''}</li>`
+                ${p.body ? `<p>${esc(p.body)}</p>` : ''}${contentBlock(p.video_url, p.files, '/api/program-post-files/')}</li>`
             )
             .join('')}</ul>`
         : '<p class="muted">لا توجد منشورات بعد.</p>'
     }</section>`;
+  const files = $('#pp-form') ? bindAttach('pp') : () => [];
   $('#pp-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const btn = $('#pp-submit');
+    btn.disabled = true;
     try {
       const r = await api('POST', '/api/program/posts', formData(e.target));
+      for (const [i, f] of files().entries()) {
+        btn.textContent = `رفع الملفات ${i + 1}/${files().length}…`;
+        await api('POST', `/api/program/posts/${r.id}/files`, { filename: f.name, data: await readFileData(f) });
+      }
       toast(`تم النشر لأولياء القسم (${r.parents})`);
       viewProgramPosts(el);
     } catch (err) {
       toast(err.message, true);
+      btn.disabled = false;
+      btn.textContent = 'نشر لكامل القسم';
     }
   });
   el.querySelectorAll('[data-del]').forEach((b) =>
