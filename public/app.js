@@ -2314,12 +2314,17 @@ function bindFinance(el, f, { kind, id }, reload) {
       const a = m.adjustment;
       openModal(
         `تعديل مبلغ ${monthLabel(m.month)}`,
-        `<p class="muted small">المبلغ العادي لهذا الشهر: <b>${fmtMoney(a ? a.original : m.due)}</b></p>
-         <label class="check"><input type="radio" name="kind" value="free_month" ${!a || (a.kind === 'exempt' && a.reason === 'معفى') ? 'checked' : ''}> معفى هذا الشهر (لا يدفع شيئًا)</label>
-         <label class="check"><input type="radio" name="kind" value="exempt" ${a?.kind === 'exempt' && a.reason !== 'معفى' ? 'checked' : ''}> تغيّب الشهر كاملًا (لا شيء عليه)</label>
-         <label class="check"><input type="radio" name="kind" value="absent_days" ${a?.kind === 'absent_days' ? 'checked' : ''}> تغيّب جزءًا من الشهر</label>
+        `${m.payments.length ? `<div class="adj-pay"><b>💳 طريقة الدفع</b>${m.payments
+            .map((p) => `<div class="adj-pay-row"><span>${fmtMoney(p.amount)} · ${fmtDate(p.paid_on)}${p.receipt_no ? ` · وصل ${p.receipt_no}` : ''}</span>
+              <select data-pm="${p.id}" aria-label="طريقة الدفع">${Object.entries(PAYMENT_LABELS).map(([k, v]) => `<option value="${k}" ${(p.method || 'cash') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>`)
+            .join('')}</div>` : ''}
+         <label class="check adj-keep"><input type="radio" name="kind" value="keep" checked> بلا تغيير في مبلغ الشهر</label>
+         <p class="muted small">المبلغ العادي لهذا الشهر: <b>${fmtMoney(a ? a.original : m.due)}</b>${a ? ` · التعديل الحالي: <b>${esc(a.reason || a.kind)}</b> ← ${fmtMoney(m.due)}` : ''}</p>
+         <label class="check"><input type="radio" name="kind" value="free_month"> معفى هذا الشهر (لا يدفع شيئًا)</label>
+         <label class="check"><input type="radio" name="kind" value="exempt"> تغيّب الشهر كاملًا (لا شيء عليه)</label>
+         <label class="check"><input type="radio" name="kind" value="absent_days"> تغيّب جزءًا من الشهر</label>
          <label id="adj-days">عدد أيام الغياب<input name="days" inputmode="numeric" value="${a?.kind === 'absent_days' ? esc(a.value) : ''}" placeholder="مثال: 10"></label>
-         <label class="check"><input type="radio" name="kind" value="amount" ${a?.kind === 'amount' ? 'checked' : ''}> مبلغ آخر</label>
+         <label class="check"><input type="radio" name="kind" value="amount"> مبلغ آخر</label>
          <label class="check"><input type="radio" name="kind" value="extra"> إضافة مبلغ لهذا الشهر (معلوم التسجيل أو غيره)</label>
          <div class="row" id="adj-extra"><label>المبلغ المضاف (د.ت)<input name="extra_amount" inputmode="decimal" value="40"></label>
            <label>البيان<input name="extra_reason" value="معلوم التسجيل"></label></div>
@@ -2327,6 +2332,18 @@ function bindFinance(el, f, { kind, id }, reload) {
          <label>السبب<input name="reason" value="${esc(a?.reason || '')}" placeholder="مثال: مرض، سفر"></label>
          ${a ? '<p><button type="button" class="btn small danger" id="adj-del">إلغاء التعديل والرجوع للمبلغ العادي</button></p>' : ''}`,
         async (data) => {
+          // طريقة الدفع: الدفعات التي تبدّلت طريقتها فقط
+          let changed = 0;
+          for (const sel of $('#modal').querySelectorAll('[data-pm]')) {
+            const p = m.payments.find((x) => x.id === Number(sel.dataset.pm));
+            if (!p || (p.method || 'cash') === sel.value) continue;
+            await api('PUT', kind === 'support' ? `/api/payments/${p.id}` : `/api/program/payments/${p.id}`, { month: p.month, amount: p.amount, paid_on: p.paid_on, method: sel.value, note: p.note || '' });
+            changed++;
+          }
+          if (data.kind === 'keep') {
+            toast(changed ? 'تم تغيير طريقة الدفع' : 'لا تغيير');
+            return reload();
+          }
           if (data.kind === 'extra') {
             await api('POST', '/api/fee-extras', {
               [kind === 'support' ? 'student_id' : 'child_id']: id,
@@ -2442,40 +2459,42 @@ function bindFinance(el, f, { kind, id }, reload) {
 // ---------- المستخدمون ----------
 // ---------- كلمة سر أوّلية + إرسالها عبر واتساب ----------
 const ROLE_WORD = { parent: 'الولي', teacher: 'المدرّس', admin: 'الإداري' };
+// زر واحد: كلمة سر جديدة + فتح واتساب مباشرة بالرسالة (الرابط، اسم المستخدم، كلمة السر)
 async function issuePassword(u, onDone) {
-  if (!confirmAction(`إصدار كلمة سر جديدة لـ ${u.full_name}؟\nكلمة السر القديمة تتبطّل، ويخرج من حسابه في كل الأجهزة.`)) return;
+  const phone = u.phone;
+  const canWa = !!waNumber(phone);
+  if (!confirmAction(`إرسال الدخول لـ ${u.full_name}${canWa ? ' عبر واتساب' : ''}؟\nتتعمل كلمة سر جديدة، والقديمة تتبطّل.`)) return;
+  // نفتح نافذة واتساب فورًا (داخل نفس الضغطة) حتى لا يحجبها المتصفح، ثم نملأ الرابط
+  const win = canWa ? window.open('', '_blank') : null;
   let r;
   try {
     r = await api('POST', `/api/users/${u.id}/new-password`);
   } catch (err) {
+    win?.close();
     return toast(err.message, true);
   }
-  const link = PUBLIC_URL;
-  const hello = r.role === 'parent' ? 'مرحبا' : 'مرحبا أستاذ(ة)';
-  const msg = `${hello} ${r.full_name} 🌿\nحسابك في منصّة مركز فيد:\n🔗 ${link}\n👤 اسم المستخدم: ${r.username}\n🔑 كلمة السر: ${r.password}\nننصحك بتغيير كلمة السر بعد أوّل دخول (حسابي ← كلمة السر).`;
-  const phone = u.phone || r.phone;
-  openModal(
-    '🔑 كلمة السر الجديدة',
-    `<div class="pw-card">
-       <div><small>اسم المستخدم</small><b dir="ltr">${esc(r.username)}</b></div>
-       <div><small>كلمة السر</small><b dir="ltr" class="pw">${esc(r.password)}</b></div>
-     </div>
-     <p class="muted small">ابعثها لـ${esc(ROLE_WORD[r.role] || '')} ${esc(r.full_name)} عبر واتساب، ولا انسخها. ما تظهرش مرّة أخرى.</p>
-     <div class="pw-acts">
-       ${waNumber(phone) ? `<a class="btn wa" target="_blank" rel="noopener" href="${esc(waUrl(phone, msg))}">${WA_ICON} إرسال عبر واتساب</a>` : '<span class="muted small">لا رقم هاتف لإرسال واتساب.</span>'}
-       <button type="button" class="btn ghost" id="pw-copy">📋 نسخ الرسالة</button>
-     </div>`,
-    async () => {}
-  );
-  $('#modal-form button[type=submit]').textContent = 'تم';
-  $('#pw-copy').addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(msg);
-      toast('تم النسخ');
-    } catch {
-      toast('تعذّر النسخ', true);
-    }
-  });
+  const hello = r.role === 'parent' ? 'مرحبا' : r.role === 'teacher' ? 'مرحبا أستاذ(ة)' : 'مرحبا';
+  const msg = `${hello} ${r.full_name} 🌿\nحسابك في منصّة مركز فيد:\n🔗 ${PUBLIC_URL}\n👤 اسم المستخدم: ${r.username}\n🔑 كلمة السر: ${r.password}\nننصحك بتغيير كلمة السر بعد أوّل دخول (حسابي ← كلمة السر).`;
+  if (win) {
+    win.location.href = waUrl(phone, msg);
+    toast(`فُتح واتساب برسالة الدخول لـ ${r.full_name}`);
+  }
+  // احتياط: إن لم يُفتح واتساب (لا هاتف أو حُجبت النافذة) نعرض البيانات للنسخ
+  if (!win || win.closed) {
+    openModal(
+      '🔑 بيانات الدخول',
+      `<div class="pw-card">
+         <div><small>اسم المستخدم</small><b dir="ltr">${esc(r.username)}</b></div>
+         <div><small>كلمة السر</small><b dir="ltr" class="pw">${esc(r.password)}</b></div>
+       </div>
+       <p class="muted small">${canWa ? '' : 'لا رقم هاتف صالح لهذا الحساب: '}انسخ الرسالة وابعثها لـ${esc(r.full_name)}. ما تظهرش مرّة أخرى.</p>
+       <div class="pw-acts">${canWa ? `<a class="btn wa" target="_blank" rel="noopener" href="${esc(waUrl(phone, msg))}">${WA_ICON} إرسال عبر واتساب</a>` : ''}
+         <button type="button" class="btn ghost" id="pw-copy">📋 نسخ الرسالة</button></div>`,
+      async () => {}
+    );
+    $('#modal-form button[type=submit]').textContent = 'تم';
+    $('#pw-copy').addEventListener('click', async () => toast((await copyText(msg)) ? 'تم النسخ' : 'تعذّر النسخ'));
+  }
   onDone?.();
 }
 
@@ -2539,7 +2558,7 @@ function viewStaffList(el, users, { prog, title, addLabel, reload, edit, allTeac
               <div class="pc-phones">${phones(u).length ? phones(u).map((p) => `<span class="pc-phone"><span dir="ltr">${esc(p)}</span><a class="pc-call" href="tel:${esc(p)}" aria-label="اتصال">📞</a>${waButton(p)}</span>`).join('') : '<span class="muted small">لا هاتف</span>'}</div>
               <div class="pc-kids">${subj(u) || '<span class="muted small">—</span>'}</div>
               <div class="pc-foot"><span class="muted small" dir="ltr">👤 ${esc(u.username)}</span>
-                <span>${u.approved === false ? `<button class="btn small" data-approve="${u.id}">✔ تفعيل</button>` : ''}<a class="btn ghost small" href="${payLink(u)}">${prog ? 'الأجرة' : 'الساعات'}</a><button class="btn ghost small" data-pw="${u.id}" title="كلمة سر جديدة">🔑</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
+                <span>${u.approved === false ? `<button class="btn small" data-approve="${u.id}">✔ تفعيل</button>` : ''}<a class="btn ghost small" href="${payLink(u)}">${prog ? 'الأجرة' : 'الساعات'}</a><button class="btn ghost small" data-pw="${u.id}" title="إرسال الدخول (اسم المستخدم وكلمة السر) عبر واتساب">🔑</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
             </article>`
           )
           .join('')}</div>`
@@ -2553,7 +2572,7 @@ function viewStaffList(el, users, { prog, title, addLabel, reload, edit, allTeac
                 <td><div class="pc-kids">${subj(u) || '<span class="muted">—</span>'}</div></td>
                 <td class="nowrap">${pay(u)} <a class="small" href="${payLink(u)}">←</a></td>
                 <td class="nowrap" dir="ltr">${esc(u.username)}</td>
-                <td class="row-actions">${u.approved === false ? `<button class="btn small" data-approve="${u.id}">✔ تفعيل</button>` : ''}<button class="btn ghost small" data-pw="${u.id}" title="كلمة سر جديدة">🔑 كلمة سر</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button><button class="btn danger small" data-del="${u.id}">${prog && u.also_program ? 'إلغاء التأطير' : 'حذف'}</button></td>
+                <td class="row-actions">${u.approved === false ? `<button class="btn small" data-approve="${u.id}">✔ تفعيل</button>` : ''}<button class="btn ghost small" data-pw="${u.id}">🔑 إرسال الدخول</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button><button class="btn danger small" data-del="${u.id}">${prog && u.also_program ? 'إلغاء التأطير' : 'حذف'}</button></td>
               </tr>`
             )
             .join('')}</tbody></table></div>`;
@@ -2623,7 +2642,7 @@ function viewParentsList(el, users, reload, edit) {
               <div class="pc-phones">${phones(u).length ? phones(u).map((p) => `<span class="pc-phone"><span dir="ltr">${esc(p)}</span><a class="pc-call" href="tel:${esc(p)}" aria-label="اتصال">📞</a>${waButton(p)}</span>`).join('') : '<span class="muted small">لا هاتف</span>'}</div>
               <div class="pc-kids">${kidsOf(u).join('') || '<span class="muted small">—</span>'}</div>
               <div class="pc-foot"><span class="muted small" dir="ltr">${esc(u.username)}${u.cin ? ` · ${esc(u.cin)}` : ''}</span>
-                <span><a class="btn ghost small" href="#/parents/${u.id}">الملف</a><button class="btn ghost small" data-pw="${u.id}" title="كلمة سر جديدة">🔑</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
+                <span><a class="btn ghost small" href="#/parents/${u.id}">الملف</a><button class="btn ghost small" data-pw="${u.id}" title="إرسال الدخول (اسم المستخدم وكلمة السر) عبر واتساب">🔑</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
             </article>`
           )
           .join('')}</div>`
@@ -2636,7 +2655,7 @@ function viewParentsList(el, users, reload, edit) {
                 <td>${phones(u).map((p) => `<span class="phone-line"><span dir="ltr">${esc(p)}</span>${waButton(p)}</span>`).join('') || '<span class="muted">—</span>'}</td>
                 <td><div class="pc-kids">${kidsOf(u).join('') || '<span class="muted">—</span>'}</div></td>
                 <td class="nowrap" dir="ltr">${esc(u.username)}</td>
-                <td class="row-actions"><button class="btn ghost small" data-pw="${u.id}">🔑 كلمة سر</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button>${u.id !== state.user.id ? `<button class="btn danger small" data-del="${u.id}">حذف</button>` : ''}</td>
+                <td class="row-actions"><button class="btn ghost small" data-pw="${u.id}">🔑 إرسال الدخول</button><button class="btn ghost small" data-edit="${u.id}">تعديل</button>${u.id !== state.user.id ? `<button class="btn danger small" data-del="${u.id}">حذف</button>` : ''}</td>
               </tr>`
             )
             .join('')}</tbody></table></div>`;
@@ -2695,6 +2714,7 @@ async function viewUsers(el, role, scope = null) {
                   }
                   <td class="row-actions">
                     ${u.approved === false ? `<button class="btn small" data-approve="${u.id}">✔ تفعيل</button>` : ''}
+                    ${u.super_admin ? '' : `<button class="btn ghost small" data-pw="${u.id}">🔑 إرسال الدخول</button>`}
                     <button class="btn ghost small" data-edit="${u.id}">تعديل</button>
                     ${u.id !== state.user.id ? `<button class="btn danger small" data-del="${u.id}">حذف</button>` : ''}
                   </td>
@@ -2774,6 +2794,7 @@ async function viewUsers(el, role, scope = null) {
   // الأولياء: عرض بطاقات أو جدول، مع بحث
   if (role === 'parent') return viewParentsList(el, users, reload, form);
   if (role === 'teacher') return viewStaffList(el, users, { prog, title: titles[role], addLabel: addLabels[role], reload, edit: form, allTeachers });
+  el.querySelectorAll('[data-pw]').forEach((b) => b.addEventListener('click', () => issuePassword(users.find((x) => x.id === Number(b.dataset.pw)))));
   $('#add-user').addEventListener('click', () => form(null));
   el.querySelectorAll('[data-approve]').forEach((b) =>
     b.addEventListener('click', async () => {
