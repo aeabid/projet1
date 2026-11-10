@@ -280,6 +280,8 @@ async function viewLevels(el) {
             <span class="lv-badge" style="--lv:${levelHue(l.code)}">${esc(levelShort(l.code) || '؟')}</span>
             <label class="lv-name">اسم القسم<input data-f="label" value="${esc(l.label)}" placeholder="مثال: الأولى ثانوي"></label>
             <label class="lv-code">الرمز<input data-f="code" value="${esc(l.code)}" dir="ltr" ${l.students !== undefined && l.saved !== false ? 'readonly' : ''} placeholder="مثال: 1s"></label>
+            <label class="lv-pack" title="المستوى يقبل الباقة فقط (لا اختيار بالمادة)"><span class="switch"><input type="checkbox" data-pack ${l.pack_only ? 'checked' : ''}><i></i></span>📦 Pack فقط</label>
+            <label class="lv-fee">معلوم الـ Pack<input data-f="pack_fee" inputmode="decimal" value="${esc(l.pack_fee ?? '')}" placeholder="د.ت"></label>
             <span class="lv-count">${l.students ? `👥 ${l.students}` : '<span class="muted small">فارغ</span>'}</span>
             <span class="lv-acts">
               <button type="button" class="icon-btn" data-up="${i}" ${i ? '' : 'disabled'} title="فوق">▲</button>
@@ -293,6 +295,7 @@ async function viewLevels(el) {
     const read = () => el.querySelectorAll('.lv-list li').forEach((li) => {
       const l = list[Number(li.dataset.i)];
       li.querySelectorAll('[data-f]').forEach((x) => (l[x.dataset.f] = x.value.trim()));
+      l.pack_only = li.querySelector('[data-pack]').checked;
     });
     const move = (i, d) => { read(); [list[i], list[i + d]] = [list[i + d], list[i]]; render(); };
     el.querySelectorAll('[data-up]').forEach((b) => b.addEventListener('click', () => move(Number(b.dataset.up), -1)));
@@ -313,7 +316,7 @@ async function viewLevels(el) {
     $('#lv-save').addEventListener('click', async () => {
       read();
       try {
-        await api('PUT', '/api/levels', { levels: list.map(({ code, label }) => ({ code, label })) });
+        await api('PUT', '/api/levels', { levels: list.map(({ code, label, pack_only, pack_fee }) => ({ code, label, pack_only, pack_fee })) });
         state.meta = await api('GET', '/api/meta');
         toast('تم حفظ الأقسام');
         viewLevels(el);
@@ -1424,7 +1427,7 @@ function suggestFee(level, pack, subjectIds, meta = state.meta) {
   const pr = meta.pricing;
   const packFee = Number(meta.pack_fees?.[level]) || null;
   if (!pr) return null;
-  if (pack) return packFee ? { fee: packFee, label: 'الباقة' } : null;
+  if (pack || meta.levels?.find((l) => l.code === level)?.pack_only) return packFee ? { fee: packFee, label: 'الباقة' } : null;
   const subs = meta.subjects.filter((s) => subjectIds.includes(s.id) && (!s.levels || s.levels.includes(level)));
   if (!subs.length) return null;
   const n = subs.reduce((t, s) => t + (Number(pr.units?.[s.id]) || 1), 0);
@@ -1541,8 +1544,18 @@ async function studentForm(student, onDone, preChild = null, preset = null) {
     }
   );
   const pack = $('#modal input[name=pack]');
-  const syncPack = () => $('#subject-checks').classList.toggle('disabled', pack.checked);
+  const syncPack = () => {
+    // قسم «بالباقة فقط»: Pack إجباري
+    const only = !!state.meta.levels.find((l) => l.code === $('#modal select[name=level]').value)?.pack_only;
+    if (only) pack.checked = true;
+    pack.disabled = only;
+    $('#subject-checks').hidden = only;
+    $('#subject-checks').classList.toggle('disabled', pack.checked);
+    $('#pack-only-note')?.remove();
+    if (only) pack.closest('label').insertAdjacentHTML('afterend', '<p class="muted small" id="pack-only-note">📦 هذا المستوى بالباقة (Pack) فقط.</p>');
+  };
   pack.addEventListener('change', syncPack);
+  $('#modal select[name=level]').addEventListener('change', syncPack);
   syncPack();
   // السعر المقترح حسب التسعيرة: يُطبَّق وحده لتلميذ جديد، ويُقترح للقديم بزر
   const feeInput = $('#modal input[name=monthly_fee]');
@@ -4595,7 +4608,15 @@ async function viewRegister(el) {
         (x) => `<label class="check"><input type="checkbox" name="c${k}_subject" value="${x.id}" ${checked.has(String(x.id)) ? 'checked' : ''}> ${esc(x.name)}</label>`
       )
       .join('');
-    box.classList.toggle('disabled', fs.querySelector('.c-pack').checked);
+    // قسم «بالباقة فقط»: Pack إجباري، والمواد لا تُختار
+    const only = !!meta.levels.find((l) => l.code === level)?.pack_only;
+    const pk = fs.querySelector('.c-pack');
+    if (only) pk.checked = true;
+    pk.disabled = only;
+    box.hidden = only;
+    fs.querySelector('.c-only')?.remove();
+    if (only) pk.closest('label').insertAdjacentHTML('afterend', '<p class="c-only muted small">📦 هذا المستوى بالباقة (Pack) فقط: كل المواد.</p>');
+    box.classList.toggle('disabled', pk.checked);
     box.querySelectorAll('input').forEach((i) => i.addEventListener('change', () => showPrice(fs)));
     showPrice(fs);
   };

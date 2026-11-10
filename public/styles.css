@@ -2185,3 +2185,11 @@ dialog .toast, #toast { z-index: 2147483647; }
 .miss-tag { display: inline-block; font-size: .72rem; font-weight: 800; color: #9a3412; background: #ffedd5; border-radius: 99px; padding: .05rem .5rem; margin-bottom: .2rem; }
 .g-link { border: 1px solid var(--border); border-radius: 14px; padding: .8rem .9rem; margin: .8rem 0 1rem; background: var(--soft-2); }
 .g-link h3 { margin-top: 0; } .g-on { color: var(--good); font-weight: 700; }
+.lv-list li { grid-template-columns: 3rem 1fr 7rem auto 7rem auto auto; }
+.lv-pack { display: flex; align-items: center; gap: .35rem; font-size: .82rem; font-weight: 700; color: var(--muted); padding-bottom: .55rem; white-space: nowrap; cursor: pointer; }
+.lv-fee { font-size: .78rem; } .lv-fee input { margin: 0; }
+@media (max-width: 720px) {
+  .lv-list li { grid-template-columns: 2.6rem 1fr 4.8rem; }
+  .lv-pack { grid-column: 2; padding-bottom: 0; } .lv-fee { grid-column: 3; }
+}
+@media (max-width: 640px) { .lv-pack, .lv-fee { grid-row: 3; } }

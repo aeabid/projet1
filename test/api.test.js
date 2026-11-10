@@ -1681,3 +1681,18 @@ test('periods and monthly hours, program registration requests, HR accounting ca
   assert.strictEqual(sum(f.breakdown.income), f.income);
   assert.strictEqual(sum(f.breakdown.expense), f.expense);
 });
+
+test('pack-only level: pack forced, subjects ignored, pack fee from levels page', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: lv } = await admin('GET', '/api/levels');
+  const levels = lv.levels.map((l) => ({ code: l.code, label: l.label, pack_only: l.code === '6-distance', pack_fee: l.code === '6-distance' ? 150 : undefined }));
+  assert.strictEqual((await admin('PUT', '/api/levels', { levels })).status, 200);
+  const after = (await admin('GET', '/api/levels')).body.levels.find((l) => l.code === '6-distance');
+  assert.deepStrictEqual([after.pack_only, after.pack_fee], [true, 150]);
+  assert.ok((await call('GET', '/api/public/meta')).body.levels.find((l) => l.code === '6-distance').pack_only);
+  const st = (await admin('POST', '/api/students', { full_name: 'عن بعد', level: '6-distance', subject_ids: [1], start_date: '2026-10-01' })).body.student;
+  const full = (await admin('GET', `/api/students/${st.id}`)).body.student;
+  assert.strictEqual(full.pack, true);
+  // إرجاع الأقسام كما كانت
+  await admin('PUT', '/api/levels', { levels: lv.levels.map((l) => ({ code: l.code, label: l.label })) });
+});
