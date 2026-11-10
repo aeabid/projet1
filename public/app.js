@@ -925,8 +925,7 @@ function viewLogin(el) {
           <label>كلمة السر<input name="password" type="password" autocomplete="current-password" dir="ltr" autocapitalize="none" spellcheck="false" required></label>
           <p class="error" id="login-error" hidden></p>
           <button class="btn block">دخول</button>
-          <div id="google-box" class="google-box" hidden><div class="or"><span>أو</span></div><div id="google-btn"></div>
-            <p class="muted small center">للأولياء: ادخل بحساب Google واختر أبناءك.</p></div>
+          <div id="google-box" class="google-box" hidden><div class="or"><span>أو</span></div><div id="google-btn"></div></div>
         </form>
       </div>
     </div>`;
@@ -4709,6 +4708,15 @@ function viewAccount(el) {
       <p><b>${esc(u.full_name)}</b> · ${ROLE_LABELS[u.role]}</p>
       <p class="muted" dir="ltr">${esc(u.username)}</p>
       ${u.subjects?.length ? `<p>المواد: ${u.subjects.map((s) => `<span class="pill">${esc(s.name)}</span>`).join(' ')}</p>` : ''}
+      <section class="g-link" id="g-link">
+        <h3>🔗 الدخول بحساب Google</h3>
+        ${u.google_email
+          ? `<p class="g-on">✓ مربوط بـ <b dir="ltr">${esc(u.google_email)}</b></p>
+             <p class="muted small">تنجم تدخل بزر «Google» في صفحة الدخول، أو باسم المستخدم وكلمة السر كالعادة.</p>
+             <button type="button" class="btn ghost small" id="g-unlink">فكّ الربط</button>`
+          : `<p class="muted small">اربط حسابك بحساب Google باش تدخل من بعد بضغطة واحدة، دون كلمة سر.</p>
+             <div id="g-link-btn"></div><p class="muted small" id="g-link-off" hidden>الدخول بـ Google غير مفعّل حاليًا.</p>`}
+      </section>
       <h3>تغيير كلمة السر</h3>
       <form id="pw-form">
         <label>كلمة السر الحالية<input name="current" type="password" dir="ltr" required></label>
@@ -4716,6 +4724,24 @@ function viewAccount(el) {
         <button class="btn">تغيير</button>
       </form>
     </div>`;
+  $('#g-unlink')?.addEventListener('click', async () => {
+    if (!confirmAction('فكّ ربط حساب Google؟ تبقى تدخل باسم المستخدم وكلمة السر.')) return;
+    await api('DELETE', '/api/me/google');
+    state.user.google_email = null;
+    toast('تم فكّ الربط');
+    viewAccount(el);
+  });
+  if ($('#g-link-btn'))
+    renderGoogleLinkButton($('#g-link-btn'), async (credential) => {
+      try {
+        const r = await api('POST', '/api/me/google', { credential });
+        state.user.google_email = r.google_email;
+        toast('تم ربط حساب Google ✓');
+        viewAccount(el);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }).then((ok) => !ok && $('#g-link-off') && ($('#g-link-off').hidden = false));
   $('#pw-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {

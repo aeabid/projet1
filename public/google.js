@@ -31,6 +31,28 @@ async function setupGoogleLogin() {
   $('#google-box').hidden = false;
 }
 
+// زر «ربط حساب Google» في صفحة «حسابي»
+async function renderGoogleLinkButton(host, onCredential) {
+  try {
+    googleConfig ??= await api('GET', '/api/auth/config');
+  } catch {
+    return false;
+  }
+  if (!googleConfig.google_client_id) return false;
+  await new Promise((resolve, reject) => {
+    if (window.google?.accounts) return resolve();
+    const sc = document.createElement('script');
+    sc.src = 'https://accounts.google.com/gsi/client';
+    sc.onload = resolve;
+    sc.onerror = reject;
+    document.head.appendChild(sc);
+  }).catch(() => null);
+  if (!window.google?.accounts || !host.isConnected) return false;
+  google.accounts.id.initialize({ client_id: googleConfig.google_client_id, callback: ({ credential }) => onCredential(credential) });
+  google.accounts.id.renderButton(host, { theme: 'outline', size: 'large', text: 'continue_with', shape: 'pill', locale: 'ar', width: Math.min(320, host.clientWidth || 320) });
+  return true;
+}
+
 async function onGoogleCredential({ credential }) {
   try {
     const r = await api('POST', '/api/auth/google', { credential });
