@@ -2083,3 +2083,24 @@ td .seen { margin: 0; }
 .ps-fam { border-top: 1px dashed var(--border); margin-top: .6rem; padding-top: .4rem; }
 .ps-sib { background: var(--soft); border-radius: 14px; padding: .5rem .6rem; margin-bottom: .5rem; }
 .ps-sib-h { display: flex; align-items: baseline; gap: .5rem; margin-bottom: .35rem; } .ps-sib-h small { color: var(--muted); flex: 1; }
+
+/* ===== أبناء الولي في قائمة الأولياء ===== */
+.pk-rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: .35rem; }
+.pk-row { display: grid; grid-template-columns: auto 1fr; grid-template-areas: "ico name" "ico lvl"; column-gap: .45rem; align-items: center; padding: .35rem .6rem; border-radius: 12px; background: #f3ecff; color: var(--feed-purple); text-decoration: none; line-height: 1.25; min-width: 0; }
+.pk-row:hover { text-decoration: none; filter: brightness(.97); }
+.pk-row span { grid-area: ico; font-size: 1.05rem; } .pk-row b { grid-area: name; font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pk-row i { grid-area: lvl; font-style: normal; font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pk-row.prog { background: #fff1e6; color: #b45309; }
+.pk-add { border: 1px dashed var(--primary); background: transparent; color: var(--primary); border-radius: 12px; font: inherit; font-size: .82rem; font-weight: 700; cursor: pointer; padding: .35rem .6rem; min-height: 2.4rem; }
+td.kids-cell { min-width: 220px; }
+a.fx-item { color: var(--text); text-decoration: none; grid-template-columns: 1fr auto; } a.fx-item:hover { text-decoration: none; filter: brightness(.98); }
+.fx-sub { margin: .8rem 0 .4rem; font-size: .95rem; color: var(--text); }
+.fx-sal-left { color: #be185d; white-space: nowrap; }
+.fx-grand { background: var(--soft); border-radius: 12px; padding: .55rem .8rem; margin: -.3rem 0 .8rem; font-size: .92rem; }
+.fx-grand b.out { color: #be185d; }
+@media (max-width: 760px) {
+  .parents-table td.kids-cell { text-align: start; min-width: 0; }
+  .parents-table td.kids-cell::before { float: none; display: block; margin-bottom: .25rem; }
+  .parents-table .pk-rows { grid-template-columns: 1fr 1fr; }
+  .parents-table td.row-actions { display: flex; flex-wrap: wrap; gap: .35rem; justify-content: flex-end; }
+}

@@ -1642,7 +1642,8 @@ function quickActions(items) {
 // ---------- ملف التلميذ ----------
 async function viewStudent(el, id) {
   const role = state.user.role;
-  const { student, absences, notes, finance, tasks, timetable, whatsapp_groups, program, hidden = {} } = await api('GET', `/api/students/${id}`);
+  const { student, absences, notes, finance, tasks, timetable, whatsapp_groups: wg0, program, hidden = {} } = await api('GET', `/api/students/${id}`);
+  const whatsapp_groups = [...wg0, ...(program?.whatsapp_groups || [])];
   const adminNotes = notes.filter((n) => !n.subject_id && n.author_role === 'admin');
   const teacherNotes = notes.filter((n) => !adminNotes.includes(n));
   const unjustified = absences.filter((a) => !a.justified).length;
@@ -2740,10 +2741,12 @@ const loginBtn = (u, small = false) =>
 
 // قائمة الأولياء: بطاقات أو جدول
 function viewParentsList(el, users, reload, edit) {
+  // الأبناء: سطر لكل ابن (الاسم + القسم)، مرتّبة حتى لو كانوا 3 أو أكثر، و«+» لإضافة ابن آخر
   const kidsOf = (u) => [
-    ...u.children.map((c) => `<a class="pk-chip" href="#/students/${c.id}">📚 ${esc(c.full_name)}<i>${esc(levelLabel(c.level))}</i></a>`),
-    ...(u.program_children || []).map((c) => `<a class="pk-chip prog" href="#/program/child/${c.id}">🎨 ${esc(c.full_name)}${c.class_name ? `<i>${esc(c.class_name)}</i>` : ''}</a>`),
+    ...u.children.map((c) => `<a class="pk-row" href="#/students/${c.id}"><span>📚</span><b>${esc(c.full_name)}</b><i>${esc(levelShort(c.level))}</i></a>`),
+    ...(u.program_children || []).map((c) => `<a class="pk-row prog" href="#/program/child/${c.id}"><span>🎨</span><b>${esc(c.full_name)}</b>${c.class_name ? `<i>${esc(c.class_name)}</i>` : ''}</a>`),
   ];
+  const kidsBox = (u) => `<div class="pk-rows">${kidsOf(u).join('')}<button type="button" class="pk-add" data-add-kid="${u.id}" title="إضافة ابن آخر">+ ابن</button></div>`;
   const phones = (u) => String(u.phone || '').split(/\s*[\/,;]\s*/).filter(Boolean);
   const count = (u) => u.children.length + (u.program_children || []).length;
   let view = studentsView('parentsView');
@@ -2764,20 +2767,20 @@ function viewParentsList(el, users, reload, edit) {
                 <div><h3>${esc(u.full_name)}</h3><span class="muted small">${count(u) ? `${count(u)} ${count(u) === 1 ? 'ابن' : 'أبناء'}` : 'بلا أبناء'}${u.google_email ? ' · Google' : ''}</span>${lastSeen(u)}</div></a>
               <div class="pc-phones">${phones(u).length ? phones(u).map((p) => `<span class="pc-phone"><span dir="ltr">${esc(p)}</span><a class="pc-call" href="tel:${esc(p)}" aria-label="اتصال">📞</a>${waButton(p)}</span>`).join('') : '<span class="muted small">لا هاتف</span>'}</div>
               ${loginBtn(u)}
-              <div class="pc-kids">${kidsOf(u).join('') || '<span class="muted small">—</span>'}</div>
+              ${kidsBox(u)}
               <div class="pc-foot"><span class="muted small" dir="ltr">${esc(u.username)}${u.cin ? ` · ${esc(u.cin)}` : ''}</span>
                 <span><a class="btn ghost small" href="#/parents/${u.id}">الملف</a><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
             </article>`
           )
           .join('')}</div>`
-      : `<div class="table-wrap as-table"><table>
+      : `<div class="table-wrap parents-table"><table>
           <thead><tr><th>الولي</th><th>الهاتف</th><th>الأبناء</th><th>اسم المستخدم</th><th>آخر دخول</th><th></th></tr></thead>
           <tbody>${list
             .map(
               (u) => `<tr>
                 <td><a class="who-cell" href="#/parents/${u.id}">${avatar({ full_name: u.full_name }, 'sm')}<b>${esc(u.full_name)}</b></a></td>
                 <td>${phones(u).map((p) => `<span class="phone-line"><span dir="ltr">${esc(p)}</span>${waButton(p)}</span>`).join('') || '<span class="muted">—</span>'}</td>
-                <td><div class="pc-kids">${kidsOf(u).join('') || '<span class="muted">—</span>'}</div></td>
+                <td class="kids-cell">${kidsBox(u)}</td>
                 <td class="nowrap" dir="ltr">${esc(u.username)}</td>
                 <td class="nowrap">${lastSeen(u)}</td>
                 <td class="row-actions">${loginBtn(u, true)}<button class="btn ghost small" data-edit="${u.id}">تعديل</button>${u.id !== state.user.id ? `<button class="btn danger small" data-del="${u.id}">حذف</button>` : ''}</td>
@@ -2786,6 +2789,7 @@ function viewParentsList(el, users, reload, edit) {
             .join('')}</tbody></table></div>`;
     $('#p-list').querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => edit(users.find((u) => u.id === Number(b.dataset.edit)))));
     $('#p-list').querySelectorAll('[data-pw]').forEach((b) => b.addEventListener('click', () => issuePassword(users.find((u) => u.id === Number(b.dataset.pw)))));
+    $('#p-list').querySelectorAll('[data-add-kid]').forEach((b) => b.addEventListener('click', () => addSiblingFor(Number(b.dataset.addKid), reload)));
     $('#p-list').querySelectorAll('[data-del]').forEach((b) =>
       b.addEventListener('click', async () => {
         const u = users.find((x) => x.id === Number(b.dataset.del));
@@ -3589,47 +3593,61 @@ const groupScope = (g) =>
   g.level ? `${levelLabel(g.level)}${g.group_name ? ` — فوج ${g.group_name}` : ' — كل الأفواج'}` : 'كل المستويات';
 
 async function viewWhatsappGroups(el) {
-  const { groups } = await api('GET', '/api/whatsapp-groups');
+  const [{ groups }, { classes }] = await Promise.all([api('GET', '/api/whatsapp-groups'), api('GET', '/api/program').catch(() => ({ classes: [] }))]);
+  const table = (list, scope) =>
+    list.length
+      ? `<div class="table-wrap"><table>
+          <thead><tr><th>المجموعة</th><th>${scope}</th><th></th></tr></thead>
+          <tbody>${list
+            .map(
+              (g) => `<tr><td><b>${esc(g.name)}</b></td><td>${esc(g.program ? g.class_name || 'كل أطفال البرنامج التربوي' : groupScope(g))}</td>
+                <td class="row-actions"><a class="btn wa small" href="${esc(g.invite_link)}" target="_blank" rel="noopener">${WA_ICON} فتح</a>
+                  <button class="btn ghost small" data-edit="${g.id}">تعديل</button>
+                  <button class="btn danger small" data-del="${g.id}">حذف</button></td></tr>`
+            )
+            .join('')}</tbody></table></div>`
+      : '<p class="muted">لا توجد مجموعات بعد.</p>';
   el.innerHTML = `
     <div class="page-head">
       <h2>مجموعات واتساب</h2>
       <button class="btn" id="add-group">+ مجموعة</button>
     </div>
     <p class="muted">أضف رابط الدعوة لكل مجموعة (في واتساب: معلومات المجموعة ← الدعوة عبر رابط). الولي يجد رابط مجموعة ابنه في صفحته.</p>
-    ${
-      groups.length
-        ? `<div class="table-wrap"><table>
-            <thead><tr><th>المجموعة</th><th>التلاميذ المعنيون</th><th></th></tr></thead>
-            <tbody>${groups
-              .map(
-                (g) => `<tr><td><b>${esc(g.name)}</b></td><td>${esc(groupScope(g))}</td>
-                  <td class="row-actions"><a class="btn wa small" href="${esc(g.invite_link)}" target="_blank" rel="noopener">${WA_ICON} فتح</a>
-                    <button class="btn ghost small" data-edit="${g.id}">تعديل</button>
-                    <button class="btn danger small" data-del="${g.id}">حذف</button></td></tr>`
-              )
-              .join('')}</tbody></table></div>`
-        : '<div class="card muted">لا توجد مجموعات بعد.</div>'
-    }`;
+    <section class="card"><div class="section-head"><h3>📚 دروس الدعم</h3><button class="btn ghost small" data-add="support">+ مجموعة دعم</button></div>
+      ${table(groups.filter((g) => !g.program), 'التلاميذ المعنيون')}</section>
+    <section class="card"><div class="section-head"><h3>🎨 البرنامج التربوي</h3><button class="btn ghost small" data-add="program">+ مجموعة تربوي</button></div>
+      ${table(groups.filter((g) => g.program), 'القسم')}</section>`;
   const reload = () => viewWhatsappGroups(el);
-  const form = (g) =>
+  const form = (g, prog = !!g?.program) => {
     openModal(
       g ? 'تعديل المجموعة' : 'مجموعة واتساب جديدة',
-      `<label>الاسم<input name="name" value="${esc(g?.name || '')}" required placeholder="مثال: أولياء التاسعة — فوج أ"></label>
-       <div class="row">
+      `<label>البرنامج<select name="program" id="wg-prog"><option value="">📚 دروس الدعم</option><option value="1" ${prog ? 'selected' : ''}>🎨 البرنامج التربوي</option></select></label>
+       <label>الاسم<input name="name" value="${esc(g?.name || '')}" required placeholder="${prog ? 'مثال: أولياء قسم الصغار' : 'مثال: أولياء التاسعة — فوج أ'}"></label>
+       <div class="row" id="wg-support" ${prog ? 'hidden' : ''}>
          <label>المستوى<select name="level"><option value="">كل المستويات</option>${state.meta.levels
            .map((l) => `<option value="${esc(l.code)}" ${g?.level === l.code ? 'selected' : ''}>${esc(l.label)}</option>`)
            .join('')}</select></label>
          <label>الفوج (اختياري)<input name="group_name" value="${esc(g?.group_name || '')}" placeholder="كل الأفواج"></label>
        </div>
+       <label id="wg-class" ${prog ? '' : 'hidden'}>القسم<select name="class_id"><option value="">كل أقسام البرنامج التربوي</option>${classes
+         .map((k) => `<option value="${k.id}" ${g?.class_id === k.id ? 'selected' : ''}>${esc(k.name)}</option>`)
+         .join('')}</select></label>
        <label>رابط الدعوة<input name="invite_link" dir="ltr" value="${esc(g?.invite_link || '')}" required placeholder="https://chat.whatsapp.com/..."></label>`,
       async (data) => {
+        data.program = data.program === '1';
         if (g) await api('PUT', `/api/whatsapp-groups/${g.id}`, data);
         else await api('POST', '/api/whatsapp-groups', data);
         toast('تم الحفظ');
         reload();
       }
     );
+    $('#wg-prog').addEventListener('change', (e) => {
+      $('#wg-support').hidden = !!e.target.value;
+      $('#wg-class').hidden = !e.target.value;
+    });
+  };
   $('#add-group').addEventListener('click', () => form(null));
+  el.querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', () => form(null, b.dataset.add === 'program')));
   el.querySelectorAll('[data-edit]').forEach((b) =>
     b.addEventListener('click', () => form(groups.find((g) => g.id === Number(b.dataset.edit))))
   );

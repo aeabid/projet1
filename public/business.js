@@ -1102,6 +1102,9 @@ async function viewProgramChild(el, id) {
     ${role === 'admin' ? familyStrip(c.family_parent_id || c.parent_id, c.contact_name, { kind: 'program', id: c.id }) : ''}
     ${fileTabs([['follow', 'المتابعة'], finance ? ['pay', 'الخلاص'] : null, role === 'admin' ? ['info', 'المعلومات'] : null])}
     <div class="tab-panel" data-panel="follow">
+      ${(file.whatsapp_groups || []).length ? `<section class="card wa-groups"><h3>💬 مجموعة واتساب</h3>${file.whatsapp_groups
+        .map((g) => `<a class="btn wa" href="${esc(g.invite_link)}" target="_blank" rel="noopener">${WA_ICON} ${esc(g.name)}${role === 'parent' ? ' — انضم' : ''}</a>`)
+        .join('')}</section>` : ''}
       ${classPostsSection(file.posts)}
       ${childFollowUpSection(file, role)}
     </div>

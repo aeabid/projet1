@@ -883,3 +883,8 @@ ALTER TABLE ledger_entries ADD COLUMN IF NOT EXISTS fixed_month TEXT;
 CREATE INDEX IF NOT EXISTS ledger_fixed_idx ON ledger_entries (fixed_id, fixed_month);
 -- مدرّس قسم في التربوي من الأولياء: حساب مؤطّر مرتبط بحساب الولي
 ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_parent_id INT REFERENCES users(id) ON DELETE SET NULL;
+
+-- ===== 20261128090000_program_whatsapp.sql =====
+-- مجموعات واتساب للبرنامج التربوي: لكل الأطفال أو لقسم معيّن
+ALTER TABLE whatsapp_groups ADD COLUMN IF NOT EXISTS program BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE whatsapp_groups ADD COLUMN IF NOT EXISTS class_id INT REFERENCES program_classes(id) ON DELETE CASCADE;

@@ -1452,7 +1452,7 @@ async function viewFixed(el) {
   el.innerHTML = `
     <div class="page-head"><div><h2>📌 المصاريف القارّة</h2>
       <p class="muted">كل ما يُدفع كل شهر في مكان واحد: الكراء، المحاسبة والقباضة، أجور الإطار الإداري، الفواتير. التطبيقة تذكّرك قبل الأجل وتطرحها من الربح المتوقّع.</p></div>
-      <div class="actions">${monthPicker('fx-month')}<button class="btn" id="fx-add">+ مصروف قارّ</button></div></div>
+      <div class="actions">${monthPicker('fx-month')}<button class="btn ghost" id="fx-cats">🏷️ الأصناف</button><button class="btn" id="fx-add">+ مصروف قارّ</button></div></div>
     <div id="fx-body"><p class="muted">جاري التحميل…</p></div>`;
   let data;
   const month = () => $('#fx-month').value;
@@ -1461,11 +1461,12 @@ async function viewFixed(el) {
       f ? 'تعديل مصروف قارّ' : 'مصروف قارّ جديد',
       `<label>الاسم<input name="name" required value="${esc(f?.name || preset?.[1] || '')}" placeholder="مثال: كراء المحلّ"></label>
        <div class="row">
-         <label>الصنف<select name="category">${Object.entries(data.categories)
-           .map(([k, v]) => `<option value="${k}" ${(f?.category || preset?.[0]) === k ? 'selected' : ''}>${FIXED_ICON[k]} ${esc(v)}</option>`)
-           .join('')}</select></label>
+         <label>الصنف<select name="category" id="fx-cat">${Object.entries(data.categories)
+           .map(([k, v]) => `<option value="${k}" ${(f?.category || preset?.[0]) === k ? 'selected' : ''}>${FIXED_ICON[k] || '🏷️'} ${esc(v)}</option>`)
+           .join('')}<option value="__new">＋ صنف جديد…</option></select></label>
          <label>المبلغ الشهري (د.ت)<input name="amount" inputmode="decimal" required value="${esc(f?.amount ?? '')}"></label>
        </div>
+       <label id="fx-newcat" hidden>اسم الصنف الجديد<input name="new_category" placeholder="مثال: التأمين، النقل، الاشتراكات…"></label>
        <div class="row">
          <label>يوم الدفع في الشهر<input name="due_day" type="number" min="1" max="31" required value="${esc(f?.due_day ?? preset?.[2] ?? 1)}"></label>
          <label>يُدفع عادةً<select name="paid_from">${Object.entries(FIXED_FROM_LABELS)
@@ -1475,11 +1476,27 @@ async function viewFixed(el) {
        <label>ملاحظات<input name="notes" value="${esc(f?.notes || '')}" placeholder="مثال: رقم العقد، اسم صاحب المحلّ…"></label>
        <p class="muted small">أجور الإطار الإداري والعاملين تُضاف من «الأجور ← الموارد البشرية الأخرى» وتظهر هنا وحدها.</p>`,
       async (d) => {
+        if (d.category === '__new' && !String(d.new_category || '').trim()) throw new Error('اكتب اسم الصنف الجديد');
         if (f) await api('PUT', `/api/fixed-expenses/${f.id}`, d);
         else await api('POST', '/api/fixed-expenses', d);
         toast('تم الحفظ');
         load();
       }
+    ) || bindNewCat();
+  const bindNewCat = () =>
+    $('#fx-cat')?.addEventListener('change', (e) => {
+      $('#fx-newcat').hidden = e.target.value !== '__new';
+      if (e.target.value === '__new') $('#fx-newcat input').focus();
+    });
+  // إدارة الأصناف التي أضافها المدير
+  const cats = () =>
+    openModal(
+      '🏷️ أصناف المصاريف القارّة',
+      `<p class="muted small">الأصناف الأساسية: الكراء، المحاسبة والقباضة، الفواتير، أخرى. تنجم تزيد أصناف من «+ مصروف قارّ ← الصنف ← ＋ صنف جديد».</p>
+       ${data.custom_categories.length ? `<ul class="levels">${data.custom_categories
+         .map((c) => `<li><span>🏷️ ${esc(c.label)}</span><button type="button" class="link danger small" data-delcat="${esc(c.key)}">حذف</button></li>`)
+         .join('')}</ul>` : '<p class="muted">ما زلت ما زدتش أصناف.</p>'}`,
+      async () => {}
     );
   const pay = (f) =>
     openModal(
@@ -1548,8 +1565,34 @@ async function viewFixed(el) {
               .join('')}</div>`
           : '<p class="muted">لا أحد مسجّل. زيد الإطار الإداري والعاملين من «الأجور ← الموارد البشرية الأخرى».</p>'}
       </section>
+      <section class="card fx-sec" id="fx-sal"><div class="section-head"><h3>👩‍🏫 أجور المدرّسين والمؤطّرين المتوقّعة إلى آخر الشهر</h3>
+        <a class="btn ghost small" href="#/salaries">الأجور ←</a></div><p class="muted">جاري الحساب…</p></section>
       ${data.items.length ? '' : `<section class="card"><h3>⚡ إضافة سريعة</h3><p class="muted small">اضغط على المصروف وكمّل المبلغ:</p>
         <div class="fx-presets">${FIXED_PRESETS.map((p, i) => `<button class="chip-btn" data-preset="${i}">${FIXED_ICON[p[0]]} ${esc(p[1])}</button>`).join('')}</div></section>`}`;
+    const mo = data.month;
+    api('GET', '/api/fixed-expenses/salaries?month=' + mo)
+      .then((sal) => {
+        const box = $('#fx-sal');
+        if (!box || data.month !== mo) return;
+        box.innerHTML = `<div class="section-head"><div><h3>👩‍🏫 أجور المدرّسين والمؤطّرين المتوقّعة إلى آخر الشهر</h3>
+            <p class="muted small">كل الحصص المبرمجة، دون غيابات · المتوقّع ${fmtMoney(sal.expected)} · المدفوع ${fmtMoney(sal.paid)}</p></div>
+            <b class="fx-sal-left">${sal.left ? `الباقي ${fmtMoney(sal.left)}` : '✓ مدفوعة'}</b></div>
+          ${sal.groups
+            .filter((g) => g.people.length)
+            .map((g) => `<h4 class="fx-sub">${esc(g.label)} <span class="muted small">${fmtMoney(g.expected)}</span></h4>
+              <div class="fx-list">${g.people
+                .map((p) => {
+                  const cls = p.left ? (data.month < today().slice(0, 7) ? 'late' : 'soon') : 'ok';
+                  return `<a class="fx-item ${cls}" href="${esc(p.link)}"><div class="fx-main"><b>${esc(p.name)}</b><small>${esc(p.basis || '')}</small></div>
+                    <div class="fx-amt"><b>${fmtMoney(p.expected)}</b><span class="fx-st ${cls}">${p.left ? `الباقي ${fmtMoney(p.left)}` : '✓ مدفوع'}</span></div></a>`;
+                })
+                .join('')}</div>`)
+            .join('') || '<p class="muted">لا أجور هذا الشهر.</p>'}`;
+        // المجموع الكبير يشمل أجور المدرّسين
+        const kp = $('#fx-body .fb-kpis');
+        if (kp) kp.insertAdjacentHTML('afterend', `<p class="fx-grand">🧾 كل ما يُدفع هذا الشهر (قارّ + كل الأجور): <b>${fmtMoney(data.grand.total + sal.expected)}</b> · الباقي <b class="out">${fmtMoney(data.grand.left + sal.left)}</b></p>`);
+      })
+      .catch(() => $('#fx-sal') && ($('#fx-sal').hidden = true));
     const find = (id) => data.items.find((x) => x.id === Number(id));
     el.querySelectorAll('[data-pay]').forEach((b) => b.addEventListener('click', () => pay(find(b.dataset.pay))));
     el.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => form(find(b.dataset.edit))));
@@ -1565,6 +1608,20 @@ async function viewFixed(el) {
     );
   };
   $('#fx-add').addEventListener('click', () => form(null));
+  $('#fx-cats').addEventListener('click', () => {
+    if (!data) return;
+    cats();
+    $('#modal-form button[type=submit]').hidden = true;
+    document.querySelectorAll('[data-delcat]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirmAction('حذف هذا الصنف؟ بنوده تولّي «أخرى».')) return;
+        await api('POST', '/api/fixed-expenses/categories/delete', { key: b.dataset.delcat });
+        $('#modal').close();
+        toast('تم حذف الصنف');
+        load();
+      })
+    );
+  });
   bindMonth('fx-month', load);
   load();
 }

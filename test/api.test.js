@@ -1602,3 +1602,31 @@ test('one receipt for several children of the same parent, and family dues', asy
   // ملف الولي: الأبناء الثلاثة
   assert.strictEqual((await admin('GET', `/api/parents/${par.id}`)).body.kids.length, 3);
 });
+
+test('program WhatsApp groups reach the parent, custom fixed categories, expected salaries list', async () => {
+  const admin = await login('admin', 'admin123');
+  const k = (await admin('POST', '/api/program/classes', { name: 'قسم واتساب' })).body.class;
+  const par = (await admin('POST', '/api/users', { role: 'parent', username: 'wa-par', full_name: 'ولي واتساب', password: 'secret1' })).body.user;
+  const c = (await admin('POST', '/api/program/children', { full_name: 'طفل واتساب', parent_id: par.id, class_id: k.id, start_date: '2026-10-01' })).body.child;
+  const link = 'https://chat.whatsapp.com/AbCdEfGhIjKlMnOp';
+  assert.strictEqual((await admin('POST', '/api/whatsapp-groups', { name: 'أولياء القسم', program: true, class_id: k.id, invite_link: link })).status, 201);
+  await admin('POST', '/api/whatsapp-groups', { name: 'كل التربوي', program: true, invite_link: link });
+  const parent = await login('wa-par', 'secret1');
+  const file = (await parent('GET', `/api/program/children/${c.id}`)).body;
+  assert.deepStrictEqual(file.whatsapp_groups.map((g) => g.name), ['كل التربوي', 'أولياء القسم']);
+  const all = (await admin('GET', '/api/whatsapp-groups')).body.groups.filter((g) => g.program);
+  assert.ok(all.some((g) => g.class_name === 'قسم واتساب'));
+  // صنف جديد للمصاريف القارّة
+  const fx = (await admin('POST', '/api/fixed-expenses', { name: 'تأمين المحلّ', category: '__new', new_category: 'التأمين', amount: 50, due_day: 3 })).body;
+  let list = (await admin('GET', '/api/fixed-expenses')).body;
+  const item = list.items.find((x) => x.id === fx.id);
+  assert.strictEqual(item.category_label, 'التأمين');
+  assert.ok(list.custom_categories.some((x) => x.label === 'التأمين'));
+  await admin('POST', '/api/fixed-expenses/categories/delete', { key: item.category });
+  list = (await admin('GET', '/api/fixed-expenses')).body;
+  assert.strictEqual(list.items.find((x) => x.id === fx.id).category, 'other');
+  // الأجور المتوقّعة
+  const sal = (await admin('GET', '/api/fixed-expenses/salaries')).body;
+  assert.ok(Array.isArray(sal.groups) && typeof sal.expected === 'number');
+  assert.ok(!sal.groups.some((g) => g.key === 'admin'));
+});
