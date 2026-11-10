@@ -1570,3 +1570,35 @@ test('fixed expenses, real expected net, today summary, class teacher from paren
   assert.strictEqual((await (await login('rf-adm', 'secret1'))('GET', '/api/role-features')).status, 403);
   await admin('PUT', '/api/partners/settings', { owner: 'Alaa', partners: [{ name: 'Aymen', share: 25, from: '2026-09', opening: 0 }] });
 });
+
+test('one receipt for several children of the same parent, and family dues', async () => {
+  const admin = await login('admin', 'admin123');
+  const par = (await admin('POST', '/api/users', { role: 'parent', username: 'fam-p', full_name: 'ولي عائلة', password: 'secret1' })).body.user;
+  const a = (await admin('POST', '/api/students', { full_name: 'الأخ الأكبر', level: '7', parent_id: par.id, start_date: '2026-10-01', monthly_fee: 80 })).body.student;
+  const b = (await admin('POST', '/api/students', { full_name: 'الأخت', level: '5', parent_id: par.id, start_date: '2026-10-01', monthly_fee: 70 })).body.student;
+  const c = (await admin('POST', '/api/program/children', { full_name: 'الصغير', parent_id: par.id, monthly_fee: 60, start_date: '2026-10-01' })).body.child;
+  const dues = (await admin('GET', `/api/family-dues?kind=support&id=${a.id}`)).body;
+  assert.strictEqual(dues.parent.id, par.id);
+  assert.deepStrictEqual(dues.items.map((x) => x.full_name).sort(), ['الأخت', 'الصغير'].sort());
+  const pay = await admin('POST', '/api/pay-months', {
+    items: [
+      { kind: 'support', id: a.id, lines: [{ month: '2026-10', amount: 80 }] },
+      { kind: 'support', id: b.id, lines: [{ month: '2026-10', amount: 70 }] },
+      { kind: 'program', id: c.id, lines: [{ month: '2026-10', amount: 60 }] },
+    ],
+    method: 'cash',
+  });
+  assert.strictEqual(pay.status, 201);
+  assert.deepStrictEqual([pay.body.payment.total, pay.body.payment.children], [210, 3]);
+  const r = (await admin('GET', `/api/receipts/${pay.body.payment.kind}/${pay.body.payment.id}`)).body.receipt;
+  assert.strictEqual(r.lines.length, 3);
+  assert.strictEqual(r.total, 210);
+  assert.ok(r.family && r.beneficiary.includes('الأخت') && r.beneficiary.includes('الصغير'));
+  // الولي يرى وصلًا واحدًا
+  const parent = await login('fam-p', 'secret1');
+  const mine = (await parent('GET', '/api/my-receipts')).body.receipts.filter((x) => x.receipt_no === pay.body.payment.receipt_no);
+  assert.strictEqual(mine.length, 1);
+  assert.strictEqual(mine[0].children.length, 3);
+  // ملف الولي: الأبناء الثلاثة
+  assert.strictEqual((await admin('GET', `/api/parents/${par.id}`)).body.kids.length, 3);
+});

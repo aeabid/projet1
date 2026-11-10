@@ -1322,7 +1322,7 @@ function parentLabel(p) {
   return `${p.full_name}${tel ? ` · \u2066${tel}\u2069` : ''}`;
 }
 
-async function studentForm(student, onDone, preChild = null) {
+async function studentForm(student, onDone, preChild = null, preset = null) {
   // معطيات القائمة تكفي (لا حاجة لتحميل ملف التلميذ كاملًا)، والأولياء يُحمّلون مرة واحدة
   const listed = student && ('subject_ids' in student || student.subjects);
   const [parents, s] = await Promise.all([
@@ -1330,7 +1330,7 @@ async function studentForm(student, onDone, preChild = null) {
       state.parentsCache = null;
       throw e;
     }),
-    !student ? {} : listed ? student : api('GET', `/api/students/${student.id}`).then((r) => r.student),
+    !student ? { ...(preset || {}) } : listed ? student : api('GET', `/api/students/${student.id}`).then((r) => r.student),
   ]);
   const enrolled = new Set(s.pack ? [] : s.subjects ? s.subjects.map((x) => x.id) : s.subject_ids || []);
   // تلميذ جديد: إمكانية أخذه مباشرة من أطفال البرنامج التربوي (غير المسجّلين في الدعم)
@@ -1779,6 +1779,7 @@ async function viewStudent(el, id) {
               { id: 'new-thread', icon: 'mail', label: 'مراسلة الولي', tone: 'sky' },
             ]
       )}
+      ${role === 'admin' ? familyStrip(student.parent_id, student.parent_name, { kind: 'support', id: student.id }) : ''}
       <div class="ov-grid">
         ${finance ? `<button type="button" class="ov-card ov-pay ${finance.free ? '' : finance.balance > 0 ? 'due' : 'ok'}" data-goto="pay">
           <small>الخلاص</small><b>${finance.free ? 'مجاني' : finance.balance > 0 ? `${fmtMoney(finance.balance)} باقي` : 'خالص ✓'}</b>
@@ -1887,6 +1888,7 @@ ${secTimetable}${secTasks}${secNotes}${secAbsences}`
     }
   });
   $('#edit-student')?.addEventListener('click', () => studentForm(student, reload));
+  bindFamilyStrip(el, student.parent_id, reload);
   $('#info-edit')?.addEventListener('click', () => studentForm(student, reload));
   $('#info-edit2')?.addEventListener('click', () => studentForm(student, reload));
   $('#parent-edit')?.addEventListener('click', () => parentQuickEdit(student.parent_id, reload).catch((err) => toast(err.message, true)));
@@ -2171,7 +2173,12 @@ async function paySheet(kind, id, onDone0) {
   // التحديث بعد الدفع: فقط إن بقي المستعمل في نفس الصفحة
   const fromHash = location.hash;
   const onDone = () => location.hash === fromHash && onDone0?.();
-  const file = await api('GET', kind === 'support' ? `/api/students/${id}` : `/api/program/children/${id}`);
+  const [file, fam] = await Promise.all([
+    api('GET', kind === 'support' ? `/api/students/${id}` : `/api/program/children/${id}`),
+    api('GET', `/api/family-dues?kind=${kind}&id=${id}`).catch(() => ({ items: [] })),
+  ]);
+  // إخوته عند نفس الولي: يُخلَّصون في نفس الوصل
+  const sibSel = new Set();
   const person = kind === 'support' ? file.student : file.child;
   const f = file.finance;
   if (!f) return toast('لا توجد معطيات مالية', true);
@@ -2207,7 +2214,8 @@ async function paySheet(kind, id, onDone0) {
       <div class="ps-who"><b>${esc(person.full_name)}</b><span>${esc(level)}${f.free ? ' · مجاني' : monthFee ? ` · ${fmtMoney(monthFee)} في الشهر` : ''}</span></div>
       <button type="button" class="ps-x" aria-label="إغلاق">✕</button></div>`;
   const render = () => {
-    const lines = chips.filter((c) => selected.has(c.month)).map((c) => ({ month: c.month, amount: c.rest }));
+    const lines = chips.filter((c) => selected.has(c.month)).map((c) => ({ kind, id, month: c.month, amount: c.rest }));
+    fam.items.forEach((it, i) => it.months.forEach((m) => sibSel.has(`${i}|${m.month}`) && lines.push({ kind: it.kind, id: it.id, month: m.month, amount: m.rest, who: it.full_name })));
     if (withReg && reg) {
       const l = lines.find((x) => x.month === reg.month);
       if (l) l.amount = Math.round((l.amount + reg.rest) * 1000) / 1000;
@@ -2226,6 +2234,14 @@ async function paySheet(kind, id, onDone0) {
             <span>${MONTHS_AR[Number(c.month.slice(5)) - 1]}</span><b>${st === 'ok' ? '✓' : fmtMoney(c.rest)}</b>${st === 'part' ? '<i>جزئي</i>' : c.future ? '<i>مسبق</i>' : ''}</button>`;
         })
         .join('')}</div>
+      ${fam.items.length ? `<div class="ps-fam"><p class="ps-hint">👪 إخوته عند نفس الولي — زيدهم في <b>نفس الوصل</b>:</p>${fam.items
+        .map((it, i) => `<div class="ps-sib"><div class="ps-sib-h"><b>${esc(it.full_name)}</b><small>${esc(it.label)}</small>
+            <button type="button" class="link small" data-sib-all="${i}">${it.months.every((m) => sibSel.has(`${i}|${m.month}`)) ? 'إلغاء الكل' : 'الكل'}</button></div>
+          <div class="ps-months">${it.months
+            .map((m) => `<button type="button" class="ps-m ${m.paid > 0 ? 'part' : 'due'} ${sibSel.has(`${i}|${m.month}`) ? 'sel' : ''}" data-sib="${i}|${m.month}">
+              <span>${MONTHS_AR[Number(m.month.slice(5)) - 1]}</span><b>${fmtMoney(m.rest)}</b>${m.paid > 0 ? '<i>جزئي</i>' : ''}</button>`)
+            .join('')}</div></div>`)
+        .join('')}</div>` : ''}
       ${reg ? `<label class="ps-reg"><input type="checkbox" id="ps-reg" ${withReg ? 'checked' : ''}> 🪪 + معلوم التسجيل <b>${fmtMoney(reg.rest)}</b> <small>(${esc(monthLabel(reg.month))} · اختياري)</small></label>` : ''}
       <form class="ps-form">
         <div class="ps-row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${total || ''}" required></label>
@@ -2243,10 +2259,10 @@ async function paySheet(kind, id, onDone0) {
       const out = lines.map((l, i) => {
         const a = i === lines.length - 1 ? left : Math.min(l.amount, left);
         left = Math.round((left - a) * 1000) / 1000;
-        return { month: l.month, amount: Math.max(Math.round(a * 1000) / 1000, 0) };
+        return { ...l, amount: Math.max(Math.round(a * 1000) / 1000, 0) };
       });
       sh.querySelector('#ps-split').innerHTML = out.length > 1 || (out[0] && out[0].amount !== lines[0].amount)
-        ? out.map((l) => `<span>${esc(monthLabel(l.month))}: <b>${fmtMoney(l.amount)}</b></span>`).join('')
+        ? out.map((l) => `<span>${l.who ? `${esc(l.who.split(' ')[0])} · ` : ''}${esc(monthLabel(l.month))}: <b>${fmtMoney(l.amount)}</b></span>`).join('')
         : '';
       return out.filter((l) => l.amount > 0);
     };
@@ -2257,6 +2273,23 @@ async function paySheet(kind, id, onDone0) {
         const m = b.dataset.m;
         if (selected.has(m)) selected.delete(m);
         else selected.add(m);
+        render();
+      })
+    );
+    sh.querySelectorAll('[data-sib]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const k = b.dataset.sib;
+        if (sibSel.has(k)) sibSel.delete(k);
+        else sibSel.add(k);
+        render();
+      })
+    );
+    sh.querySelectorAll('[data-sib-all]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const i = Number(b.dataset.sibAll);
+        const keys = fam.items[i].months.map((m) => `${i}|${m.month}`);
+        const all = keys.every((k) => sibSel.has(k));
+        keys.forEach((k) => (all ? sibSel.delete(k) : sibSel.add(k)));
         render();
       })
     );
@@ -2277,8 +2310,16 @@ async function paySheet(kind, id, onDone0) {
       const btn = sh.querySelector('.ps-go');
       btn.disabled = true;
       try {
-        const { payment } = await api('POST', '/api/pay-months', { kind, id, lines: parts, method: data.method, paid_on: data.paid_on, note: data.note });
-        done({ ...payment, kind, paid_on: data.paid_on || today(), months: parts.map((p) => p.month), beneficiary: person.full_name, payer });
+        // تجميع الأسطر حسب الابن: وصل واحد للكل
+        const items = [];
+        for (const l of parts) {
+          let it = items.find((x) => x.kind === l.kind && x.id === l.id);
+          if (!it) items.push((it = { kind: l.kind, id: l.id, lines: [] }));
+          it.lines.push({ month: l.month, amount: l.amount });
+        }
+        const { payment } = await api('POST', '/api/pay-months', { items, method: data.method, paid_on: data.paid_on, note: data.note });
+        const names = [person.full_name, ...new Set(parts.filter((p) => p.who).map((p) => p.who))];
+        done({ ...payment, paid_on: data.paid_on || today(), months: [...new Set(parts.map((p) => p.month))], beneficiary: [...new Set(names)].join(' و'), payer });
       } catch (err) {
         btn.disabled = false;
         toast(err.message, true);
@@ -2292,7 +2333,7 @@ async function paySheet(kind, id, onDone0) {
     sh.innerHTML = `${head}
       <div class="ps-done"><div class="ps-check">✓</div>
         <h3>تم تسجيل الدفعة</h3>
-        <p>وصل رقم <b>${r.receipt_no}</b> · ${fmtMoney(r.total)}<br><span class="muted small">${r.months.map((m) => esc(monthLabel(m))).join('، ')}</span></p>
+        <p>وصل رقم <b>${r.receipt_no}</b> · ${fmtMoney(r.total)}<br><span class="muted small">${r.children > 1 ? `👪 ${esc(r.beneficiary)}<br>` : ''}${r.months.map((m) => esc(monthLabel(m))).join('، ')}</span></p>
         ${hasParent ? '<p class="ps-note">🧾 الوصل وصل لحساب الولي في التطبيقة</p>' : '<p class="ps-note warn">الولي ما عندوش حساب في التطبيقة: ابعثلو الوصل بواتساب</p>'}
         <div class="ps-acts">
           <a class="btn" href="#/receipt/${r.kind}/${r.id}" id="ps-open">🖨 الوصل / طباعة</a>

@@ -261,7 +261,7 @@ async function viewReceipt(el, kind, id) {
       </table>
       <div class="rc-total">
         <span class="rc-paid">✓ مدفوع</span>
-        <div><small>${multi ? `المجموع · ${lines.length} أشهر` : 'المبلغ المدفوع'}</small><b>${fmtMoney(total)}</b></div>
+        <div><small>${!oneKid ? `المجموع · ${new Set(lines.map((l) => l.beneficiary)).size} أبناء` : multi ? `المجموع · ${lines.length} أشهر` : 'المبلغ المدفوع'}</small><b>${fmtMoney(total)}</b></div>
       </div>
       ${r.note || r.edited_at ? `<p class="rc-note">${r.note ? `📝 ${esc(r.note)}` : ''}${r.edited_at ? `<span>وصل معدّل في ${fmtDate(r.edited_at)}</span>` : ''}</p>` : ''}
       <footer class="rc-foot">
@@ -1334,6 +1334,61 @@ async function parentQuickEdit(parentId, onDone) {
   );
 }
 
+// شريط العائلة في ملف التلميذ/الطفل: الولي، إخوته، وإضافة ابن آخر
+function familyStrip(parentId, parentName, current) {
+  if (!parentId) {
+    return `<section class="card fam-strip none"><span>👪 ما فماش حساب وليّ مربوط${parentName ? ` (${esc(parentName)})` : ''}.</span>
+      <small class="muted">اربطو بحساب وليّ من «تعديل المعطيات» باش تنجم تزيد إخوته وتخلّصهم في وصل واحد.</small></section>`;
+  }
+  return `<section class="card fam-strip" data-cur="${current.kind}:${current.id}">
+    <div class="fs-head"><a class="fs-parent" href="#/parents/${parentId}">${avatar({ full_name: parentName || '?' }, 'sm')}<span><small>الولي</small><b>${esc(parentName || 'ملف الولي')}</b></span><i>←</i></a>
+      <button type="button" class="btn ghost small" data-add-sib>+ ابن آخر</button></div>
+    <div class="fs-kids" id="fs-kids"></div>
+  </section>`;
+}
+function bindFamilyStrip(el, parentId, onDone) {
+  const box = el.querySelector('.fam-strip[data-cur]');
+  if (!box || !parentId) return;
+  box.querySelector('[data-add-sib]').addEventListener('click', () => addSiblingFor(parentId, onDone));
+  const [ck, ci] = box.dataset.cur.split(':');
+  api('GET', `/api/parents/${parentId}`)
+    .then(({ kids }) => {
+      const others = kids.filter((k) => !((ck === 'support' && k.type === 'student' && k.id === Number(ci)) || (ck === 'program' && (k.program?.id === Number(ci) || (k.type === 'child' && k.id === Number(ci))))));
+      const host = el.querySelector('#fs-kids');
+      if (!host) return;
+      host.innerHTML = others.length
+        ? `<small class="muted">إخوته:</small>${others
+            .map((k) => `<a class="fs-kid" href="${k.link}">${esc(k.full_name.split(' ')[0])}<i>${k.level ? esc(levelShort(k.level)) : '🎨'}</i>${k.balance > 0 ? `<em>${fmtMoney(k.balance)}</em>` : ''}</a>`)
+            .join('')}`
+        : '<small class="muted">ما عندوش إخوة مسجّلين.</small>';
+    })
+    .catch(() => {});
+}
+// إضافة ابن آخر لنفس الولي: في دروس الدعم أو في البرنامج التربوي
+function addSiblingFor(parentId, onDone) {
+  openModal(
+    '+ ابن آخر لنفس الولي',
+    `<p class="muted">وين تحب تسجّلو؟</p>
+     <div class="sib-pick"><button type="button" class="sib-opt" data-sib-kind="support"><span>📚</span><b>دروس الدعم</b><small>تلميذ (5 إلى 9 أساسي)</small></button>
+       <button type="button" class="sib-opt" data-sib-kind="program"><span>🎨</span><b>البرنامج التربوي</b><small>طفل في قسم</small></button></div>`,
+    async () => {}
+  );
+  $('#modal-form button[type=submit]').hidden = true;
+  document.querySelectorAll('[data-sib-kind]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      $('#modal').close();
+      if (b.dataset.sibKind === 'support') return studentForm(null, onDone, null, { parent_id: parentId });
+      const [{ classes, children }, { users: parents }, { users: teachers }, { students }] = await Promise.all([
+        api('GET', '/api/program'),
+        api('GET', '/api/users?role=parent'),
+        api('GET', '/api/users?role=teacher'),
+        api('GET', '/api/students'),
+      ]);
+      childForm(null, { classes, parents, teachers, students, children }, onDone, { parent_id: parentId });
+    })
+  );
+}
+
 async function viewParent(el, id) {
   const { parent: p, kids, balance } = await api('GET', `/api/parents/${id}`);
   const phones = String(p.phone || '').split(/\s*[\/,;]\s*/).filter(Boolean);
@@ -1357,7 +1412,7 @@ async function viewParent(el, id) {
         { icon: 'pin', label: 'العنوان', value: p.address },
       ])}
     </section>
-    <section class="card"><h3>👨‍👩‍👧 الأبناء (${kids.length})</h3>
+    <section class="card"><div class="section-head"><h3>👨‍👩‍👧 الأبناء (${kids.length})</h3><button type="button" class="btn small" id="pp-add-kid">+ ابن آخر</button></div>
       ${
         kids.length
           ? `<div class="pkids">${kids
@@ -1372,6 +1427,7 @@ async function viewParent(el, id) {
     </section>`;
   $('#pp-edit').addEventListener('click', () => parentQuickEdit(id, () => viewParent(el, id)));
   $('#pp-pw').addEventListener('click', () => issuePassword(p));
+  $('#pp-add-kid').addEventListener('click', () => addSiblingFor(id, () => viewParent(el, id)));
 }
 
 // ---------- المصاريف القارّة: الكراء، المحاسبة والقباضة، أجور الإطار الإداري، الفواتير ----------

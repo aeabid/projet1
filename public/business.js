@@ -871,7 +871,7 @@ async function viewProgramClasses(el) {
   );
 }
 
-function childForm(c, { classes, parents, students, children }, onDone) {
+function childForm(c, { classes, parents, students, children }, onDone, preset = null) {
   // تلاميذ الدعم غير المرتبطين بطفل آخر في البرنامج
   const taken = new Set(children.filter((x) => x.student_id && x.id !== c?.id).map((x) => x.student_id));
   openModal(
@@ -890,7 +890,7 @@ function childForm(c, { classes, parents, students, children }, onDone) {
      <label id="cf-formula-wrap" hidden>الصيغة<select name="formula" id="cf-formula"></select></label>
      <div id="cf-parent">
        <label>حساب الولي (ليتابع ابنه من التطبيق)<select name="parent_id"><option value="">— دون حساب —</option>${parents
-         .map((u) => `<option value="${u.id}" ${c?.parent_id === u.id ? 'selected' : ''}>${esc(parentLabel(u))}</option>`)
+         .map((u) => `<option value="${u.id}" ${(c || preset)?.parent_id === u.id ? 'selected' : ''}>${esc(parentLabel(u))}</option>`)
          .join('')}</select></label>
        <div class="row">
          <label>اسم الولي (دون حساب)<input name="guardian_name" value="${esc(c?.guardian_name || '')}"></label>
@@ -1084,7 +1084,7 @@ async function viewProgramChild(el, id) {
   const role = state.user.role;
   const file = await api('GET', `/api/program/children/${id}`);
   const { child: c, finance } = file;
-  const back = role === 'parent' ? ['#/students', 'أبنائي'] : ['#/program', 'البرنامج التربوي'];
+  const back = role === 'parent' ? ['#/students', 'أبنائي'] : ['#/program', 'قائمة الأطفال'];
   el.innerHTML = `
     ${role === 'admin' ? '<nav class="file-nav" id="file-nav" hidden></nav>' : ''}
     <a href="${back[0]}" class="muted small">→ ${back[1]}</a>
@@ -1099,6 +1099,7 @@ async function viewProgramChild(el, id) {
           ${!c.student_id && role === 'admin' && c.status === 'active' ? '<button type="button" class="badge level" id="to-support">📚 تسجيله في دروس الدعم</button>' : ''}</div>
       </div>
     </div>
+    ${role === 'admin' ? familyStrip(c.family_parent_id || c.parent_id, c.contact_name, { kind: 'program', id: c.id }) : ''}
     ${fileTabs([['follow', 'المتابعة'], finance ? ['pay', 'الخلاص'] : null, role === 'admin' ? ['info', 'المعلومات'] : null])}
     <div class="tab-panel" data-panel="follow">
       ${classPostsSection(file.posts)}
@@ -1139,6 +1140,7 @@ async function viewProgramChild(el, id) {
     childForm(full, { classes, parents, teachers, students, children }, reload);
   });
   bindFileTabs(el);
+  if (role === 'admin') bindFamilyStrip(el, c.family_parent_id || c.parent_id, reload);
   if (role === 'admin') mountFileNav(el, 'program', id, (x) => `#/program/child/${x}`);
   $('#to-support')?.addEventListener('click', () => studentForm(null, () => viewProgramChild(el, id), Number(id)));
 }

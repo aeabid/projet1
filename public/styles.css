@@ -2065,3 +2065,21 @@ td .seen { margin: 0; }
 .td-notes p { margin: .35rem 0 .2rem; }
 .td-rat { float: left; font-size: .74rem; font-weight: 800; padding: .1rem .5rem; border-radius: 99px; background: var(--soft-2); }
 .td-rat.ok { background: #dcfce7; color: #166534; } .td-rat.mid { background: #fef3c7; color: #92400e; } .td-rat.bad { background: #ffe4e6; color: #be123c; }
+
+/* ===== العائلة: الولي والإخوة في ملف التلميذ ===== */
+.fam-strip { display: flex; flex-direction: column; gap: .5rem; padding: .7rem .9rem; background: linear-gradient(135deg, #faf5ff, #fff); border: 1px solid #e4d4fb; }
+.fam-strip.none { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
+.fs-head { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+.fs-parent { display: flex; align-items: center; gap: .55rem; color: var(--text); flex: 1; min-width: 0; }
+.fs-parent:hover { text-decoration: none; } .fs-parent span { display: flex; flex-direction: column; line-height: 1.25; }
+.fs-parent small { color: var(--muted); font-size: .74rem; } .fs-parent i { font-style: normal; color: var(--primary); font-weight: 800; }
+.fs-kids { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.fs-kid { display: inline-flex; align-items: center; gap: .35rem; background: var(--card); border: 1px solid var(--border); border-radius: 99px; padding: .2rem .65rem; font-weight: 700; color: var(--text); font-size: .88rem; }
+.fs-kid i { font-style: normal; font-size: .72rem; color: var(--muted); } .fs-kid em { font-style: normal; font-size: .72rem; color: #be185d; }
+.sib-pick { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }
+.sib-opt { display: flex; flex-direction: column; align-items: center; gap: .2rem; padding: 1rem .6rem; border: 2px solid var(--border); border-radius: 16px; background: var(--card); font: inherit; cursor: pointer; }
+.sib-opt:hover { border-color: var(--primary); background: var(--soft); } .sib-opt span { font-size: 1.8rem; } .sib-opt small { color: var(--muted); }
+/* إخوته في نافذة الدفع */
+.ps-fam { border-top: 1px dashed var(--border); margin-top: .6rem; padding-top: .4rem; }
+.ps-sib { background: var(--soft); border-radius: 14px; padding: .5rem .6rem; margin-bottom: .5rem; }
+.ps-sib-h { display: flex; align-items: baseline; gap: .5rem; margin-bottom: .35rem; } .ps-sib-h small { color: var(--muted); flex: 1; }
