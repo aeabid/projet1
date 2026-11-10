@@ -228,7 +228,7 @@ async function viewOverview(el) {
   el.innerHTML = `
     <div class="page-head"><h2>📊 الرؤية الإجمالية للقسم</h2>
       <div class="actions"><select id="ov-level">${all.map((l) => `<option value="${l.code}" ${l.code === level ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}</select>
-        <a class="btn" href="#/report-class" id="ov-print">🖨 طباعة بطاقات القسم</a></div></div>
+</div></div>
     <div class="stats compact">${Object.entries(LEVEL_WORDS)
       .map(([k, w]) => `<div class="stat"><b style="color:${CARD_COLORS[k]}">${ov.counts[k]}</b><span>${w}</span></div>`)
       .join('')}</div>
@@ -242,7 +242,7 @@ async function viewOverview(el) {
           <p class="muted small">في كل خانة: آخر مستوى، آخر سلوك، وتاريخ آخر ملاحظة. «—» = لا يدرس هذه المادة.</p>`
         : '<div class="card muted">لا يوجد تلاميذ في هذا المستوى.</div>'
     }`;
-  $('#ov-print').addEventListener('click', () => sessionStorage.setItem('reportLevel', level));
+  $('#ov-print')?.addEventListener('click', () => sessionStorage.setItem('reportLevel', level));
   $('#ov-level').addEventListener('change', () => {
     sessionStorage.setItem('ovLevel', $('#ov-level').value);
     viewOverview(el);

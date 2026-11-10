@@ -171,13 +171,11 @@ async function boardOverview(el) {
     if (!$('#bo-kpis')) return;
     $('#bo-kpis').innerHTML = `<div class="kpis">
       <a class="kpi" href="#/people"><b>${k.support_active + k.program_active}</b><span>تلميذ وطفل مسجّل<small>${k.support_active} دعم · ${k.program_active} تربوي</small></span></a>
-      <a class="kpi" href="#/board/month"><b class="${k.net >= 0 ? 'in' : 'out'}">${k.net >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(k.net))}</b><span>صافي ${esc(monthLabel(k.month))}</span></a>
-      <a class="kpi" href="#/board/notices"><b>${k.collection_rate ?? '—'}${k.collection_rate !== null ? '%' : ''}</b><span>نسبة الاستخلاص هذا الشهر</span></a>
+      <a class="kpi" href="#/board/notices"><b>${k.collection_rate ?? '—'}${k.collection_rate !== null ? '%' : ''}</b><span>نسبة الاستخلاص هذا الشهر${k.billed ? `<small>المستخلص ${fmtMoney(k.collected)} من ${fmtMoney(k.billed)}</small>` : ''}</span></a>
       <a class="kpi" href="#/debts"><b class="${k.debts_total ? 'out' : ''}">${fmtMoney(k.debts_total)}</b><span>متخلّد بذمّة ${k.debtors} عائلة</span></a>
       <a class="kpi" href="#/payroll"><b>${fmtHours(k.teacher_hours)}</b><span>ساعات تدريس هذا الشهر</span></a>
       <a class="kpi" href="#/board/absences"><b>${k.absences_month}</b><span>غياب هذا الشهر</span></a>
-      <a class="kpi" href="#/courses"><b>${k.events_open}</b><span>دورة ونشاط مفتوح</span></a>
-      <a class="kpi" href="#/todo"><b>${k.tasks_open}</b><span>مهمة مفتوحة${k.tasks_overdue ? `<small class="out">${k.tasks_overdue} متأخرة</small>` : ''}</span></a>
+
     </div>`;
   });
   await viewBoard($('#bo-year'));
@@ -192,9 +190,11 @@ function forecastCard(f) {
       <p class="muted small">${cur ? 'مع حساب ما بقي للدفع إلى آخر الشهر: أجور المدرّسين (دون غيابات) والمصاريف القارّة.' : 'ما بقي غير مدفوع من أجور ومصاريف قارّة لهذا الشهر.'}</p></div>
       <a class="link small" href="#/fixed">المصاريف القارّة ←</a></div>
     <div class="fcb-flow">
-      <div class="fcb-step"><small>المداخيل</small><b class="in">${fmtMoney(f.income)}</b></div>
+      <div class="fcb-step"><small>المداخيل</small><b class="in">${fmtMoney(f.income)}</b>
+        ${f.breakdown ? `<i>🎨 التربوي ${fmtMoney(f.breakdown.income.program)}<br>📚 الدعم المدرسي ${fmtMoney(f.breakdown.income.support)}<br>➕ أخرى ${fmtMoney(f.breakdown.income.other)}</i>` : ''}</div>
       <span class="fcb-op">−</span>
-      <div class="fcb-step"><small>المصاريف المدفوعة</small><b class="out">${fmtMoney(f.expense)}</b></div>
+      <div class="fcb-step"><small>المصاريف المدفوعة</small><b class="out">${fmtMoney(f.expense)}</b>
+        ${f.breakdown ? `<i>📌 المصاريف القارّة ${fmtMoney(f.breakdown.expense.fixed)}<br>🎨 أجور التربوي ${fmtMoney(f.breakdown.expense.program)}<br>📚 أجور الدعم ${fmtMoney(f.breakdown.expense.support)}<br>➕ أخرى ${fmtMoney(f.breakdown.expense.other)}</i>` : ''}</div>
       <span class="fcb-op">=</span>
       <div class="fcb-step now"><small>الربح الحالي (en temps réel)</small><b class="${neg(f.net_now)}">${fmtMoney(f.net_now)}</b></div>
     </div>
@@ -361,14 +361,22 @@ async function boardAbsences(el) {
         <section class="card"><h3>🎨 التربوي حسب القسم</h3>${d.by_class.length ? hbars(d.by_class.map((x) => [x.class_name, x.n, '#db2777'])) : '<p class="muted">لا غيابات.</p>'}</section>
         <section class="card"><h3>👩‍🏫 غيابات المدرّسين</h3>${d.teachers.length ? hbars(d.teachers.map((x) => [x.full_name, x.n, '#f59e0b'])) : '<p class="muted">كل المدرّسين حضروا ✓</p>'}</section>
       </div>
-      <section class="card"><div class="section-head"><h3>⚠️ الأكثر غيابًا هذا الشهر</h3><a class="link small" href="#/attendance">تسجيل الغيابات ←</a></div>
+      <section class="card"><div class="section-head"><h3>📅 الأكثر غيابًا هذا الأسبوع</h3><span class="muted small">منذ ${fmtDate(d.week_start)}</span></div>
+        ${
+          d.top_week.length
+            ? `<div class="pkids">${d.top_week
+                .map((x) => `<a class="pkid" href="${x.kind === 'support' ? `#/students/${x.id}` : `#/program/child/${x.id}`}"><span class="pk-main"><b>${x.kind === 'support' ? '📚' : '🎨'} ${esc(x.full_name)}</b><small>${esc(x.level ? levelLabel(x.level) : x.class_name || 'البرنامج التربوي')}</small></span><span class="pk-bal ${x.unjustified ? 'due' : 'ok'}">${x.n} غياب${x.unjustified ? ` · ${x.unjustified} غير مبرّر` : ''}</span></a>`)
+                .join('')}</div>`
+            : '<p class="muted">لا غيابات هذا الأسبوع 👏</p>'
+        }</section>
+      <details class="card fold"><summary><h3>⚠️ الأكثر غيابًا هذا الشهر <span class="badge">${d.top_students.length}</span></h3></summary><div><div class="section-head"><span></span><a class="link small" href="#/attendance">تسجيل الغيابات ←</a></div>
         ${
           d.top_students.length
             ? `<div class="pkids">${d.top_students
                 .map((x) => `<a class="pkid" href="#/students/${x.id}"><span class="pk-main"><b>${esc(x.full_name)}</b><small>${esc(levelLabel(x.level))}</small></span><span class="pk-bal ${x.unjustified ? 'due' : 'ok'}">${x.n} غياب${x.unjustified ? ` · ${x.unjustified} غير مبرّر` : ''}</span></a>`)
                 .join('')}</div>`
             : '<p class="muted">لا غيابات هذا الشهر 👏</p>'
-        }</section>
+        }</div></details>
       <div class="board-grid">
         <section class="card"><h3>📝 الملاحظات حسب النوع</h3>${d.notes.length ? hbars(d.notes.map((x) => [CAT[x.category] || x.category, x.n, '#0ea5e9'])) : '<p class="muted">لا ملاحظات.</p>'}</section>
         <section class="card"><h3>⭐ تقييمات المعلّمين</h3>${d.ratings.length ? hbars(Object.keys(RAT).map((k) => [RAT[k][0], d.ratings.find((r) => r.rating === k)?.n || 0, RAT[k][1]])) : '<p class="muted">لا تقييمات.</p>'}</section>
@@ -540,13 +548,15 @@ async function viewLedger(el) {
 }
 
 // ---------- الإطار والأجور ----------
+// أصناف فضاء المحاسبة التي يمكن أن تُحتسب فيها أجرة شخص
+const STAFF_ACC_CATS = ['accountant_fee', 'tax_office', 'acc_other', 'accounting'];
 async function viewStaff(el) {
   const meta = await financeMeta();
   const { staff } = await api('GET', '/api/staff');
   const monthly = staff.filter((x) => x.active).reduce((t, x) => t + (x.monthly_salary || 0), 0);
   el.innerHTML = `
     <div class="page-head">
-      <h2>الإطار والأجور</h2>
+      <h2>👥 الموارد البشرية</h2>
       <div class="actions">
         <button class="btn ghost" id="pay-salaries">تسجيل أجور الشهر</button>
         <button class="btn" id="add-staff">+ شخص</button>
@@ -557,15 +567,17 @@ async function viewStaff(el) {
     ${
       staff.length
         ? `<div class="table-wrap"><table>
-            <thead><tr><th>الاسم</th><th>النشاط</th><th>الخطة</th><th>الأجرة الشهرية</th><th>الهاتف</th><th></th></tr></thead>
+            <thead><tr><th>الاسم</th><th>النشاط</th><th>الخطة</th><th>الأجرة الشهرية</th><th>الهاتف</th><th>الحساب</th><th></th></tr></thead>
             <tbody>${staff
               .map(
                 (x) => `<tr class="${x.active ? '' : 'planned'}">
                   <td><b>${esc(x.full_name)}</b>${x.active ? '' : ' <span class="badge general">غير نشط</span>'}</td>
                   <td>${ACTIVITY_ICONS[x.activity]} ${esc(meta.activities[x.activity])}</td>
                   <td>${esc(x.role || '—')}</td>
-                  <td>${fmtMoney(x.monthly_salary)}</td>
+                  <td>${fmtMoney(x.monthly_salary)}${x.accounting_category ? `<div class="muted small">🧮 ${esc(meta.categories.expense[x.accounting_category] || '')}</div>` : ''}</td>
                   <td><span class="phone-line"><span dir="ltr">${esc(x.phone || '—')}</span>${waButton(x.phone)}</span></td>
+                  <td>${x.user_id ? `<span class="badge good">✓ ${esc(x.username)}</span>${lastSeen(x)}` : '<span class="muted small">بلا حساب</span>'}
+                    ${state.user.super_admin ? `<div><button class="btn ghost small" data-acc="${x.id}">${x.user_id ? '🔑 الدور / الدخول' : '🔑 فتح حساب'}</button></div>` : ''}</td>
                   <td class="row-actions"><button class="btn ghost small" data-edit="${x.id}">تعديل</button>
                     <button class="btn danger small" data-del="${x.id}">حذف</button></td>
                 </tr>`
@@ -588,6 +600,9 @@ async function viewStaff(el) {
          <label>الأجرة الشهرية (د.ت)<input name="monthly_salary" inputmode="decimal" value="${esc(x?.monthly_salary ?? '')}"></label>
          <label>الهاتف<input name="phone" dir="ltr" value="${esc(x?.phone || '')}"></label>
        </div>
+       <label>🧮 في فضاء المحاسبة، أجرته تُحتسب كـ<select name="accounting_category"><option value="">— لا (أجرة عادية) —</option>${STAFF_ACC_CATS
+         .map((k) => `<option value="${k}" ${x?.accounting_category === k ? 'selected' : ''}>${esc(meta.categories.expense[k] || k)}</option>`)
+         .join('')}</select><small class="muted">مثلًا المحاسب: كل أجرة تدفعها له تعمّر جدول «أجرة المحاسب الشهرية» وحدها.</small></label>
        <label class="check"><input type="checkbox" name="active" ${x?.active === false ? '' : 'checked'}> نشط</label>`,
       async (data) => {
         if (x) await api('PUT', `/api/staff/${x.id}`, data);
@@ -613,6 +628,25 @@ async function viewStaff(el) {
   );
   el.querySelectorAll('[data-edit]').forEach((b) =>
     b.addEventListener('click', () => form(staff.find((x) => x.id === Number(b.dataset.edit))))
+  );
+  // حساب دخول: دور من أدوار الإدارة، ثم إرسال الدخول بواتساب
+  el.querySelectorAll('[data-acc]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const x = staff.find((y) => y.id === Number(b.dataset.acc));
+      const { roles } = await api('GET', '/api/permissions');
+      openModal(
+        `🔑 حساب ${x.full_name}`,
+        `<p class="muted small">حساب إدارة بدور تختاره (صلاحياته من صفحة «الصلاحيات»). اسم المستخدم: رقم الهاتف.</p>
+         <label>الدور<select name="role">${roles.map((r) => `<option value="${esc(r.key)}" ${x.user_role === r.key ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>
+         <label class="check"><input type="checkbox" name="send" checked> إرسال بيانات الدخول بواتساب بعد الحفظ</label>`,
+        async (data) => {
+          const r = await api('POST', `/api/staff/${x.id}/account`, { role: data.role });
+          toast(r.created ? 'تم فتح الحساب' : 'تم تحديث الدور');
+          if (data.send) await issuePassword(r.user);
+          reload();
+        }
+      );
+    })
   );
   el.querySelectorAll('[data-del]').forEach((b) =>
     b.addEventListener('click', async () => {
@@ -1691,24 +1725,7 @@ async function activityBoard(box, key) {
         <div class="fb-kpi net ${x.net < 0 ? 'neg' : ''}"><span>الربح الحالي</span><b>${x.net < 0 ? '−' : ''}${fmtMoney(Math.abs(x.net))}</b><small>إلى اليوم</small></div>
       </div>
       <div class="ab-fc" id="ab-${key}-fc"><p class="muted small">⏳ حساب الرواتب المرتقبة إلى آخر الشهر…</p></div>
-      <div class="fb-cols">
-        <div class="fb-panel">
-          <h4>💵 ما دخل وما خرج فعليًا</h4>
-          ${x.income_lines.map((l) => row(esc(l.label), fmtMoney(l.amount), 'in')).join('') || '<p class="muted small">لا مداخيل هذا الشهر.</p>'}
-          ${x.expense_lines.map((l) => row(esc(l.label), (l.amount ? '− ' : '') + fmtMoney(l.amount), 'out')).join('') || row(`رواتب ${who}`, '—', 'muted')}
-          ${x.shared ? row(`نصيبه من المصاريف العامة (${x.shared_pct}%)`, '− ' + fmtMoney(x.shared), 'out') + row('الصافي بعد التوزيع', netBadge(x.net_after), 'total') : ''}
-        </div>
-        <div class="fb-panel">
-          <h4>📋 ما يجب أن يدخل ويخرج عن الشهر</h4>
-          ${row(key === 'support' ? 'المستحق على التلاميذ' : 'المستحق على الأطفال', fmtMoney(acc.billed))}
-          <div class="fb-progress" title="نسبة الاستخلاص"><i style="width:${pct ?? 0}%"></i></div>
-          ${row(`مقبوض${pct !== null ? ` (${pct}%)` : ''}`, fmtMoney(acc.collected), 'in')}
-          ${row('باقي على الأولياء', fmtMoney(acc.unpaid), acc.unpaid > 0 ? 'out' : '')}
-          ${row(key === 'support' ? 'رواتب المعلمين المستحقة' : 'رواتب المنشطين والمصاريف', (cost ? '− ' : '') + fmtMoney(cost))}
-          ${key === 'support' ? row('منها مدفوع', fmtMoney(acc.teachers_paid), 'muted') : ''}
-          ${row('هامش الربح', netBadge(acc.margin), 'total')}
-        </div>
-      </div>`;
+`;
     const fc = await fcP;
     const box2 = $(`#ab-${key}-fc`);
     if (!box2 || $(`#ab-${key}`)?.value !== month) return;
@@ -1823,21 +1840,27 @@ async function viewProgramBoard(el) {
       <div class="stat"><b>${new Set(active.map((c) => c.family_parent_id || c.parent_id).filter(Boolean)).size}</b><span>ولي</span></div>
       <div class="stat warn"><b>${fmtMoney(owed)}</b><span>مبالغ غير مدفوعة</span></div>
     </div>
+    <div id="pb-req"></div>
     <div id="program-board"></div>
-    <section class="card"><h3>الأقسام</h3><ul class="levels">${classes
+    ${regLinksCard()}
+    <details class="card fold"><summary><h3>🏫 الأقسام <span class="badge">${classes.length}</span></h3></summary><ul class="levels">${classes
       .map((k) => `<li><a href="#/program" data-class="${k.id}">${esc(k.name)}${k.age_range ? ` <span class="muted small">${esc(k.age_range)}</span>` : ''}</a>
         <b>${active.filter((c) => c.class_id === k.id).length}</b></li>`)
-      .join('')}</ul></section>
+      .join('')}</ul></details>
     ${
       children.some((c) => c.balance > 0)
-        ? `<section class="card"><h3>أطفال عليهم مبالغ</h3><ul class="levels">${children
+        ? `<details class="card fold"><summary><h3>💸 أطفال عليهم مبالغ <span class="badge weak">${children.filter((c) => c.balance > 0).length}</span></h3></summary><ul class="levels">${children
             .filter((c) => c.balance > 0)
             .sort((a, b) => b.balance - a.balance)
             .map((c) => `<li><a href="#/program/child/${c.id}">${esc(c.full_name)} <span class="muted small">${esc(c.class_name || '')}</span></a><b class="owed">${fmtMoney(c.balance)}</b></li>`)
-            .join('')}</ul></section>`
+            .join('')}</ul></details>`
         : ''
     }`;
   el.querySelectorAll('[data-class]').forEach((a) => a.addEventListener('click', () => sessionStorage.setItem('progClass', a.dataset.class)));
+  bindRegLinks(el);
+  api('GET', '/api/program/requests').then(({ requests }) => {
+    if (requests.length && $('#pb-req')) $('#pb-req').innerHTML = `<a class="card alert-card" href="#/program/requests">🕓 <b>${requests.length}</b> طلب تسجيل جديد في البرنامج التربوي — اضغط للتأكيد</a>`;
+  }).catch(() => {});
   await activityBoard($('#program-board'), 'program');
 }
 
@@ -2075,7 +2098,7 @@ async function viewPartners(el) {
         (s) => `<div class="fb-kpi net"><span>${esc(s.name)} — ${s.share}% منذ ${esc(monthLabel(s.from))}</span>
           <b>${fmtMoney(s.balance)}</b><small>${s.balance >= 0 ? `الباقي بذمّة ${esc(d.owner)} لـ ${esc(s.name)}` : `${esc(s.name)} أخذ أكثر من مستحقاته`}</small></div>
         <div class="fb-kpi out"><span>المتخلّد الإجمالي لـ ${esc(s.name)}</span><b>${fmtMoney(round2(s.opening + s.due))}</b>
-          <small>الحساب القديم ${fmtMoney(s.opening)} + ${s.share}% من مرابيح ${esc(monthLabel(s.from))} إلى اليوم ${fmtMoney(s.due)}</small></div>
+          <small>الباقي من السجلّ القديم ${fmtMoney(s.opening)} + ${s.share}% من مرابيح ${esc(monthLabel(s.from))} إلى اليوم ${fmtMoney(s.due)}</small></div>
         <div class="fb-kpi in"><span>التسبقات المدفوعة</span><b>${fmtMoney(s.paid)}</b><small>منذ ${esc(monthLabel(s.from))}${(() => {
           const off = d.payments.filter((x) => x.offset && x.partner === s.name && x.paid_on >= `${s.from}-01`).reduce((t, x) => t + x.amount, 0);
           return off ? ` · منها ${fmtMoney(off)} معاليم أبنائه` : '';
@@ -2097,14 +2120,9 @@ async function viewPartners(el) {
     ${
       d.owner_summary && state.user.super_admin
         ? `<section class="card owner-card"><div class="section-head"><h3>👤 حساب ${esc(d.owner)} (صاحب المشروع)</h3><a class="link small" href="#/cash">الصندوق ←</a></div>
-            <div class="owner-grid">
-              <div><small>نصيبك من المرابيح</small><b>${fmtMoney(d.owner_summary.due)}</b></div>
-              <div><small>سحبت من الصندوق</small><b>${fmtMoney(d.owner_summary.withdrawn)}</b></div>
-              <div><small>صرفت منه على المركز</small><b class="in">− ${fmtMoney(d.owner_summary.spent)}</b></div>
-              <div><small>أخذت فعلًا</small><b>${fmtMoney(d.owner_summary.taken)}</b></div>
-              <div class="${d.owner_summary.balance >= 0 ? 'ok' : 'neg'}"><small>${d.owner_summary.balance >= 0 ? 'الباقي لك' : 'أخذت أكثر من نصيبك'}</small><b>${fmtMoney(Math.abs(d.owner_summary.balance))}</b></div>
-            </div>
-            <p class="muted small">السحب من الصندوق ليس مصروفًا: يُحسب مما أخذته من نصيبك. وما تصرفه منه على المركز (تسجّله مصروفًا «من مبلغ سحبته») يُطرح منه.</p></section>`
+            <div class="owner-grid one">
+              <div><small>نصيبك من المرابيح منذ ${esc(monthLabel(d.partners[0]?.from || ''))}</small><b>${fmtMoney(d.owner_summary.due)}</b></div>
+            </div></section>`
         : ''
     }
     <section class="card"><h3>📆 المرابيح شهرًا بشهر</h3>
@@ -2133,19 +2151,24 @@ async function viewPartners(el) {
                     <td>${h.share === null ? '—' : fmtMoney(h.share)}</td><td>${h.paid ? fmtMoney(h.paid) : '—'}</td><td><b>${h.balance ? fmtMoney(h.balance) : '—'}</b></td>
                     <td class="muted small">${esc(h.note || '')}</td></tr>`
                 )
-                .join('')}</tbody></table></div></details>`
+                .join('')}</tbody>
+              <tfoot><tr><th>المجموع</th><th>${fmtMoney(round2(d.history.reduce((t, h) => t + (h.net || 0), 0)))}</th>
+                <th>${fmtMoney(round2(d.history.reduce((t, h) => t + (h.share || 0), 0)))}</th>
+                <th>${fmtMoney(round2(d.history.reduce((t, h) => t + (h.paid || 0), 0)))}</th>
+                <th>${fmtMoney(d.history[d.history.length - 1]?.balance || 0)}</th><th class="muted small">الباقي يُنقل إلى ${esc(monthLabel(d.partners[0]?.from || ''))}</th></tr></tfoot></table></div></details>`
         : ''
     }
     ${d.partners.some((p) => p.parent_id) ? `<p class="card muted small">🤝 ${d.partners.filter((p) => p.parent_id).map((p) => esc(p.name)).join('، ')} وليّ في المركز أيضًا: عند خلاص أبنائه اختر طريقة الدفع «🤝 خصم من نصيب الشريك»، فيُطرح المبلغ من نصيبه وحده (لا يدخل الصندوق).</p>` : ''}
-    <section class="card"><h3>💵 التسبقات المدفوعة للشركاء</h3>${
-      d.payments.length
+    <section class="card"><h3>💵 التسبقات المدفوعة للشركاء <span class="muted small">منذ ${esc(monthLabel(d.partners[0]?.from || ''))}</span></h3>${
+      d.payments.filter((p) => p.paid_on >= `${d.partners[0]?.from || '0000-00'}-01`).length
         ? `<ul class="levels">${d.payments
+            .filter((p) => p.paid_on >= `${d.partners[0]?.from || '0000-00'}-01`)
             .map(
               (p) => `<li><span>${fmtDate(p.paid_on)} — <b>${esc(p.partner)}</b>${p.note ? ` <span class="muted small">${esc(p.note)}</span>` : ''}</span>
                 <span><b>${fmtMoney(p.amount)}</b>${p.offset ? ' <span class="badge">خصم معلوم</span>' : state.user.super_admin ? ` <button class="link danger small" data-del="${p.id}">حذف</button>` : ''}</span></li>`
             )
             .join('')}</ul>`
-        : '<p class="muted">لا دفعات بعد. الدفعات قبل شهر البداية تظهر منفصلة في البطاقة.</p>'
+        : '<p class="muted">لا تسبقات بعد.</p>'
     }</section>`;
   $('#pt-pay')?.addEventListener('click', () =>
     openModal(
@@ -2533,6 +2556,14 @@ const BOARD_EX = {
   salaries_support: ['أجور مدرّسي الدعم', '#6d28d9'], salaries_program: ['أجور مؤطّري التربوي', '#db2777'], salaries_admin: ['أجور الموارد البشرية الأخرى', '#f59e0b'],
   salaries_courses: ['أجور الدورات', '#0ea5e9'], rent: ['الكراء', '#64748b'], other: ['مصاريف أخرى', '#cbd5e1'],
 };
+// سطر صنف: الاسم، الشريط، النسبة، المبلغ
+const catRow = (l, v, total, c) => {
+  const pct = total ? Math.round((v / total) * 1000) / 10 : 0;
+  return `<div class="cat-row"><span>${l}</span><div class="cat-bar"><i style="width:${pct}%;background:${c}"></i></div><em>${pct}%</em><b>${fmtMoney(v)}</b></div>`;
+};
+// مبلغ مختصر للرسم: 12.4k
+const fmtShort = (n) => (Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '')}k` : String(Math.round(n)));
+
 async function viewBoard(el) {
   const mode = sessionStorage.getItem('boardMode') || 'school';
   const year = sessionStorage.getItem('boardYear') || '';
@@ -2543,7 +2574,6 @@ async function viewBoard(el) {
   const label = mode === 'calendar' ? `السنة الإدارية ${d.year}` : `السنة الدراسية ${d.year}–${d.year + 1}`;
   const past = d.months.filter((m) => !m.future);
   const maxIn = Math.max(1, ...d.months.map((m) => Math.max(m.income_total, m.expense_total)));
-  const coll = d.collection;
   const partner = Object.keys(T.shares).find((n) => n !== 'Alaa');
   el.innerHTML = `
     <section class="hero"><div>
@@ -2561,39 +2591,39 @@ async function viewBoard(el) {
       <div class="kpi"><span>المصاريف</span><b class="out">${fmtMoney(T.expense_total)}</b><small>منها أجور ${fmtMoney(T.expense.salaries_support + T.expense.salaries_program + T.expense.salaries_admin + T.expense.salaries_courses)}</small></div>
       <div class="kpi"><span>المرابيح</span><b>${T.net < 0 ? '−' : ''}${fmtMoney(Math.abs(T.net))}</b><small>${past.length} شهر محسوب</small></div>
       ${partner ? `<div class="kpi"><span>نصيب ${esc(partner)}</span><b>${fmtMoney(T.shares[partner])}</b><small><a href="#/partners">الحساب مع الشريك ←</a></small></div>` : ''}
-      <div class="kpi"><span>التلاميذ</span><b>${d.counts.support + d.counts.program}</b><small>دعم ${d.counts.support} · تربوي ${d.counts.program}${d.counts.waiting ? ` · انتظار ${d.counts.waiting}` : ''}</small></div>
-      ${coll ? `<div class="kpi"><span>استخلاص ${esc(monthLabel(coll.month))}</span><b>${coll.billed ? Math.round((coll.collected / coll.billed) * 100) : 0}%</b><small>${fmtMoney(coll.collected)} من ${fmtMoney(coll.billed)}</small></div>` : ''}
-      <div class="kpi"><span>على الأولياء</span><b class="out">${fmtMoney(d.parents_owe)}</b><small><a href="#/debts">المتخلّد بذمتهم ←</a></small></div>
     </div>
 
-    <section class="card">
-      <div class="section-head"><h3>المداخيل والمصاريف شهرًا بشهر</h3>
+    <section class="card ychart-card">
+      <div class="section-head"><h3>📈 المداخيل والمصاريف شهرًا بشهر</h3>
         <div class="legend">${Object.values(BOARD_IN).map(([l, c]) => `<span><i style="background:${c}"></i>${l}</span>`).join('')}<span><i class="ex"></i>المصاريف</span></div></div>
-      <div class="bchart">${d.months
-        .map((m) => {
-          const stack = Object.keys(BOARD_IN).map((k) => `<i style="height:${(m.income[k] / maxIn) * 100}%;background:${BOARD_IN[k][1]}" title="${BOARD_IN[k][0]}: ${fmtMoney(m.income[k])}"></i>`).join('');
-          return `<div class="bcol ${m.future ? 'future' : ''}" tabindex="0">
-            <div class="btip"><b>${esc(monthLabel(m.month))}</b><br>مداخيل ${fmtMoney(m.income_total)}<br>مصاريف ${fmtMoney(m.expense_total)}<br>${m.net >= 0 ? 'ربح' : 'خسارة'} ${fmtMoney(Math.abs(m.net))}</div>
-            <div class="bbars"><div class="bstack">${stack}</div><div class="bex" style="height:${(m.expense_total / maxIn) * 100}%"></div></div>
-            <span class="bnet ${m.net < 0 ? 'neg' : ''}">${m.future ? '' : (m.net >= 0 ? '+' : '−') + Math.round(Math.abs(m.net))}</span>
-            <span class="blab">${short(m.month)}</span></div>`;
-        })
-        .join('')}</div>
+      <div class="ychart">
+        <div class="yc-grid">${[1, 0.75, 0.5, 0.25, 0].map((f) => `<div><small>${f ? fmtShort(maxIn * f) : '0'}</small></div>`).join('')}</div>
+        <div class="yc-cols">${d.months
+          .map((m) => {
+            const stack = Object.keys(BOARD_IN).filter((k) => m.income[k] > 0).map((k) => `<i style="height:${(m.income[k] / maxIn) * 100}%;background:${BOARD_IN[k][1]}" title="${BOARD_IN[k][0]}: ${fmtMoney(m.income[k])}"></i>`).join('');
+            return `<div class="yc-col ${m.future ? 'future' : ''} ${m.net < 0 ? 'loss' : ''}" tabindex="0">
+              <div class="btip"><b>${esc(monthLabel(m.month))}</b><br>مداخيل ${fmtMoney(m.income_total)}<br>مصاريف ${fmtMoney(m.expense_total)}<br>${m.net >= 0 ? 'ربح' : 'خسارة'} ${fmtMoney(Math.abs(m.net))}</div>
+              <div class="yc-bars"><div class="yc-in">${stack}</div><div class="yc-ex" style="height:${(m.expense_total / maxIn) * 100}%"></div></div>
+              ${m.future ? '<span class="yc-net"></span>' : `<span class="yc-net ${m.net < 0 ? 'neg' : ''}">${m.net >= 0 ? '+' : '−'}${fmtShort(Math.abs(m.net))}</span>`}
+              <span class="yc-lab">${short(m.month)}</span></div>`;
+          })
+          .join('')}</div>
+      </div>
     </section>
 
     <div class="grid2 even">
       <section class="card"><h3>مصادر المداخيل</h3>${Object.entries(BOARD_IN)
-        .map(([k, [l, c]]) => `<div class="cat-row"><span>${l}</span><div class="cat-bar"><i style="width:${T.income_total ? (T.income[k] / T.income_total) * 100 : 0}%;background:${c}"></i></div><b>${fmtMoney(T.income[k])}</b></div>`)
-        .join('')}</section>
+        .map(([k, [l, c]]) => catRow(l, T.income[k], T.income_total, c))
+        .join('')}<div class="cat-row total"><span>المجموع</span><div></div><em>100%</em><b class="in">${fmtMoney(T.income_total)}</b></div></section>
       <section class="card"><h3>أين تذهب المصاريف</h3>${Object.entries(BOARD_EX)
-        .map(([k, [l, c]]) => `<div class="cat-row"><span>${l}</span><div class="cat-bar"><i style="width:${T.expense_total ? (T.expense[k] / T.expense_total) * 100 : 0}%;background:${c}"></i></div><b>${fmtMoney(T.expense[k])}</b></div>`)
-        .join('')}</section>
+        .map(([k, [l, c]]) => catRow(l, T.expense[k], T.expense_total, c))
+        .join('')}<div class="cat-row total"><span>المجموع</span><div></div><em>100%</em><b class="out">${fmtMoney(T.expense_total)}</b></div></section>
     </div>
 
     <section class="card"><div class="section-head"><h3>الجدول التفصيلي</h3><span class="muted small">كل مبلغ في الشهر الذي يخصّه</span></div>
       <div class="table-wrap"><table class="fin">
         <thead><tr><th>الشهر</th>${Object.values(BOARD_IN).map(([l]) => `<th>${l}</th>`).join('')}<th>المداخيل</th>
-          <th>أجور الدعم</th><th>أجور التربوي</th><th>إدارة ونظافة</th><th>أخرى</th><th>المصاريف</th><th>المرابيح</th>${partner ? `<th>${esc(partner)}</th>` : ''}</tr></thead>
+          <th>أجور الدعم</th><th>أجور التربوي</th><th>الموارد البشرية</th><th>أخرى</th><th>المصاريف</th><th>المرابيح</th>${partner ? `<th>${esc(partner)}</th>` : ''}</tr></thead>
         <tbody>${d.months
           .filter((m) => !m.future)
           .map(

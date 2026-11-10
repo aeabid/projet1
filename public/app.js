@@ -202,6 +202,10 @@ function toast(message, isError = false) {
   // خطأ تقني من صفحة غادرها المستخدم قبل اكتمال تحميلها (العنصر لم يعد موجودًا): لا يُعرض
   if (isError && /properties of (null|undefined)/.test(String(message))) return console.warn('stale page update:', message);
   const el = $('#toast');
+  // نافذة مفتوحة (طبقة عليا): التنبيه يظهر فوقها
+  const dlg = $('#modal');
+  const host = dlg?.open ? dlg : document.body;
+  if (el.parentNode !== host) host.append(el);
   el.textContent = message;
   el.className = 'toast' + (isError ? ' error' : '');
   el.hidden = false;
@@ -355,6 +359,8 @@ const routes = [
   [/^#\/google-link$/, (el) => viewGoogleLink(el)],
   [/^#\/parent-requests$/, (el) => viewParentRequests(el)],
   [/^#\/register$/, viewRegister],
+  [/^#\/register-program$/, (el) => viewRegisterProgram(el)],
+  [/^#\/program\/requests$/, (el) => viewProgramRequests(el)],
   [/^#\/attendance$/, viewAttendance],
   [/^#\/levels$/, (el) => viewLevels(el)],
   [/^#\/broadcast\/(teachers|staff)$/, (el, k) => viewStaffBroadcast(el, k)],
@@ -430,7 +436,7 @@ function homeFor(user) {
 let navCount = 0;
 async function router() {
   const hash = location.hash || '#/';
-  const isPublic = ['#/login', '#/register', '#/register-teacher', '#/google-link'].includes(hash);
+  const isPublic = ['#/login', '#/register', '#/register-program', '#/register-teacher', '#/google-link'].includes(hash);
   if (!state.user && !isPublic) {
     try {
       const { user } = await api('GET', '/api/me');
@@ -491,7 +497,7 @@ const HASH_PERM = {
   '#/people': 'school', '#/parents': 'school', '#/parent-requests': 'school', '#/students': 'school', '#/program': 'school',
   '#/attendance': 'school', '#/messages': 'school', '#/broadcast': 'school', '#/whatsapp': 'school', '#/courses': 'school',
   '#/support/teachers': 'accounts', '#/program/staff': 'accounts', '#/debts': 'expenses',
-  '#/levels': 'school', '#/program/classes': 'school', '#/fixed': 'expenses', '#/broadcast/teachers': 'school', '#/broadcast/staff': 'school', '#/receipts': 'accounting', '#/products': 'expenses', '#/todo': 'school', '#/meetings': 'school', '#/alerts': 'school',
+  '#/levels': 'school', '#/program/classes': 'school', '#/program/requests': 'school', '#/fixed': 'expenses', '#/broadcast/teachers': 'school', '#/broadcast/staff': 'school', '#/receipts': 'accounting', '#/products': 'expenses', '#/todo': 'school', '#/meetings': 'school', '#/alerts': 'school',
 };
 const GROUP_PERM = { 'دروس الدعم': 'school', 'البرنامج التربوي': 'school', 'التواصل': 'school', 'إدارة المركز': 'school' };
 // صفحات المعلم والمؤطّر والولي التي يمكن للمدير إيقافها (صفحة الصلاحيات)
@@ -546,6 +552,7 @@ const NAV = {
         ['#/program/board', 'لوحة التحكم'],
         ['#/program', 'قائمة الأطفال'],
         ['#/program/classes', 'الأقسام'],
+        ['#/program/requests', 'طلبات التسجيل'],
         ['#/program/attendance', 'الغيابات'],
         ['#/program/timetable', 'جداول الأوقات'],
         ['#/program/posts', 'أنشطة ورسائل الأقسام'],
@@ -563,6 +570,7 @@ const NAV = {
         ['#/todo', 'المهام والمشاكل'],
         ['#/meetings', 'الاجتماعات والقرارات'],
         ['#/people', 'كل تلاميذ المركز'],
+        ['#/staff', 'الموارد البشرية'],
       ],
     },
     {
@@ -604,6 +612,7 @@ const NAV = {
         ['#/parents', 'الأولياء'],
         ['#/parent-requests', 'طلبات أولياء Google'],
         ['#/admins', 'الإدارة'],
+        ['#/staff', 'الموارد البشرية'],
         ['#/permissions', 'الصلاحيات'],
         ['#/account', 'حسابي'],
       ],
@@ -968,25 +977,21 @@ async function viewDashboard(el) {
         ? `<a class="card alert-card" href="#/students" id="waiting-link">🕓 <b>${s.waiting}</b> تلميذ في الانتظار (تسجيلات جديدة) — اضغط للمراجعة والتأكيد</a>`
         : ''
     }
-    <div class="card share">
-      <span>🔗 رابط تسجيل الأولياء:</span>
-      <code dir="ltr" id="reg-link">${PUBLIC_URL}/#/register</code>
-      <button class="btn small ghost" id="copy-reg">نسخ</button>
-    </div>
+    ${regLinksCard()}
     <div id="support-board"></div>
     ${
       s.finance.unpaid.length
-        ? `<section class="card"><h3>تلاميذ عليهم مبالغ</h3><ul class="levels">${s.finance.unpaid
+        ? `<details class="card fold"><summary><h3>💸 تلاميذ عليهم مبالغ <span class="badge weak">${s.finance.unpaid.length}</span></h3></summary><ul class="levels">${s.finance.unpaid
             .map(
               (u) => `<li><a href="#/students/${u.id}">${esc(u.full_name)} <span class="muted small">${esc(levelLabel(u.level))}</span></a>
                 <b class="owed">${fmtMoney(u.balance)}</b></li>`
             )
-            .join('')}</ul></section>`
+            .join('')}</ul></details>`
         : ''
     }
     <div class="grid2">
-      <section class="card">
-        <h3>التلاميذ حسب المستوى</h3>
+      <details class="card fold">
+        <summary><h3>🎓 التلاميذ حسب المستوى <span class="badge">${s.students}</span></h3></summary>
         <ul class="levels">
           ${state.meta.levels
             .map(
@@ -995,9 +1000,9 @@ async function viewDashboard(el) {
             )
             .join('')}
         </ul>
-      </section>
-      <section class="card">
-        <h3>آخر الملاحظات</h3>
+      </details>
+      <details class="card fold">
+        <summary><h3>📝 آخر الملاحظات <span class="badge">${s.recent_notes.length}</span></h3></summary>
         ${
           s.recent_notes.length
             ? `<ul class="recent">${s.recent_notes
@@ -1010,7 +1015,7 @@ async function viewDashboard(el) {
                 .join('')}</ul>`
             : '<p class="muted">لا توجد ملاحظات بعد.</p>'
         }
-      </section>
+      </details>
     </div>`;
   el.querySelectorAll('[data-level]').forEach((a) =>
     a.addEventListener('click', (e) => {
@@ -1028,13 +1033,138 @@ async function viewDashboard(el) {
     sessionStorage.setItem('payFilter', 'due');
     sessionStorage.setItem('statusFilter', '');
   });
-  $('#copy-reg').addEventListener('click', async () => {
+  bindRegLinks(el);
+}
+
+// رابطا التسجيل للأولياء الجدد: دروس الدعم / البرنامج التربوي (نسخ أو إرسال بواتساب)
+const REG_LINKS = [
+  ['support', '📚 دروس الدعم', '#/register', 'سجّل ابنك في دروس الدعم بمركز فيد عبر هذا الرابط:'],
+  ['program', '🎨 البرنامج التربوي', '#/register-program', 'سجّل ابنك في البرنامج التربوي بمركز فيد عبر هذا الرابط:'],
+];
+function regLinksCard() {
+  return `<section class="card reg-links"><h3>🔗 روابط التسجيل للأولياء الجدد</h3>
+    <p class="muted small">ابعث الرابط المناسب للولي: يعمّر معطياته ومعطيات أبنائه، ثم تأكّد الإدارة التسجيل وتلحق كل ابن بمجموعته.</p>
+    ${REG_LINKS.map(([k, l, h, msg]) => `<div class="rl-row"><b>${l}</b><code dir="ltr">${PUBLIC_URL}/${h}</code>
+      <span class="rl-acts"><button type="button" class="btn small ghost" data-copy-reg="${k}">نسخ</button>
+      <a class="btn small wa" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`${msg}\n${PUBLIC_URL}/${h}`)}">${WA_ICON} واتساب</a></span></div>`).join('')}
+  </section>`;
+}
+function bindRegLinks(el) {
+  el.querySelectorAll('[data-copy-reg]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const h = REG_LINKS.find((x) => x[0] === b.dataset.copyReg)[2];
+      try {
+        await navigator.clipboard.writeText(`${PUBLIC_URL}/${h}`);
+        toast('تم نسخ الرابط');
+      } catch {
+        toast('انسخ الرابط يدويًا', true);
+      }
+    })
+  );
+}
+
+// ---------- رابط التسجيل في البرنامج التربوي (عمومي) ----------
+async function viewRegisterProgram(el) {
+  let n = 0;
+  const kid = () => {
+    const k = n++;
+    return `<fieldset class="child-block" data-k="${k}"><legend>الطفل ${k + 1}</legend>
+      ${k ? '<button type="button" class="link danger remove-child">حذف</button>' : ''}
+      <label>الاسم واللقب<input name="k${k}_full_name" required></label>
+      <div class="row"><label>تاريخ الولادة<input type="date" name="k${k}_birth_date"></label><label>المؤسسة التي يدرس فيها (اختياري)<input name="k${k}_school"></label></div>
+      <label>ملاحظات (اختياري)<input name="k${k}_notes" placeholder="مثال: يحفظ جزء عمّ"></label></fieldset>`;
+  };
+  el.innerHTML = `
+    <div class="register">
+      <div class="login-hero"><img src="feed-logo-white.png" alt="فيد"><span class="tag">البرنامج التربوي</span>
+        <h1>سجّل أطفالك في <em>البرنامج التربوي</em> بـ فيد</h1></div>
+      <form id="rp-form" class="card" novalidate>
+        <h3>معطيات الولي</h3>
+        <label>الاسم واللقب<input name="parent_name" required></label>
+        <div class="row"><label>رقم الواتساب (ضروري)<input name="phone" required dir="ltr" inputmode="tel" placeholder="22 123 456"></label>
+          <label>البريد الإلكتروني (اختياري)<input name="email" type="email" dir="ltr"></label></div>
+        <label>العنوان (اختياري)<input name="address"></label>
+        <input name="website" class="hp" tabindex="-1" autocomplete="off">
+        <h3>الأطفال</h3>
+        <div id="rp-kids">${kid()}</div>
+        <button type="button" class="btn ghost" id="rp-add">+ طفل آخر</button>
+        <label>ملاحظة للإدارة (اختياري)<input name="note"></label>
+        <p class="error" id="rp-error" hidden></p>
+        <button class="btn block">إرسال طلب التسجيل</button>
+        <p class="muted small center">الإدارة تتّصل بك عبر واتساب لتأكيد التسجيل وتحديد المجموعة المناسبة لكل طفل.</p>
+      </form>
+    </div>`;
+  const kids = $('#rp-kids');
+  const bind = (fs) => fs.querySelector('.remove-child')?.addEventListener('click', () => fs.remove());
+  $('#rp-add').addEventListener('click', () => {
+    kids.insertAdjacentHTML('beforeend', kid());
+    bind(kids.lastElementChild);
+  });
+  $('#rp-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const v = (name) => f.elements[name]?.value ?? '';
+    const err = $('#rp-error');
     try {
-      await navigator.clipboard.writeText($('#reg-link').textContent);
-      toast('تم نسخ الرابط');
-    } catch {
-      toast('انسخ الرابط يدويًا', true);
+      const children = [...kids.querySelectorAll('.child-block')].map((fs) => {
+        const k = fs.dataset.k;
+        return { full_name: v(`k${k}_full_name`), birth_date: v(`k${k}_birth_date`), school: v(`k${k}_school`), notes: v(`k${k}_notes`) };
+      });
+      await api('POST', '/api/register-program', { website: v('website'), parent_name: v('parent_name'), phone: v('phone'), email: v('email'), address: v('address'), note: v('note'), children });
+      el.querySelector('.register').innerHTML = `<div class="card center rp-done"><div class="ps-check">✓</div><h2>تم إرسال طلبك</h2>
+        <p>شكرًا ${esc(v('parent_name'))}! الإدارة تتّصل بك قريبًا عبر واتساب لتأكيد التسجيل.</p></div>`;
+    } catch (ex) {
+      err.textContent = ex.message;
+      err.hidden = false;
     }
+  });
+}
+
+// ---------- طلبات التسجيل في البرنامج التربوي: الإدارة تؤكّد وتلحق كل طفل بقسمه ----------
+async function viewProgramRequests(el) {
+  const [{ requests }, { classes }] = await Promise.all([api('GET', '/api/program/requests'), api('GET', '/api/program')]);
+  const reload = () => viewProgramRequests(el);
+  el.innerHTML = `
+    <div class="page-head"><div><a href="#/program" class="muted small">→ قائمة الأطفال</a><h2>🕓 طلبات التسجيل في البرنامج التربوي</h2>
+      <p class="muted small">طلبات وصلت من رابط التسجيل. اختر قسم كل طفل ثم «تأكيد»: يُفتح للولي حساب (أو يُربط بحسابه إن وُجد).</p></div></div>
+    ${regLinksCard()}
+    ${requests.length
+      ? requests
+          .map((r) => `<section class="card req" data-id="${r.id}">
+            <div class="section-head"><div><h3>👤 ${esc(r.parent_name)}</h3><span class="muted small"><span dir="ltr">${esc(r.phone)}</span> · ${fmtDate(String(r.created_at).slice(0, 10))}${r.address ? ` · ${esc(r.address)}` : ''}</span></div>
+              ${waNumber(r.phone) ? `<a class="btn small wa" target="_blank" rel="noopener" href="${esc(waUrl(r.phone, `السلام عليكم ${r.parent_name}، وصلنا طلب تسجيلكم في البرنامج التربوي بمركز فيد.`))}">${WA_ICON} واتساب</a>` : ''}</div>
+            ${r.note ? `<p class="muted small">📝 ${esc(r.note)}</p>` : ''}
+            <ul class="req-kids">${r.children
+              .map((c, i) => `<li data-i="${i}"><div><b>${esc(c.full_name)}</b><small>${[c.birth_date && ageOf(c.birth_date), c.school, c.notes].filter(Boolean).map(esc).join(' · ')}</small></div>
+                <select data-class aria-label="القسم"><option value="">— القسم —</option>${classes.map((k) => `<option value="${k.id}">${esc(k.name)}${k.age_range ? ` (${esc(k.age_range)})` : ''}</option>`).join('')}</select>
+                <label class="check small"><input type="checkbox" data-skip> لا يُسجَّل</label></li>`)
+              .join('')}</ul>
+            <div class="req-acts"><button class="btn" data-accept>✓ تأكيد التسجيل</button><button class="btn ghost danger small" data-reject>رفض</button></div>
+          </section>`)
+          .join('')
+      : '<div class="empty-state"><span>📭</span><p>لا طلبات جديدة.</p><small>ابعث رابط التسجيل للأولياء من الأعلى.</small></div>'}`;
+  bindRegLinks(el);
+  el.querySelectorAll('.req').forEach((card) => {
+    const id = card.dataset.id;
+    card.querySelector('[data-accept]').addEventListener('click', async (e) => {
+      const children = [...card.querySelectorAll('.req-kids li')].map((li) => ({ index: Number(li.dataset.i), class_id: li.querySelector('[data-class]').value, skip: li.querySelector('[data-skip]').checked }));
+      if (children.some((c) => !c.skip && !c.class_id) && !confirmAction('بعض الأطفال بلا قسم. تأكيد التسجيل على كل حال؟')) return;
+      e.target.disabled = true;
+      try {
+        const r = await api('POST', `/api/program/requests/${id}/accept`, { children });
+        toast(`تم تسجيل ${r.children} طفل`);
+        if (r.created && confirmAction('تم فتح حساب للولي. نبعثلو بيانات الدخول بواتساب توّا؟')) await issuePassword(r.parent);
+        reload();
+      } catch (err) {
+        e.target.disabled = false;
+        toast(err.message, true);
+      }
+    });
+    card.querySelector('[data-reject]').addEventListener('click', async () => {
+      if (!confirmAction('رفض هذا الطلب؟')) return;
+      await api('POST', `/api/program/requests/${id}/reject`).catch((err) => toast(err.message, true));
+      reload();
+    });
   });
 }
 
@@ -1219,11 +1349,20 @@ async function viewStudents(el) {
     render();
   };
 
+  // تلاميذ بلا ولي مرتبط أو بلا رقم هاتف: تنبيه + فلتر
+  let onlyMissing = false;
+  const missing = (x) => !x.parent_id || !String(x.parent_phone || '').replace(/\D/g, '');
   const render = () => {
     if (!$('#students-list')) return; // الصفحة تبدّلت قبل اكتمال التحميل
-    const students = applyPayFilter(current, $('#f-pay')?.value);
+    const miss = role === 'admin' ? current.filter(missing) : [];
+    if (!miss.length) onlyMissing = false;
+    const students = applyPayFilter(onlyMissing ? miss : current, $('#f-pay')?.value);
     rememberList('support', students);
-    $('#students-list').innerHTML = payFilterSummary(students, $('#f-pay')?.value) + (!students.length
+    const warn = miss.length
+      ? `<div class="card miss-card ${onlyMissing ? 'on' : ''}"><span>⚠️ <b>${miss.length}</b> تلميذ بلا وليّ مرتبط أو بلا رقم هاتف (${miss.filter((x) => !x.parent_id).length} بلا وليّ · ${miss.filter((x) => x.parent_id).length} بلا هاتف)</span>
+          <button type="button" class="btn small ${onlyMissing ? '' : 'ghost'}" id="miss-toggle">${onlyMissing ? 'عرض الكل' : 'عرضهم فقط'}</button></div>`
+      : '';
+    $('#students-list').innerHTML = warn + payFilterSummary(students, $('#f-pay')?.value) + (!students.length
       ? '<div class="card muted">لا يوجد تلاميذ.</div>'
       : view === 'cards'
       ? studentCards(students, role)
@@ -1239,7 +1378,7 @@ async function viewStudents(el) {
                 <td><span class="pill">${esc(levelLabel(s.level))}</span></td>
                 <td class="nowrap">${s.start_date ? fmtDate(s.start_date) : '<span class="muted">—</span>'}</td>
                 <td>${subjectsCell(s)}</td>
-                <td>${parentCell(s.parent_name, s.parent_phone, s.parent_id, role === 'admin')}</td>
+                <td>${role === 'admin' && missing(s) ? `<span class="miss-tag">${s.parent_id ? '📵 بلا هاتف' : '👤 بلا وليّ'}</span>` : ''}${parentCell(s.parent_name, s.parent_phone, s.parent_id, role === 'admin')}</td>
                 <td>${s.absence_count}</td>
                 <td>${s.note_count}</td>
                 ${role === 'admin' ? `<td>${payButton('support', s)}</td>` : ''}
@@ -1248,6 +1387,7 @@ async function viewStudents(el) {
             .join('')}</tbody></table></div>`);
 
     bindPayButtons($('#students-list'), load);
+    $('#miss-toggle')?.addEventListener('click', () => ((onlyMissing = !onlyMissing), render()));
   };
 
   bindViewToggle(el, 'studentsView', () => view, (v) => (view = v), render);
@@ -1391,6 +1531,7 @@ async function studentForm(student, onDone, preChild = null, preset = null) {
          <label>الهاتف<input id="np-phone" inputmode="tel" placeholder="مثال: 98123456"></label></div>
        <p class="muted small">يُنشأ له حساب: اسم المستخدم وكلمة السر = رقم الهاتف (يبدّلها من بعد).</p>
        <button type="button" class="btn small" id="np-add">إضافة الولي واختياره</button>
+       <p class="np-msg" id="np-msg" hidden></p>
      </details>`,
     async (data) => {
       if (data.pack) data.subject_ids = [];
@@ -1430,22 +1571,34 @@ async function studentForm(student, onDone, preChild = null, preset = null) {
   applyFee();
   bindFeeFrom($('#modal'));
   // إضافة ولي جديد دون مغادرة الاستمارة
+  // الرسائل تظهر داخل النافذة (التنبيه العادي يختفي وراءها)
+  const npMsg = (text, ok = false) => {
+    const m = $('#np-msg');
+    m.textContent = text;
+    m.className = 'np-msg ' + (ok ? 'ok' : 'err');
+    m.hidden = false;
+  };
   $('#np-add').addEventListener('click', async () => {
     const full_name = $('#np-name').value.trim();
     const phone = $('#np-phone').value.replace(/\s+/g, '').replace(/^\+?216/, '');
-    if (!full_name) return toast('اكتب اسم الولي', true);
-    if (!/^\d{8}$/.test(phone)) return toast('اكتب رقم هاتف من 8 أرقام', true);
+    if (!full_name) return npMsg('اكتب اسم الولي');
+    if (!/^\d{8}$/.test(phone)) return npMsg('اكتب رقم هاتف من 8 أرقام');
+    const sel = $('#modal select[name=parent_id]');
+    // الرقم عنده حساب: نختاره مباشرة
+    const found = parents.find((p) => p.username === phone || String(p.phone || '').replace(/\D/g, '').includes(phone));
+    if (found) {
+      sel.value = String(found.id);
+      return npMsg(`هذا الرقم عنده حساب: «${found.full_name}» — اخترناه لك ✓`, true);
+    }
     try {
       const { user } = await api('POST', '/api/users', { role: 'parent', username: phone, full_name, phone, password: phone });
       state.parentsCache = null;
-      const sel = $('#modal select[name=parent_id]');
       sel.insertAdjacentHTML('beforeend', `<option value="${user.id}">${esc(parentLabel(user))}</option>`);
       sel.value = String(user.id);
-      $('#np-box').open = false;
       $('#np-name').value = $('#np-phone').value = '';
-      toast(`أُضيف الولي ${full_name} واختير`);
+      npMsg(`أُضيف الولي ${full_name} واختير ✓`, true);
     } catch (err) {
-      toast(err.status === 409 || /مستعمل/.test(err.message) ? 'هذا الرقم عنده حساب: ابحث عنه في قائمة الأولياء' : err.message, true);
+      npMsg(err.status === 409 || /مستعمل/.test(err.message) ? 'هذا الرقم مستعمل لحساب آخر (ربما معلم أو إداري). اختر الولي من القائمة أو استعمل رقمًا آخر.' : err.message);
     }
   });
   $('#modal select[name=from_child_id]')?.addEventListener('change', (e) => {
@@ -1642,7 +1795,7 @@ function quickActions(items) {
 // ---------- ملف التلميذ ----------
 async function viewStudent(el, id) {
   const role = state.user.role;
-  const { student, absences, notes, finance, tasks, timetable, whatsapp_groups: wg0, program, hidden = {} } = await api('GET', `/api/students/${id}`);
+  const { student, absences, notes, finance, tasks, timetable, whatsapp_groups: wg0, program, hidden = {}, hours_month: hoursMonth = 0 } = await api('GET', `/api/students/${id}`);
   const whatsapp_groups = [...wg0, ...(program?.whatsapp_groups || [])];
   const adminNotes = notes.filter((n) => !n.subject_id && n.author_role === 'admin');
   const teacherNotes = notes.filter((n) => !adminNotes.includes(n));
@@ -1778,6 +1931,7 @@ async function viewStudent(el, id) {
               { id: 'add-absence', icon: 'absent', label: 'غياب', tone: 'pink', plus: true },
               role === 'admin' && waNumber(student.parent_phone) ? { id: 'wa-parent', icon: 'wa', label: 'واتساب', tone: 'green' } : null,
               { id: 'new-thread', icon: 'mail', label: 'مراسلة الولي', tone: 'sky' },
+              role === 'admin' && !waNumber(student.parent_phone) ? { id: 'qa-edit', icon: 'edit', label: 'تعديل', tone: 'gray' } : null,
             ]
       )}
       ${role === 'admin' ? familyStrip(student.parent_id, student.parent_name, { kind: 'support', id: student.id }) : ''}
@@ -1790,6 +1944,7 @@ async function viewStudent(el, id) {
         <button type="button" class="ov-card" data-goto="${isParent ? 'eval' : 'follow'}"><small>آخر ملاحظة</small>
           <b class="ov-text">${notes[0] ? esc(notes[0].content || CATEGORY_LABELS[notes[0].category] || '') : '—'}</b>
           <span>${notes[0] ? fmtDate(notes[0].date) : 'لا توجد ملاحظات'}</span></button>
+        ${hoursMonth ? `<div class="ov-card hours"><small>⏱ الساعات المدروسة هذا الشهر</small><b>${String(hoursMonth).replace('.', ',')} س</b><span>إلى اليوم، حسب جدول الأوقات</span></div>` : ''}
         ${isParent ? `<button type="button" class="ov-card" data-goto="tt"><small>جدول الأوقات</small><b>🗓 ${new Set(timetable.map((x) => x.day)).size} أيام</b><span>فتح ←</span></button>` : `<a class="ov-card" href="#/report/${student.id}"><small>بطاقة التقييم</small><b>📄 الشهرية</b><span>فتح ←</span></a>`}
       </div>
     ${
@@ -1889,6 +2044,7 @@ ${secTimetable}${secTasks}${secNotes}${secAbsences}`
     }
   });
   $('#edit-student')?.addEventListener('click', () => studentForm(student, reload));
+  $('#qa-edit')?.addEventListener('click', () => studentForm(student, reload));
   bindFamilyStrip(el, student.parent_id, reload);
   $('#info-edit')?.addEventListener('click', () => studentForm(student, reload));
   $('#info-edit2')?.addEventListener('click', () => studentForm(student, reload));
@@ -3329,7 +3485,18 @@ async function viewAttendance(el) {
     el.innerHTML = '<h2>الغيابات</h2><div class="card muted">لم تُسند لك أي مادة بعد.</div>';
     return;
   }
-  el.innerHTML = `
+  // المدير والإدارة: التاريخ ← المستوى (كل المستويات التي تدرس ذلك اليوم) ← المادة. المعلم: مادته ثم أقسامه
+  const admin = state.user.role === 'admin';
+  el.innerHTML = admin
+    ? `<h2>تسجيل الغيابات</h2>
+      <div class="filters att-filters">
+        <label>📅 اليوم<input type="date" id="a-date" value="${today()}"></label>
+        <label>🎓 المستوى<select id="a-level"></select></label>
+        <label>📖 المادة<select id="a-subject"></select></label>
+      </div>
+      <p class="muted small" id="a-hint"></p>
+      <div id="att-list"></div>`
+    : `
     <h2>تسجيل الغيابات</h2>
     <div class="filters">
       <select id="a-subject">${subjectOptions(subjects, Number(sessionStorage.getItem('attSubject')) || null)}</select>
@@ -3338,7 +3505,7 @@ async function viewAttendance(el) {
     </div>
     <p class="muted small" id="a-hint"></p>
     <div id="att-list"></div>`;
-  bindSubjectLevel($('#a-subject'), $('#a-level'), sessionStorage.getItem('attLevel') || sessionStorage.getItem('levelFilter'));
+  if (!admin) bindSubjectLevel($('#a-subject'), $('#a-level'), sessionStorage.getItem('attLevel') || sessionStorage.getItem('levelFilter'));
 
   // المواد المعروضة: فقط التي تُدرَّس في يوم التاريخ المختار (حسب جدول الأوقات)
   const { slots } = await api('GET', '/api/timetable').catch(() => ({ slots: [] }));
@@ -3366,7 +3533,31 @@ async function viewAttendance(el) {
     const levels = subjectLevels(subject).filter((l) => lv.has(l.code));
     $('#a-level').innerHTML = levels.map((l) => `<option value="${esc(l.code)}" ${l.code === keep ? 'selected' : ''}>${esc(l.label)}</option>`).join('');
   };
-  filterByDay();
+  // المدير: المستويات التي عندها حصص ذلك اليوم، ثم مواد ذلك المستوى في ذلك اليوم
+  const adminFilter = (levelChanged = false) => {
+    const day = dayOf($('#a-date').value);
+    const todays = slots.filter((x) => Number(x.day) === day);
+    const hint = $('#a-hint');
+    const levels = state.meta.levels.filter((l) => (slots.length ? todays.some((x) => x.level === l.code) : true));
+    if (!levels.length) {
+      hint.textContent = `لا حصص في جدول الأوقات يوم ${DAYS_AR[day - 1]}.`;
+      $('#a-level').innerHTML = '';
+      $('#a-subject').innerHTML = '';
+      return;
+    }
+    const keepL = levelChanged ? $('#a-level').value : $('#a-level').value || sessionStorage.getItem('attLevel');
+    $('#a-level').innerHTML = levels
+      .map((l) => `<option value="${esc(l.code)}" ${l.code === keepL ? 'selected' : ''}>${esc(l.label)}${slots.length ? ` · ${new Set(todays.filter((x) => x.level === l.code).map((x) => x.subject_id)).size} مادة` : ''}</option>`)
+      .join('');
+    const lv = $('#a-level').value;
+    const ids = new Set(todays.filter((x) => x.level === lv).map((x) => x.subject_id));
+    const list = slots.length ? subjects.filter((x) => ids.has(x.id)) : subjects.filter((x) => subjectLevels(x).some((l) => l.code === lv));
+    const keepS = Number($('#a-subject').value) || Number(sessionStorage.getItem('attSubject'));
+    $('#a-subject').innerHTML = subjectOptions(list, list.some((x) => x.id === keepS) ? keepS : list[0]?.id);
+    hint.textContent = slots.length ? `${DAYS_AR[day - 1]}: ${levels.length} مستوى يدرس هذا اليوم` : '';
+  };
+  if (admin) adminFilter();
+  else filterByDay();
 
   const load = async () => {
     if (!$('#a-subject').value || !$('#a-level').value) {
@@ -3418,9 +3609,15 @@ async function viewAttendance(el) {
       list.innerHTML = `<div class="card error">${esc(err.message)}</div>`;
     }
   };
-  $('#a-date').addEventListener('change', () => (filterByDay(), load()));
-  $('#a-subject').addEventListener('change', () => (filterByDay(), load()));
-  $('#a-level').addEventListener('change', load);
+  if (admin) {
+    $('#a-date').addEventListener('change', () => (adminFilter(), load()));
+    $('#a-level').addEventListener('change', () => (adminFilter(true), load()));
+    $('#a-subject').addEventListener('change', load);
+  } else {
+    $('#a-date').addEventListener('change', () => (filterByDay(), load()));
+    $('#a-subject').addEventListener('change', () => (filterByDay(), load()));
+    $('#a-level').addEventListener('change', load);
+  }
   await load();
 }
 
@@ -3461,6 +3658,106 @@ function weekView(slots, { showLevel = false, showTeacher = false, showChild = f
     .join('')}</div>`;
 }
 
+// ---------- الامتحانات والعطل (جدول خاص بتاريخ بداية ونهاية) والراحة الأسبوعية ----------
+const PERIOD_ICON = { exams: '📝', holiday: '🏖️' };
+// levels: المستويات المعنية (الولي: مستويات أبنائه؛ المعلم: مستوياته)، فارغ = الكل
+function periodsBox(data, { levels = null, admin = false } = {}) {
+  const t = today();
+  const list = data.periods.filter((p) => p.to >= addDaysIso(t, -7));
+  const rest = data.rest_days.map((d) => DAYS_AR[d - 1]).join('، ');
+  const mine = (x) => !x.level || !levels || levels.includes(x.level);
+  return `<section class="card periods">
+    <div class="section-head"><h3>📆 الامتحانات والعطل والراحة</h3>${admin ? '<button class="btn ghost small" id="per-edit">⚙️ تعديل</button>' : ''}</div>
+    ${rest ? `<p class="per-rest">🛌 الراحة الأسبوعية: <b>${esc(rest)}</b></p>` : ''}
+    ${list.length
+      ? list
+          .map((p) => {
+            const now = p.from <= t && t <= p.to;
+            const ses = p.sessions.filter(mine);
+            return `<details class="per ${p.kind} ${now ? 'now' : ''}" ${now ? 'open' : ''}><summary>
+                <span class="per-ico">${PERIOD_ICON[p.kind]}</span><span class="per-main"><b>${esc(p.title)}</b><small>من ${fmtDate(p.from)} إلى ${fmtDate(p.to)}</small></span>
+                ${now ? '<span class="badge average">جارية</span>' : p.from > t ? '<span class="badge">قادمة</span>' : '<span class="badge">انتهت</span>'}</summary>
+              ${p.note ? `<p class="muted small">${esc(p.note)}</p>` : ''}
+              ${ses.length
+                ? `<ul class="per-ses">${ses
+                    .map((x) => `<li><b>${esc(fmtDate(x.date))}</b><span dir="ltr">${esc(x.start)}–${esc(x.end)}</span><span>${esc(x.label || '')}</span>${x.level && !levels?.length ? `<small class="muted">${esc(levelLabel(x.level))}</small>` : ''}</li>`)
+                    .join('')}</ul>`
+                : `<p class="muted small">${p.kind === 'holiday' ? 'لا حصص خلال هذه العطلة.' : 'الجدول الخاص بهذه الفترة لم يُضبط بعد.'}</p>`}
+            </details>`;
+          })
+          .join('')
+      : `<p class="muted small">لا امتحانات ولا عطل مبرمجة.${admin ? ' اضغط «⚙️ تعديل» لإضافتها.' : ''}</p>`}
+  </section>`;
+}
+const addDaysIso = (d, n) => {
+  const x = new Date(`${d}T12:00:00Z`);
+  x.setUTCDate(x.getUTCDate() + n);
+  return x.toISOString().slice(0, 10);
+};
+function periodsEditor(data, onDone) {
+  let periods = JSON.parse(JSON.stringify(data.periods));
+  const rest = new Set(data.rest_days);
+  const lvOpts = (v) => `<option value="">كل المستويات</option>${state.meta.levels.map((l) => `<option value="${esc(l.code)}" ${l.code === v ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}`;
+  const draw = () => {
+    $('#pe-list').innerHTML = periods
+      .map((p, i) => `<div class="pe-card" data-i="${i}">
+        <div class="row"><label>النوع<select data-f="kind">${Object.entries(data.kinds).map(([k, l]) => `<option value="${k}" ${p.kind === k ? 'selected' : ''}>${PERIOD_ICON[k]} ${l}</option>`).join('')}</select></label>
+          <label>العنوان<input data-f="title" value="${esc(p.title || '')}" placeholder="مثال: امتحانات الثلاثي الأول"></label></div>
+        <div class="row"><label>يبدأ من<input type="date" data-f="from" value="${esc(p.from || '')}"></label><label>وينتهي في<input type="date" data-f="to" value="${esc(p.to || '')}"></label></div>
+        <label>ملاحظة<input data-f="note" value="${esc(p.note || '')}" placeholder="مثال: حصص مراجعة فقط"></label>
+        <p class="muted small">الجدول الخاص بهذه الفترة (يعوّض الجدول العادي):</p>
+        <div class="pe-ses">${p.sessions
+          .map((x, j) => `<div class="pe-s" data-j="${j}"><input type="date" data-s="date" value="${esc(x.date)}"><input type="time" data-s="start" value="${esc(x.start)}"><input type="time" data-s="end" value="${esc(x.end)}">
+            <select data-s="level">${lvOpts(x.level)}</select><input data-s="label" value="${esc(x.label || '')}" placeholder="المادة / البيان"><button type="button" class="link danger" data-rm-s="${j}">✕</button></div>`)
+          .join('')}</div>
+        <div class="pe-acts"><button type="button" class="btn ghost small" data-add-s>+ حصة</button><button type="button" class="link danger small" data-rm-p>حذف الفترة</button></div>
+      </div>`)
+      .join('') || '<p class="muted">لا فترات بعد.</p>';
+    $('#pe-list').querySelectorAll('.pe-card').forEach((card) => {
+      const p = periods[Number(card.dataset.i)];
+      card.querySelectorAll('[data-f]').forEach((x) => x.addEventListener('input', () => (p[x.dataset.f] = x.value)));
+      card.querySelectorAll('.pe-s').forEach((row) => {
+        const ses = p.sessions[Number(row.dataset.j)];
+        row.querySelectorAll('[data-s]').forEach((x) => x.addEventListener('input', () => (ses[x.dataset.s] = x.value)));
+      });
+      card.querySelectorAll('[data-rm-s]').forEach((b) => b.addEventListener('click', () => (p.sessions.splice(Number(b.dataset.rmS), 1), draw())));
+      card.querySelector('[data-add-s]').addEventListener('click', () => {
+        const last = p.sessions[p.sessions.length - 1];
+        p.sessions.push({ date: last?.date || p.from || today(), start: last?.start || '09:00', end: last?.end || '10:00', level: last?.level || '', label: '' });
+        draw();
+      });
+      card.querySelector('[data-rm-p]').addEventListener('click', () => confirmAction('حذف هذه الفترة؟') && (periods.splice(Number(card.dataset.i), 1), draw()));
+    });
+  };
+  openModal(
+    '📆 الامتحانات والعطل والراحة',
+    `<label>🛌 الراحة الأسبوعية</label>
+     <div class="pe-rest">${DAYS_AR.map((d, i) => `<label class="chip-check"><input type="checkbox" data-rest="${i + 1}" ${rest.has(i + 1) ? 'checked' : ''}><span>${d}</span></label>`).join('')}</div>
+     <div id="pe-list"></div>
+     <p><button type="button" class="btn ghost small" id="pe-add-ex">+ فترة امتحانات</button> <button type="button" class="btn ghost small" id="pe-add-ho">+ عطلة</button></p>`,
+    async () => {
+      const rest_days = [...document.querySelectorAll('[data-rest]')].filter((x) => x.checked).map((x) => Number(x.dataset.rest));
+      await api('PUT', '/api/periods', { periods, rest_days });
+      toast('تم الحفظ');
+      onDone();
+    }
+  );
+  const add = (kind) => () => {
+    periods.push({ kind, title: data.kinds[kind], from: today(), to: today(), note: '', sessions: [] });
+    draw();
+    $('#pe-list').lastElementChild?.scrollIntoView({ block: 'center' });
+  };
+  $('#pe-add-ex').addEventListener('click', add('exams'));
+  $('#pe-add-ho').addEventListener('click', add('holiday'));
+  draw();
+}
+async function mountPeriods(host, opts) {
+  const data = await api('GET', '/api/periods').catch(() => null);
+  if (!data || !host.isConnected) return;
+  host.innerHTML = periodsBox(data, opts);
+  host.querySelector('#per-edit')?.addEventListener('click', () => periodsEditor(data, () => mountPeriods(host, opts)));
+}
+
 async function viewTimetable(el, mode = 'level') {
   const role = state.user.role;
   if (role === 'teacher') {
@@ -3468,7 +3765,9 @@ async function viewTimetable(el, mode = 'level') {
     const hours = slots.reduce((t, x) => t + (toMinutes(x.end_time) - toMinutes(x.start_time)), 0) / 60;
     el.innerHTML = `<h2>جدولي</h2>
       <p class="muted">${slots.length} حصة في الأسبوع — ${hours.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} ساعة</p>
-      <div class="card">${weekView(slots, { showLevel: true })}</div>`;
+      <div class="card">${weekView(slots, { showLevel: true })}</div>
+      <div id="tt-periods"></div>`;
+    mountPeriods($('#tt-periods'), { levels: [...new Set(slots.map((x) => x.level))] });
     return;
   }
   if (role === 'parent') {
@@ -3478,7 +3777,9 @@ async function viewTimetable(el, mode = 'level') {
       .sort((a, b) => a.day - b.day || a.start_time.localeCompare(b.start_time));
     el.innerHTML = `<h2>جدول الأوقات</h2>
       ${children.length > 1 ? `<p class="muted">جدول كل أبنائك معًا: ${children.map((c) => esc(c.full_name)).join('، ')}</p>` : ''}
+      <div id="tt-periods"></div>
       <div class="card">${weekView(slots, { showTeacher: true, showChild: children.length > 1 })}</div>`;
+    mountPeriods($('#tt-periods'), { levels: [...new Set(children.map((c) => c.level).filter(Boolean))] });
     return;
   }
 
@@ -3499,7 +3800,9 @@ async function viewTimetable(el, mode = 'level') {
         : `<select id="tt-level" aria-label="المستوى">${levelOptions(level)}</select>`
     }</div>
     <p class="muted small" id="tt-sum"></p>
-    <div class="card" id="tt-week"></div>`;
+    <div class="card" id="tt-week"></div>
+    <div id="tt-periods"></div>`;
+  mountPeriods($('#tt-periods'), { admin: state.user.role === 'admin' && can('school') });
 
   const load = async () => {
     let slots;

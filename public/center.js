@@ -47,7 +47,7 @@ async function viewPeople(el) {
           <tbody>${list
             .map(
               (p) => `<tr>
-                <td><span class="who-cell">${p.student_id ? avatar(p, 'sm') : `<span class="avatar sm">${esc(p.full_name.charAt(0))}</span>`}<b>${esc(p.full_name)}</b></span></td>
+                <td><a class="who-cell" href="${esc(p.programs[0]?.link || '#/people')}">${p.student_id ? avatar(p, 'sm') : `<span class="avatar sm">${esc(p.full_name.charAt(0))}</span>`}<b>${esc(p.full_name)}</b></a></td>
                 <td>${esc(p.parent_name || '—')}${p.phone ? `<div class="phone-line small"><span dir="ltr">${esc(p.phone)}</span>${waButton(p.phone)}</div>` : ''}</td>
                 <td><div class="programs">${p.programs
                   .map(
@@ -1494,11 +1494,11 @@ async function viewFixed(el) {
     const used = (k) => data.items.filter((x) => x.category === k).length;
     const draw = () => {
       $('#cat-list').innerHTML = list
-        .map((c, i) => `<li class="cat-row"><span>${FIXED_ICON[c.key] || '🏷️'}</span>
+        .map((c, i) => `<li class="fxc-row"><span>${FIXED_ICON[c.key] || '🏷️'}</span>
             <input data-cat="${i}" value="${esc(c.label)}" aria-label="اسم الصنف" placeholder="اسم الصنف">
             ${c.key && used(c.key) ? `<small class="muted">${used(c.key)} بند</small>` : ''}
             <button type="button" class="link danger small" data-rm="${i}" aria-label="حذف">🗑</button></li>`)
-        .join('') + '<li class="cat-row fixed"><span>📌</span><b>أخرى</b><small class="muted">ثابت</small></li>';
+        .join('') + '<li class="fxc-row fixed"><span>📌</span><b>أخرى</b><small class="muted">ثابت</small></li>';
       $('#cat-list').querySelectorAll('[data-cat]').forEach((x) => x.addEventListener('input', () => (list[Number(x.dataset.cat)].label = x.value)));
       $('#cat-list').querySelectorAll('[data-rm]').forEach((b) =>
         b.addEventListener('click', () => {

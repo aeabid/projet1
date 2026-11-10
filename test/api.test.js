@@ -1636,3 +1636,48 @@ test('program WhatsApp groups reach the parent, custom fixed categories, expecte
   assert.ok(Array.isArray(sal.groups) && typeof sal.expected === 'number');
   assert.ok(!sal.groups.some((g) => g.key === 'admin'));
 });
+
+test('periods and monthly hours, program registration requests, HR accounting category and account, forecast breakdown', async () => {
+  const admin = await login('admin', 'admin123');
+  // الفترات الخاصة
+  const t = new Date().toISOString().slice(0, 10);
+  const saved = await admin('PUT', '/api/periods', {
+    rest_days: [7],
+    periods: [{ kind: 'exams', title: 'امتحانات', from: t, to: t, sessions: [{ date: t, start: '09:00', end: '11:00', level: '7', label: 'رياضيات' }] }],
+  });
+  assert.strictEqual(saved.status, 200);
+  const per = (await admin('GET', '/api/periods')).body;
+  assert.deepStrictEqual([per.rest_days, per.periods[0].sessions.length], [[7], 1]);
+  assert.strictEqual((await admin('PUT', '/api/periods', { periods: [{ kind: 'holiday', from: t, to: '2000-01-01' }] })).status, 400);
+  const st = (await admin('POST', '/api/students', { full_name: 'تلميذ ساعات', level: '7', start_date: '2026-09-01' })).body.student;
+  const file = (await admin('GET', `/api/students/${st.id}`)).body;
+  assert.ok(file.hours_month >= 2, 'جلسة الامتحان تُحتسب في ساعات اليوم');
+  await admin('PUT', '/api/periods', { periods: [], rest_days: [] });
+  // طلب تسجيل في التربوي من الرابط العمومي، ثم تأكيده
+  const k = (await admin('POST', '/api/program/classes', { name: 'قسم الطلبات', default_fee: 90 })).body.class;
+  assert.strictEqual((await call('POST', '/api/register-program', { parent_name: 'وليّة جديدة', phone: '21 555 777', children: [{ full_name: 'نور' }, { full_name: 'آدم' }] })).status, 201);
+  assert.strictEqual((await call('POST', '/api/register-program', { parent_name: 'x', phone: '12', children: [{ full_name: 'a' }] })).status, 400);
+  const reqs = (await admin('GET', '/api/program/requests')).body.requests;
+  const r = reqs.find((x) => x.parent_name === 'وليّة جديدة');
+  assert.ok((await admin('GET', '/api/alerts')).body.alerts.some((a) => a.link === '#/program/requests'));
+  const acc = (await admin('POST', `/api/program/requests/${r.id}/accept`, { children: [{ index: 0, class_id: k.id }, { index: 1, skip: true }] })).body;
+  assert.deepStrictEqual([acc.created, acc.children, acc.parent.role], [true, 1, 'parent']);
+  const kid = (await admin('GET', '/api/program')).body.children.find((c) => c.full_name === 'نور');
+  assert.deepStrictEqual([kid.class_id, kid.monthly_fee, kid.family_parent_id], [k.id, 90, acc.parent.id]);
+  assert.ok(!(await admin('GET', '/api/program/requests')).body.requests.some((x) => x.id === r.id));
+  // الموارد البشرية: أجرة المحاسبة في فضاء المحاسبة + حساب دخول
+  const sf = (await admin('POST', '/api/staff', { full_name: 'محاسبة الاختبار', activity: 'general', role: 'محاسبة', monthly_salary: 200, phone: '29111222', accounting_category: 'accountant_fee' })).body.staff;
+  const month = t.slice(0, 7);
+  assert.strictEqual((await admin('POST', `/api/staff/${sf.id}/pay`, { month })).status, 201);
+  const accData = (await admin('GET', `/api/accounting?month=${month}`)).body;
+  assert.ok(accData.expenses.some((x) => x.category === 'accountant_fee' && x.amount === 200));
+  const a1 = (await admin('POST', `/api/staff/${sf.id}/account`, { role: 'accounting' })).body;
+  assert.deepStrictEqual([a1.created, a1.user.role, a1.user.username], [true, 'admin', '29111222']);
+  const staffList = (await admin('GET', '/api/staff')).body.staff;
+  assert.strictEqual(staffList.find((x) => x.id === sf.id).user_role, 'accounting');
+  // تفصيل المداخيل والمصاريف في التوقّع
+  const f = (await admin('GET', '/api/board/forecast')).body;
+  const sum = (o) => Math.round(Object.values(o).reduce((a, b) => a + b, 0) * 1000) / 1000;
+  assert.strictEqual(sum(f.breakdown.income), f.income);
+  assert.strictEqual(sum(f.breakdown.expense), f.expense);
+});
