@@ -34,7 +34,7 @@ function today() {
 }
 
 const MONTHS_AR = ['جانفي', 'فيفري', 'مارس', 'أفريل', 'ماي', 'جوان', 'جويلية', 'أوت', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-const PAYMENT_LABELS = { cash: 'نقدًا', bank: 'بنك الشركة', transfer: 'تحويل بنكي', cheque: 'صك', d17: 'D17', other: 'أخرى' };
+const PAYMENT_LABELS = { cash: 'نقدًا', bank: 'بنك الشركة', transfer: 'تحويل بنكي', cheque: 'صك', d17: 'D17', other: 'أخرى', partner: '🤝 خصم من نصيب الشريك' };
 
 function monthLabel(m) {
   if (!m) return '';
@@ -375,13 +375,15 @@ const routes = [
   [/^#\/program\/pay$/, (el) => viewProgramPay(el)],
   [/^#\/program\/posts$/, (el) => viewProgramPosts(el)],
   [/^#\/program\/staff$/, (el) => viewUsers(el, 'teacher', 'program')],
+  [/^#\/program\/classes$/, (el) => viewProgramClasses(el)],
+  [/^#\/fixed$/, (el) => viewFixed(el)],
   [/^#\/support\/teachers$/, (el) => viewUsers(el, 'teacher', 'support')],
   [/^#\/support\/teachers\/timetable$/, (el) => viewTimetable(el, 'teacher')],
   [/^#\/support\/teachers\/absences$/, (el) => viewTeacherAbsences(el)],
   [/^#\/group-message$/, (el) => viewGroupMessage(el)],
   [/^#\/partners$/, (el) => viewPartners(el)],
   [/^#\/salaries$/, (el) => viewSalaries(el)],
-  [/^#\/board(?:\/(cash|month|absences|notices))?$/, (el, tab) => viewBoardHub(el, tab || '')],
+  [/^#\/board(?:\/(today|cash|month|absences|notices))?$/, (el, tab) => viewBoardHub(el, tab || '')],
   [/^#\/center-debts$/, (el) => viewCenterDebts(el)],
   [/^#\/products$/, (el) => viewProducts(el)],
   [/^#\/courses$/, (el) => viewCourses(el)],
@@ -451,6 +453,11 @@ async function router() {
     return;
   }
   const nav = ++navCount;
+  // خاصية أوقفها المدير لهذا النوع من الحسابات
+  if (state.user && state.user.role !== 'admin' && !navAllowed(hash.split('?')[0])) {
+    $('#view').innerHTML = '<div class="card empty-state"><span>🔒</span><p>هذه الخاصية موقوفة من الإدارة.</p><a class="btn ghost" href="#/home">الرئيسية</a></div>';
+    return;
+  }
   for (const [re, view] of routes) {
     const m = hash.match(re);
     if (m) {
@@ -484,10 +491,20 @@ const HASH_PERM = {
   '#/people': 'school', '#/parents': 'school', '#/parent-requests': 'school', '#/students': 'school', '#/program': 'school',
   '#/attendance': 'school', '#/messages': 'school', '#/broadcast': 'school', '#/whatsapp': 'school', '#/courses': 'school',
   '#/support/teachers': 'accounts', '#/program/staff': 'accounts', '#/debts': 'expenses',
-  '#/levels': 'school', '#/broadcast/teachers': 'school', '#/broadcast/staff': 'school', '#/receipts': 'accounting', '#/products': 'expenses', '#/todo': 'school', '#/meetings': 'school', '#/alerts': 'school',
+  '#/levels': 'school', '#/program/classes': 'school', '#/fixed': 'expenses', '#/broadcast/teachers': 'school', '#/broadcast/staff': 'school', '#/receipts': 'accounting', '#/products': 'expenses', '#/todo': 'school', '#/meetings': 'school', '#/alerts': 'school',
 };
 const GROUP_PERM = { 'دروس الدعم': 'school', 'البرنامج التربوي': 'school', 'التواصل': 'school', 'إدارة المركز': 'school' };
+// صفحات المعلم والمؤطّر والولي التي يمكن للمدير إيقافها (صفحة الصلاحيات)
+const FEATURE_HASH = {
+  '#/attendance': ['teacher.attendance'], '#/evaluations': ['teacher.evaluations'], '#/overview': ['teacher.evaluations'],
+  '#/tasks': ['teacher.tasks'], '#/group-message': ['teacher.group_message'], '#/messages': ['teacher.messages', 'parent.messages'],
+  '#/my-pay': ['teacher.my_pay'], '#/todo': ['teacher.todo'],
+  '#/program/attendance': ['program_staff.attendance'], '#/program/posts': ['program_staff.posts'], '#/program/pay': ['program_staff.my_pay'],
+  '#/my-receipts': ['parent.receipts'], '#/timetable': ['parent.timetable'],
+};
+const featureOff = (key) => state.user?.features?.[key] === false;
 const navAllowed = (h) => {
+  if ((FEATURE_HASH[h] || []).some(featureOff)) return false;
   const p = HASH_PERM[h];
   if (!p || state.user?.role !== 'admin') return true;
   return p === 'super' ? !!state.user.super_admin : can(p);
@@ -527,7 +544,9 @@ const NAV = {
       label: 'البرنامج التربوي',
       items: [
         ['#/program/board', 'لوحة التحكم'],
-        ['#/program', 'الأطفال والأقسام والغيابات'],
+        ['#/program', 'قائمة الأطفال'],
+        ['#/program/classes', 'الأقسام'],
+        ['#/program/attendance', 'الغيابات'],
         ['#/program/timetable', 'جداول الأوقات'],
         ['#/program/posts', 'أنشطة ورسائل الأقسام'],
         ['', 'المؤطّرون'],
@@ -556,6 +575,7 @@ const NAV = {
         ['', 'المستحقات'],
         ['#/debts', 'المتخلّد بذمّة الأولياء'],
         ['#/salaries', 'الأجور'],
+        ['#/fixed', 'المصاريف القارّة'],
         ['#/center-debts', 'ديون المركز'],
         ['', 'الأسعار'],
         ['#/fees', 'التعريفات والتخفيضات'],
@@ -664,7 +684,7 @@ const icon = (name) =>
 const GROUP_ICONS = { 'دروس الدعم': 'book', 'البرنامج التربوي': 'spark', 'إدارة المركز': 'building', 'المالية والمحاسبة': 'wallet', 'التواصل': 'chat', 'الحسابات': 'users' };
 const LINK_ICONS = {
   '#/home': 'home', '#/courses': 'flag', '#/students': 'users', '#/timetable': 'calendar', '#/program/timetable': 'calendar',
-  '#/attendance': 'check', '#/program/attendance': 'check', '#/messages': 'chat', '#/my-pay': 'wallet', '#/program/pay': 'wallet',
+  '#/attendance': 'check', '#/program/attendance': 'check', '#/program/classes': 'grid', '#/messages': 'chat', '#/my-pay': 'wallet', '#/program/pay': 'wallet',
   '#/account': 'user', '#/tasks': 'clipboard', '#/evaluations': 'clipboard', '#/overview': 'chart', '#/program/posts': 'star',
   '#/todo': 'clipboard', '#/program': 'spark', '#/group-message': 'chat', '#/board': 'chart',
 };
@@ -1622,7 +1642,7 @@ function quickActions(items) {
 // ---------- ملف التلميذ ----------
 async function viewStudent(el, id) {
   const role = state.user.role;
-  const { student, absences, notes, finance, tasks, timetable, whatsapp_groups, program } = await api('GET', `/api/students/${id}`);
+  const { student, absences, notes, finance, tasks, timetable, whatsapp_groups, program, hidden = {} } = await api('GET', `/api/students/${id}`);
   const adminNotes = notes.filter((n) => !n.subject_id && n.author_role === 'admin');
   const teacherNotes = notes.filter((n) => !adminNotes.includes(n));
   const unjustified = absences.filter((a) => !a.justified).length;
@@ -1743,7 +1763,7 @@ async function viewStudent(el, id) {
 
     ${fileTabs(
       isParent
-        ? [['home', 'نظرة عامة'], ['tt', 'جدول الأوقات'], ['eval', 'التقييم'], ['abs', 'الغيابات'], finance || program?.finance ? ['pay', 'الخلاص'] : null, ['info', 'المعلومات']]
+        ? [['home', 'نظرة عامة'], hidden.timetable ? null : ['tt', 'جدول الأوقات'], hidden.evaluation ? null : ['eval', 'التقييم'], hidden.absences ? null : ['abs', 'الغيابات'], finance || program?.finance ? ['pay', 'الخلاص'] : null, ['info', 'المعلومات']]
         : [['home', 'نظرة عامة'], finance || program?.finance ? ['pay', 'الخلاص'] : null, ['follow', 'المتابعة'], ['info', 'المعلومات']]
     )}
     <div class="tab-panel" data-panel="home">

@@ -125,6 +125,7 @@ async function viewHome(el) {
 // ---------- لوحة المشرف: صفحات الإحصائيات ----------
 const BOARD_TABS = [
   ['', '📊', 'نظرة عامة'],
+  ['today', '☀️', 'ملخّص اليوم'],
   ['cash', '💵', 'الخزينة اليومية'],
   ['month', '📅', 'المداخيل والمصاريف'],
   ['absences', '📉', 'الغيابات والملاحظات'],
@@ -132,7 +133,7 @@ const BOARD_TABS = [
 ];
 async function viewBoardHub(el, tab = '') {
   el.innerHTML = `
-    <div class="board-tabs" role="tablist">${BOARD_TABS.filter(([k]) => (k !== 'cash' || can('cash')) && (!['absences', 'notices'].includes(k) || can('school')))
+    <div class="board-tabs" role="tablist">${BOARD_TABS.filter(([k]) => (k !== 'cash' || can('cash')) && (!['absences', 'notices', 'today'].includes(k) || can('school')))
       .map(([k, i, l]) => `<a href="#/board${k ? '/' + k : ''}" class="${k === tab ? 'on' : ''}" role="tab"><span>${i}</span>${l}<b class="bt-badge" data-badge="${k}" hidden></b></a>`)
       .join('')}</div>
     <div id="board-page"></div>`;
@@ -154,6 +155,7 @@ async function viewBoardHub(el, tab = '') {
       if (b && c) (b.textContent = c), (b.hidden = false);
     })
     .catch(() => {});
+  if (tab === 'today') return boardToday(page);
   if (tab === 'cash') return viewCash(page);
   if (tab === 'month') return boardMonth(page);
   if (tab === 'absences') return boardAbsences(page);
@@ -163,7 +165,8 @@ async function viewBoardHub(el, tab = '') {
 
 // نظرة عامة: مؤشرات اليوم والشهر، ثم السنة (الرسم البياني والجداول)
 async function boardOverview(el) {
-  el.innerHTML = `<div id="bo-kpis"></div><div id="bo-year"></div>`;
+  el.innerHTML = `<div id="bo-fc"></div><div id="bo-kpis"></div><div id="bo-year"></div>`;
+  api('GET', '/api/board/forecast').then((f) => $('#bo-fc') && ($('#bo-fc').innerHTML = forecastCard(f))).catch(() => {});
   api('GET', '/api/kpis').then((k) => {
     if (!$('#bo-kpis')) return;
     $('#bo-kpis').innerHTML = `<div class="kpis">
@@ -178,6 +181,81 @@ async function boardOverview(el) {
     </div>`;
   });
   await viewBoard($('#bo-year'));
+}
+
+// الربح الصافي الحقيقي للشهر: الحالي − الأجور الباقية (دون غيابات) − المصاريف القارّة الباقية
+function forecastCard(f) {
+  const cur = f.month === new Date().toISOString().slice(0, 7);
+  const neg = (v) => (v < 0 ? 'neg' : '');
+  return `<section class="card fc-board">
+    <div class="section-head"><div><h3>🔮 الربح الصافي الحقيقي · ${esc(monthLabel(f.month))}</h3>
+      <p class="muted small">${cur ? 'مع حساب ما بقي للدفع إلى آخر الشهر: أجور المدرّسين (دون غيابات) والمصاريف القارّة.' : 'ما بقي غير مدفوع من أجور ومصاريف قارّة لهذا الشهر.'}</p></div>
+      <a class="link small" href="#/fixed">المصاريف القارّة ←</a></div>
+    <div class="fcb-flow">
+      <div class="fcb-step"><small>المداخيل</small><b class="in">${fmtMoney(f.income)}</b></div>
+      <span class="fcb-op">−</span>
+      <div class="fcb-step"><small>المصاريف المدفوعة</small><b class="out">${fmtMoney(f.expense)}</b></div>
+      <span class="fcb-op">=</span>
+      <div class="fcb-step now"><small>الربح الحالي (en temps réel)</small><b class="${neg(f.net_now)}">${fmtMoney(f.net_now)}</b></div>
+    </div>
+    <div class="fcb-flow">
+      <div class="fcb-step"><small>− الأجور الباقية</small><b class="out">${fmtMoney(f.salaries_left)}</b>
+        <i>${f.salaries.filter((g) => g.left).map((g) => `${esc(g.label)}: ${fmtMoney(g.left)}`).join('<br>') || 'كلها مدفوعة ✓'}</i></div>
+      <div class="fcb-step"><small>− المصاريف القارّة الباقية</small><b class="out">${fmtMoney(f.fixed_left)}</b>
+        <i>${f.fixed_items.map((x) => `${esc(x.name)}: ${fmtMoney(x.left)}`).join('<br>') || 'كلها مدفوعة ✓'}</i></div>
+      <span class="fcb-op">=</span>
+      <div class="fcb-step goal"><small>الربح الصافي المتوقّع</small><b class="${neg(f.net_expected)}">${fmtMoney(f.net_expected)}</b></div>
+    </div>
+  </section>`;
+}
+
+// ملخّص اليوم: ما دخل وما خرج، ملاحظات المعلّمين، الغيابات
+async function boardToday(el) {
+  el.innerHTML = `<div class="page-head"><div><h2>☀️ ملخّص اليوم</h2><p class="muted small">كل ما صار في المركز في هذا النهار.</p></div>
+      <input type="date" id="bt-day" value="${today()}" max="${today()}"></div>
+    <div id="bt-body"><p class="muted">جاري التحميل…</p></div>`;
+  const KIND = { support: '📚', program: '🎨', course: '🏕️', ledger: '🧾', teacher: '👩‍🏫' };
+  const RAT = { excellent: ['ممتاز', 'ok'], good: ['حسن', 'ok'], average: ['متوسط', 'mid'], weak: ['ضعيف', 'bad'] };
+  const time = (x) => (x.created_at ? new Date(x.created_at).toLocaleTimeString('ar-TN', { hour: '2-digit', minute: '2-digit' }) : '');
+  const link = (x) => (x.kind === 'support' ? `#/students/${x.person_id}` : `#/program/child/${x.person_id}`);
+  const load = async () => {
+    const d = await api('GET', '/api/board/today?date=' + $('#bt-day').value);
+    if (!$('#bt-body')) return;
+    const f = d.finance;
+    const unjust = d.absences.filter((a) => !a.justified).length;
+    $('#bt-body').innerHTML = `
+      <div class="fb-kpis ${f ? 'four' : ''}">
+        ${f ? `<div class="fb-kpi in"><span>💰 دخل اليوم</span><b>${fmtMoney(f.income_total)}</b><small>${f.income.length} عملية</small></div>
+        <div class="fb-kpi out"><span>💸 خرج اليوم</span><b>${fmtMoney(f.expense_total)}</b><small>${f.expense.length} عملية</small></div>` : ''}
+        <div class="fb-kpi net"><span>📝 ملاحظات المعلّمين</span><b>${d.notes.length}</b><small>دعم وتربوي</small></div>
+        <div class="fb-kpi ${d.absences.length ? 'out' : 'in'}"><span>🚫 الغيابات</span><b>${d.absences.length}</b><small>${unjust} غير مبرّر</small></div>
+      </div>
+      ${f ? `<div class="board-grid">
+        <section class="card"><div class="section-head"><h3>💰 الدفوعات</h3><b class="in">${fmtMoney(f.income_total)}</b></div>
+          ${f.income.length ? `<ul class="td-list">${f.income
+            .map((x) => `<li><span class="td-ico">${KIND[x.kind]}</span><span class="td-main"><b>${esc(x.who)}</b><small>${[x.month && monthLabel(x.month), PAYMENT_LABELS[x.method] || '', x.receipt_no ? `وصل ${x.receipt_no}` : ''].filter(Boolean).map(esc).join(' · ')}</small></span>
+              <span class="td-amt in">${fmtMoney(x.amount)}<small>${time(x)}</small></span></li>`)
+            .join('')}</ul>` : '<p class="muted">ما فماش دفوعات اليوم.</p>'}</section>
+        <section class="card"><div class="section-head"><h3>💸 المصاريف</h3><b class="out">${fmtMoney(f.expense_total)}</b></div>
+          ${f.expense.length ? `<ul class="td-list">${f.expense
+            .map((x) => `<li><span class="td-ico">${KIND[x.kind]}</span><span class="td-main"><b>${esc(x.label)}${x.fixed_id ? ' <span class="badge">قارّ</span>' : ''}</b><small>${esc(x.who || '')}</small></span>
+              <span class="td-amt out">${fmtMoney(x.amount)}<small>${time(x)}</small></span></li>`)
+            .join('')}</ul>` : '<p class="muted">ما فماش مصاريف اليوم.</p>'}</section>
+      </div>` : ''}
+      <section class="card"><div class="section-head"><h3>📝 ملاحظات المعلّمين للتلاميذ</h3><span class="muted small">${d.notes.length}</span></div>
+        ${d.notes.length ? `<ul class="td-notes">${d.notes
+          .map((n) => `<li><a href="${link(n)}"><span class="td-ico">${KIND[n.kind]}</span><b>${esc(n.who)}</b></a>
+            ${n.rating ? `<span class="td-rat ${RAT[n.rating]?.[1] || ''}">${RAT[n.rating]?.[0] || ''}</span>` : ''}
+            <p>${esc(n.content)}</p><small class="muted">${[n.author, n.subject].filter(Boolean).map(esc).join(' · ')} ${time(n)}</small></li>`)
+          .join('')}</ul>` : '<p class="muted">ما فماش ملاحظات اليوم.</p>'}</section>
+      <section class="card"><div class="section-head"><h3>🚫 الغيابات</h3><a class="link small" href="#/attendance">تسجيل الغيابات ←</a></div>
+        ${d.absences.length ? `<div class="pkids">${d.absences
+          .map((a) => `<a class="pkid" href="${link(a)}"><span class="pk-main"><b>${KIND[a.kind]} ${esc(a.who)}</b><small>${esc(a.subject || '')}${a.reason ? ` · ${esc(a.reason)}` : ''}</small></span>
+            <span class="pk-bal ${a.justified ? 'ok' : 'due'}">${a.justified ? 'مبرّر' : 'غير مبرّر'}</span></a>`)
+          .join('')}</div>` : '<p class="muted">ما فماش غيابات اليوم 👏</p>'}</section>`;
+  };
+  $('#bt-day').addEventListener('change', load);
+  await load();
 }
 
 // رسم أعمدة بسيط (أفقي): [[label, value, color?]]
@@ -199,7 +277,11 @@ async function boardMonth(el) {
     <div id="bm-body"><p class="muted">جاري التحميل…</p></div>`;
   const load = async () => {
     const month = $('#bm-month').value;
-    const [s, w] = await Promise.all([api('GET', '/api/finance/summary?month=' + month), api('GET', '/api/board/weeks?month=' + month)]);
+    const [s, w, fc] = await Promise.all([
+      api('GET', '/api/finance/summary?month=' + month),
+      api('GET', '/api/board/weeks?month=' + month),
+      api('GET', '/api/board/forecast?month=' + month).catch(() => null),
+    ]);
     if (!$('#bm-body')) return;
     const t = s.totals;
     const maxW = Math.max(1, ...w.weeks.map((x) => Math.max(x.income_total, x.expense_total)));
@@ -209,6 +291,7 @@ async function boardMonth(el) {
         <div class="fb-kpi out"><span>المصاريف المدفوعة</span><b>${fmtMoney(t.expense)}</b><small>حسب تاريخ الدفع</small></div>
         <div class="fb-kpi net ${t.net < 0 ? 'neg' : ''}"><span>${t.net >= 0 ? 'ربح الشهر' : 'خسارة الشهر'}</span><b>${fmtMoney(Math.abs(t.net))}</b><small>المداخيل − المصاريف</small></div>
       </div>
+      ${fc && (fc.salaries_left || fc.fixed_left) ? forecastCard(fc) : ''}
       <section class="card"><div class="section-head"><h3>📆 أسبوعًا بأسبوع</h3><span class="legend"><span><i style="background:#16a34a"></i>مداخيل</span><span><i style="background:#db2777"></i>مصاريف</span></span></div>
         <div class="wk-chart">${w.weeks
           .map(
@@ -401,6 +484,8 @@ async function viewLedger(el) {
       <select id="lg-activity"><option value="">كل الأنشطة</option>${Object.entries(meta.activities)
         .map(([k, v]) => `<option value="${k}">${v}</option>`)
         .join('')}</select>
+      <select id="lg-kind" aria-label="نوع المصروف"><option value="">قارّة وعارضة</option><option value="fixed">📌 المصاريف القارّة فقط</option><option value="occasional">⚡ المصاريف العارضة فقط</option></select>
+      <a class="btn ghost small" href="#/fixed">📌 المصاريف القارّة ←</a>
     </div>
     <div id="lg-list"></div>
     <p class="muted small">خلاص التلاميذ والأطفال والمشاركين وخلاص المعلمين بالساعة يُحتسب تلقائيًا من صفحاته، ولا حاجة لإدخاله هنا.
@@ -408,12 +493,16 @@ async function viewLedger(el) {
   const load = async () => {
     const params = new URLSearchParams({ month: $('#lg-month').value });
     if ($('#lg-activity').value) params.set('activity', $('#lg-activity').value);
-    const { entries } = await api('GET', '/api/ledger?' + params);
-    const total = (d) => entries.filter((e) => e.direction === d).reduce((t, e) => t + e.amount, 0);
+    const { entries: all } = await api('GET', '/api/ledger?' + params);
+    const kind = $('#lg-kind').value;
+    const entries = all.filter((e) => !kind || (e.direction === 'expense' && (kind === 'fixed' ? e.fixed_id : !e.fixed_id)));
+    const total = (d) => all.filter((e) => e.direction === d).reduce((t, e) => t + e.amount, 0);
+    const fixedT = all.filter((e) => e.direction === 'expense' && e.fixed_id).reduce((t, e) => t + e.amount, 0);
     $('#lg-list').innerHTML = entries.length
       ? `<div class="stats compact">
           <div class="stat good"><b>${fmtMoney(total('income'))}</b><span>مداخيل أخرى</span></div>
-          <div class="stat warn"><b>${fmtMoney(total('expense'))}</b><span>مصاريف</span></div>
+          <div class="stat warn"><b>${fmtMoney(fixedT)}</b><span>📌 مصاريف قارّة</span></div>
+          <div class="stat warn"><b>${fmtMoney(total('expense') - fixedT)}</b><span>⚡ مصاريف عارضة</span></div>
         </div>
         <div class="table-wrap"><table>
           <thead><tr><th>التاريخ</th><th>النشاط</th><th>الصنف</th><th>البيان</th><th>المبلغ</th><th></th></tr></thead>
@@ -422,7 +511,7 @@ async function viewLedger(el) {
               (e) => `<tr>
                 <td>${fmtDate(e.date)}</td>
                 <td>${ACTIVITY_ICONS[e.activity]} ${esc(meta.activities[e.activity])}${e.course_name ? `<div class="muted small">${esc(e.course_name)}</div>` : ''}</td>
-                <td>${esc(meta.categories[e.direction][e.category] || e.category)}</td>
+                <td>${esc(meta.categories[e.direction][e.category] || e.category)}${e.direction === 'expense' ? `<div><span class="badge ${e.fixed_id ? 'pack' : ''}">${e.fixed_id ? '📌 قارّ' : '⚡ عارض'}</span></div>` : ''}</td>
                 <td>${esc(e.description || '')}</td>
                 <td><b class="${e.direction === 'income' ? 'in' : 'out'}">${e.direction === 'income' ? '+' : '−'} ${fmtMoney(e.amount)}</b></td>
                 <td class="row-actions"><button class="link" data-edit="${e.id}">تعديل</button>
@@ -444,6 +533,7 @@ async function viewLedger(el) {
   };
   bindMonth('lg-month', load);
   $('#lg-activity').addEventListener('change', load);
+  $('#lg-kind').addEventListener('change', load);
   $('#add-expense').addEventListener('click', () => ledgerForm(null, 'expense', load, { activity: $('#lg-activity').value || 'general' }));
   $('#add-income').addEventListener('click', () => ledgerForm(null, 'income', load, { activity: $('#lg-activity').value || 'general' }));
   await load();
@@ -560,9 +650,9 @@ async function viewProgram(el) {
   const owed = children.reduce((t, c) => t + Math.max(c.balance || 0, 0), 0);
   el.innerHTML = `
     <div class="page-head">
-      <div><a href="#/home" class="muted small">→ الرئيسية</a><h2>🎨 البرنامج التربوي</h2></div>
+      <div><a href="#/home" class="muted small">→ الرئيسية</a><h2>🎨 قائمة الأطفال</h2></div>
       <div class="actions">
-        <a class="btn ghost" href="#/program/attendance">الغيابات</a>
+        <a class="btn ghost" href="#/program/classes">الأقسام</a>
         <button class="btn ghost" id="add-class">+ قسم</button>
         <button class="btn" id="add-child">+ طفل</button>
       </div>
@@ -662,52 +752,123 @@ async function viewProgram(el) {
   $('#pf-status').addEventListener('change', render);
   $('#pf-q').addEventListener('input', render);
   $('#pf-pay').addEventListener('change', () => (sessionStorage.setItem('payFilter', $('#pf-pay').value), render()));
-  const classForm = (k) =>
-    openModal(
-      k ? 'تعديل القسم' : 'قسم جديد',
-      `<label>اسم القسم<input name="name" value="${esc(k?.name || '')}" required placeholder="مثال: قسم الصغار"></label>
-       <div class="row">
-         <label>الأعمار<input name="age_range" value="${esc(k?.age_range || '')}" placeholder="مثال: 4-5 سنوات"></label>
-         <label>المعلوم الشهري (د.ت)<input name="default_fee" inputmode="decimal" value="${esc(k?.default_fee ?? '')}"></label>
-       </div>
-       <label>المؤطّر (يسجّل الغيابات والملاحظات والأنشطة)<select name="teacher_id"><option value="">—</option>${teachers
-         .filter((t) => t.program_staff || t.id === k?.teacher_id)
-         .map((t) => `<option value="${t.id}" ${k?.teacher_id === t.id ? 'selected' : ''}>${esc(t.full_name)}</option>`)
-         .join('')}</select></label>
-       <label>الصيغ والمعاليم (اختياري، صيغة في كل سطر: الاسم = المبلغ)
-         <textarea name="formulas_text" rows="3" placeholder="أفلا ينظرون = 80&#10;أفلا ينظرون + لسان العرب = 120">${esc(
-           (k?.formulas || []).map((f) => `${f.name} = ${f.fee}`).join('\n')
-         )}</textarea></label>
-       <label>ملاحظات<input name="notes" value="${esc(k?.notes || '')}"></label>
-       ${k ? '<p><button type="button" class="link danger" id="del-class">حذف القسم</button></p>' : ''}`,
-      async (data) => {
-        data.formulas = String(data.formulas_text || '')
-          .split('\n')
-          .map((line) => line.split('='))
-          .filter((x) => x.length === 2 && x[0].trim())
-          .map(([name, fee]) => ({ name: name.trim(), fee: fee.trim() }));
-        delete data.formulas_text;
-        if (k) await api('PUT', `/api/program/classes/${k.id}`, data);
-        else await api('POST', '/api/program/classes', data);
-        toast('تم الحفظ');
-        reload();
-      }
-    );
+  const classForm = (k) => programClassForm(k, { teachers, parents }, reload);
   $('#add-class').addEventListener('click', () => classForm(null));
   el.querySelectorAll('[data-edit-class]').forEach((b) =>
-    b.addEventListener('click', () => {
-      const k = classes.find((x) => x.id === Number(b.dataset.editClass));
-      classForm(k);
-      $('#del-class').addEventListener('click', async () => {
-        if (!confirmAction('حذف القسم؟ الأطفال يبقون دون قسم.')) return;
-        await api('DELETE', `/api/program/classes/${k.id}`);
-        $('#modal').close();
-        reload();
-      });
-    })
+    b.addEventListener('click', () => classForm(classes.find((x) => x.id === Number(b.dataset.editClass))))
   );
   $('#add-child').addEventListener('click', () => childForm(null, lists, reload));
   render();
+}
+
+// قسم في البرنامج التربوي: المدرّس مؤطّر، أو معلم دعم، أو وليّ (يُفتح له حساب مؤطّر)
+function programClassForm(k, { teachers, parents }, onDone) {
+  const staff = teachers.filter((t) => t.program_staff || t.also_program);
+  const support = teachers.filter((t) => !t.program_staff && !t.also_program);
+  const opt = (u, label = u.full_name) => `<option value="${u.id}" ${k?.teacher_id === u.id ? 'selected' : ''}>${esc(label)}</option>`;
+  openModal(
+    k ? 'تعديل القسم' : 'قسم جديد',
+    `<label>اسم القسم<input name="name" value="${esc(k?.name || '')}" required placeholder="مثال: قسم الصغار"></label>
+     <div class="row">
+       <label>الأعمار<input name="age_range" value="${esc(k?.age_range || '')}" placeholder="مثال: 4-5 سنوات"></label>
+       <label>المعلوم الشهري (د.ت)<input name="default_fee" inputmode="decimal" value="${esc(k?.default_fee ?? '')}"></label>
+     </div>
+     <label>المدرّس (يسجّل الغيابات والملاحظات والأنشطة)<select name="teacher_id"><option value="">— بلا مدرّس —</option>
+       ${staff.length ? `<optgroup label="🎨 المؤطّرون">${staff.map((u) => opt(u)).join('')}</optgroup>` : ''}
+       ${support.length ? `<optgroup label="📚 مدرّسو دروس الدعم">${support.map((u) => opt(u)).join('')}</optgroup>` : ''}
+       ${parents.length ? `<optgroup label="👤 الأولياء">${parents.map((u) => opt(u, parentLabel(u))).join('')}</optgroup>` : ''}
+     </select></label>
+     <p class="muted small">مدرّس الدعم يولّي مؤطّرًا أيضًا (يبقى معلوم ساعته في الدعم). الولي يُفتح له حساب مؤطّر خاص (ابعثلو الدخول بـ🔑 من «قائمة المؤطّرين»).</p>
+     <label>الصيغ والمعاليم (اختياري، صيغة في كل سطر: الاسم = المبلغ)
+       <textarea name="formulas_text" rows="3" placeholder="أفلا ينظرون = 80&#10;أفلا ينظرون + لسان العرب = 120">${esc(
+         (k?.formulas || []).map((f) => `${f.name} = ${f.fee}`).join('\n')
+       )}</textarea></label>
+     <label>ملاحظات<input name="notes" value="${esc(k?.notes || '')}"></label>
+     ${k ? '<p><button type="button" class="link danger" id="del-class">🗑 حذف القسم</button></p>' : ''}`,
+    async (data) => {
+      data.formulas = String(data.formulas_text || '')
+        .split('\n')
+        .map((line) => line.split('='))
+        .filter((x) => x.length === 2 && x[0].trim())
+        .map(([name, fee]) => ({ name: name.trim(), fee: fee.trim() }));
+      delete data.formulas_text;
+      if (k) await api('PUT', `/api/program/classes/${k.id}`, data);
+      else await api('POST', '/api/program/classes', data);
+      toast('تم الحفظ');
+      onDone();
+    }
+  );
+  $('#del-class')?.addEventListener('click', async () => {
+    if (!confirmAction(`حذف القسم «${k.name}»؟ الأطفال يبقون دون قسم.`)) return;
+    await api('DELETE', `/api/program/classes/${k.id}`);
+    $('#modal').close();
+    toast('تم حذف القسم');
+    onDone();
+  });
+}
+
+// أقسام البرنامج التربوي: إضافة وتعديل وحذف وتحديد المدرّس
+async function viewProgramClasses(el) {
+  const [{ classes, children }, { users: teachers }, { users: parents }, { slots }] = await Promise.all([
+    api('GET', '/api/program'),
+    api('GET', '/api/users?role=teacher'),
+    api('GET', '/api/users?role=parent'),
+    api('GET', '/api/program/slots').catch(() => ({ slots: [] })),
+  ]);
+  const reload = () => viewProgramClasses(el);
+  const who = (id) => teachers.find((t) => t.id === id);
+  const kind = (t) => (!t ? '' : t.linked_parent_id ? '👤 ولي' : t.program_staff ? '🎨 مؤطّر' : '📚 معلم دعم');
+  const times = (id) => slots.filter((x) => x.class_id === id).map((x) => `${DAYS_AR[x.day - 1]} ${x.start_time}–${x.end_time}`);
+  const hue = (i) => [262, 330, 200, 152, 28, 290, 175, 45][i % 8];
+  el.innerHTML = `
+    <div class="page-head">
+      <div><a href="#/program" class="muted small">→ قائمة الأطفال</a><h2>🏫 أقسام البرنامج التربوي</h2>
+        <p class="muted">${classes.length} قسم · ${children.filter((c) => c.status === 'active').length} طفل مسجّل</p></div>
+      <div class="actions"><button class="btn" id="pc-add">+ قسم جديد</button></div>
+    </div>
+    ${classes.length ? `<div class="pc-grid">${classes
+      .map((k, i) => {
+        const t = who(k.teacher_id);
+        const tm = times(k.id);
+        return `<article class="card pc-card" style="--lv:${hue(i)}">
+          <div class="pc-head"><span class="pc-dot"></span><div><h3>${esc(k.name)}</h3>${k.age_range ? `<small class="muted">${esc(k.age_range)}</small>` : ''}</div>
+            <span class="badge">${k.children} طفل</span></div>
+          <div class="pc-teacher ${t ? '' : 'none'}">${t ? `${avatar(t, 'sm')}<div><b>${esc(t.full_name)}</b><small>${kind(t)}</small></div>` : '<span>⚠️ بلا مدرّس</span>'}</div>
+          <ul class="pc-meta">
+            <li>💰 ${k.default_fee ? `${fmtMoney(k.default_fee)} / شهر` : '<span class="muted">المعلوم غير محدّد</span>'}</li>
+            <li>🗓 ${tm.length ? esc(tm.join('، ')) : '<a href="#/program/timetable">حدّد الأوقات ←</a>'}</li>
+            ${(k.formulas || []).length ? `<li>🧩 ${k.formulas.length} صيغ</li>` : ''}
+          </ul>
+          <div class="pc-actions">
+            <button class="btn ghost small" data-kids="${k.id}">👧 الأطفال</button>
+            <button class="btn ghost small" data-edit="${k.id}">✎ تعديل</button>
+            <button class="btn ghost small danger" data-del="${k.id}">🗑</button>
+          </div>
+        </article>`;
+      })
+      .join('')}</div>` : '<div class="empty-state"><span>🏫</span><p>ما فماش أقسام بعد.</p><small>زيد أول قسم بـ«+ قسم جديد».</small></div>'}`;
+  const form = (k) => programClassForm(k, { teachers, parents }, reload);
+  $('#pc-add').addEventListener('click', () => form(null));
+  el.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => form(classes.find((k) => k.id === Number(b.dataset.edit)))));
+  el.querySelectorAll('[data-kids]').forEach((b) =>
+    b.addEventListener('click', () => {
+      sessionStorage.setItem('progClass', b.dataset.kids);
+      location.hash = '#/program';
+    })
+  );
+  el.querySelectorAll('[data-del]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const k = classes.find((x) => x.id === Number(b.dataset.del));
+      if (!confirmAction(`حذف القسم «${k.name}»؟ الأطفال (${k.children}) يبقون دون قسم.`)) return;
+      try {
+        await api('DELETE', `/api/program/classes/${k.id}`);
+        toast('تم حذف القسم');
+        reload();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    })
+  );
 }
 
 function childForm(c, { classes, parents, students, children }, onDone) {
@@ -1895,7 +2056,10 @@ async function viewPartners(el) {
           <b>${fmtMoney(s.balance)}</b><small>${s.balance >= 0 ? `الباقي بذمّة ${esc(d.owner)} لـ ${esc(s.name)}` : `${esc(s.name)} أخذ أكثر من مستحقاته`}</small></div>
         <div class="fb-kpi out"><span>المتخلّد الإجمالي لـ ${esc(s.name)}</span><b>${fmtMoney(round2(s.opening + s.due))}</b>
           <small>الحساب القديم ${fmtMoney(s.opening)} + ${s.share}% من مرابيح ${esc(monthLabel(s.from))} إلى اليوم ${fmtMoney(s.due)}</small></div>
-        <div class="fb-kpi in"><span>التسبقات المدفوعة</span><b>${fmtMoney(s.paid)}</b><small>منذ ${esc(monthLabel(s.from))}</small></div>`
+        <div class="fb-kpi in"><span>التسبقات المدفوعة</span><b>${fmtMoney(s.paid)}</b><small>منذ ${esc(monthLabel(s.from))}${(() => {
+          const off = d.payments.filter((x) => x.offset && x.partner === s.name && x.paid_on >= `${s.from}-01`).reduce((t, x) => t + x.amount, 0);
+          return off ? ` · منها ${fmtMoney(off)} معاليم أبنائه` : '';
+        })()}</small></div>`
       )
       .join('')}</div>
     ${
@@ -1904,6 +2068,7 @@ async function viewPartners(el) {
             <div class="fc-grid">
               <div><small>الربح الحالي</small><b class="${d.forecast.net_now < 0 ? 'neg' : ''}">${fmtMoney(d.forecast.net_now)}</b><i>المداخيل − المصاريف المدفوعة إلى اليوم</i></div>
               <div class="minus"><small>− الأجور المتبقّية إلى آخر الشهر</small><b>${fmtMoney(d.forecast.salaries_left)}</b><i>كل الحصص المبرمجة، دون غيابات</i></div>
+              <div class="minus"><small>− المصاريف القارّة الباقية</small><b>${fmtMoney(d.forecast.fixed_left || 0)}</b><i>الكراء، المحاسبة، الفواتير…</i></div>
               <div class="eq"><small>= الربح الصافي المتوقّع</small><b class="${d.forecast.net_expected < 0 ? 'neg' : ''}">${fmtMoney(d.forecast.net_expected)}</b>
                 <i>${Object.entries(d.forecast.shares).map(([n, v]) => `${esc(n)}: ${fmtMoney(v)}`).join(' · ')}</i></div>
             </div></section>`
@@ -1951,12 +2116,13 @@ async function viewPartners(el) {
                 .join('')}</tbody></table></div></details>`
         : ''
     }
+    ${d.partners.some((p) => p.parent_id) ? `<p class="card muted small">🤝 ${d.partners.filter((p) => p.parent_id).map((p) => esc(p.name)).join('، ')} وليّ في المركز أيضًا: عند خلاص أبنائه اختر طريقة الدفع «🤝 خصم من نصيب الشريك»، فيُطرح المبلغ من نصيبه وحده (لا يدخل الصندوق).</p>` : ''}
     <section class="card"><h3>💵 التسبقات المدفوعة للشركاء</h3>${
       d.payments.length
         ? `<ul class="levels">${d.payments
             .map(
               (p) => `<li><span>${fmtDate(p.paid_on)} — <b>${esc(p.partner)}</b>${p.note ? ` <span class="muted small">${esc(p.note)}</span>` : ''}</span>
-                <span><b>${fmtMoney(p.amount)}</b>${state.user.super_admin ? ` <button class="link danger small" data-del="${p.id}">حذف</button>` : ''}</span></li>`
+                <span><b>${fmtMoney(p.amount)}</b>${p.offset ? ' <span class="badge">خصم معلوم</span>' : state.user.super_admin ? ` <button class="link danger small" data-del="${p.id}">حذف</button>` : ''}</span></li>`
             )
             .join('')}</ul>`
         : '<p class="muted">لا دفعات بعد. الدفعات قبل شهر البداية تظهر منفصلة في البطاقة.</p>'
@@ -1975,7 +2141,8 @@ async function viewPartners(el) {
       }
     )
   );
-  $('#pt-settings')?.addEventListener('click', () =>
+  $('#pt-settings')?.addEventListener('click', async () => {
+    const { users: parents } = await api('GET', '/api/users?role=parent').catch(() => ({ users: [] }));
     openModal(
       'نسب الشركاء',
       `<label>صاحب المركز (يأخذ الباقي)<input name="owner" value="${esc(d.owner)}"></label>
@@ -1984,17 +2151,22 @@ async function viewPartners(el) {
            (p, i) => `<div class="row"><label>الشريك<input name="name_${i}" value="${esc(p.name)}"></label>
              <label>النسبة %<input name="share_${i}" inputmode="decimal" value="${esc(p.share)}"></label>
              <label>ابتداءً من<input type="month" name="from_${i}" value="${esc(p.from)}"></label>
-             <label>الباقي له قبل هذا الشهر<input name="opening_${i}" inputmode="decimal" value="${esc(p.opening ?? 0)}"></label></div>`
+             <label>الباقي له قبل هذا الشهر<input name="opening_${i}" inputmode="decimal" value="${esc(p.opening ?? 0)}"></label></div>
+             <label>👪 حسابه كوليّ (معاليم أبنائه تُخصم من نصيبه)<select name="parent_${i}"><option value="">— ليس وليًّا في المركز —</option>${parents
+               .map((u) => `<option value="${u.id}" ${p.parent_id === u.id ? 'selected' : ''}>${esc(parentLabel(u))}</option>`)
+               .join('')}</select></label>`
          )
          .join('')}`,
       async (data) => {
-        const partners = d.partners.map((_, i) => ({ name: data[`name_${i}`], share: data[`share_${i}`], from: data[`from_${i}`], opening: data[`opening_${i}`] }));
+        const partners = d.partners.map((_, i) => ({
+          name: data[`name_${i}`], share: data[`share_${i}`], from: data[`from_${i}`], opening: data[`opening_${i}`], parent_id: data[`parent_${i}`] || null,
+        }));
         await api('PUT', '/api/partners/settings', { owner: data.owner, partners });
         toast('تم الحفظ');
         viewPartners(el);
       }
-    )
-  );
+    );
+  });
   el.querySelectorAll('[data-del]').forEach((b) =>
     b.addEventListener('click', async () => {
       if (!confirmAction('حذف هذه الدفعة؟')) return;

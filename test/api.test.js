@@ -1493,7 +1493,7 @@ test('last login, partner forecast, message badge, facilitator post with files a
   // توقّع الشريك
   const pt = (await admin('GET', '/api/partners')).body;
   assert.ok(pt.forecast && typeof pt.forecast.net_expected === 'number');
-  assert.strictEqual(Math.round((pt.forecast.net_now - pt.forecast.salaries_left) * 1000) / 1000, pt.forecast.net_expected);
+  assert.strictEqual(Math.round((pt.forecast.net_now - pt.forecast.salaries_left - pt.forecast.fixed_left) * 1000) / 1000, pt.forecast.net_expected);
   // عدد الرسائل يختفي بعد الضغط
   assert.strictEqual((await admin('POST', '/api/threads/badge-seen')).status, 200);
   assert.strictEqual((await admin('GET', '/api/threads/unread')).body.count, 0);
@@ -1509,4 +1509,64 @@ test('last login, partner forecast, message badge, facilitator post with files a
   assert.strictEqual((await fl('POST', `/api/program/posts/${post.id}/files`, { filename: 'a.pdf', data: pdf })).status, 201);
   const p = (await fl('GET', '/api/program/posts')).body.posts.find((x) => x.id === post.id);
   assert.deepStrictEqual([p.video_url, p.files.length], ['https://youtu.be/dQw4w9WgXcQ', 1]);
+});
+
+test('fixed expenses, real expected net, today summary, class teacher from parents, partner offset, role features', async () => {
+  const admin = await login('admin', 'admin123');
+  const month = new Date().toISOString().slice(0, 7);
+  // مصروف قارّ: يظهر غير مدفوع ويُطرح من الربح المتوقّع، ثم يُدفع
+  const fx = (await admin('POST', '/api/fixed-expenses', { name: 'كراء', category: 'rent', amount: 900, due_day: 1 })).body;
+  let list = (await admin('GET', `/api/fixed-expenses?month=${month}`)).body;
+  const item = list.items.find((x) => x.id === fx.id);
+  assert.deepStrictEqual([item.left, item.status], [900, new Date().getUTCDate() === 1 ? 'today' : 'late']);
+  let f = (await admin('GET', '/api/board/forecast')).body;
+  assert.ok(f.fixed_left >= 900);
+  assert.strictEqual(Math.round((f.net_now - f.salaries_left - f.fixed_left) * 1000) / 1000, f.net_expected);
+  assert.ok((await admin('GET', '/api/alerts')).body.alerts.some((a) => a.link === '#/fixed'));
+  assert.strictEqual((await admin('POST', `/api/fixed-expenses/${fx.id}/pay`, { month })).status, 201);
+  list = (await admin('GET', `/api/fixed-expenses?month=${month}`)).body;
+  assert.strictEqual(list.items.find((x) => x.id === fx.id).status, 'paid');
+  const led = (await admin('GET', `/api/ledger?month=${month}`)).body.entries.find((e) => e.fixed_id === fx.id);
+  assert.deepStrictEqual([led.amount, led.category], [900, 'rent']);
+  // ملخّص اليوم
+  const day = (await admin('GET', '/api/board/today')).body;
+  assert.ok(day.finance.expense.some((e) => e.fixed_id === fx.id));
+  assert.ok(Array.isArray(day.notes) && Array.isArray(day.absences));
+  // مدرّس قسم من الأولياء: يُفتح له حساب مؤطّر مرتبط، ومعلم دعم يولّي مؤطّرًا
+  const par = (await admin('POST', '/api/users', { role: 'parent', username: 'pc-par', full_name: 'وليّة مدرّسة', password: 'secret1', phone: '22000111' })).body.user;
+  const k = (await admin('POST', '/api/program/classes', { name: 'قسم الولية', teacher_id: par.id })).body.class;
+  const cls = (await admin('GET', '/api/program')).body.classes.find((x) => x.id === k.id);
+  const fac = (await admin('GET', '/api/users?role=teacher')).body.users.find((u) => u.id === cls.teacher_id);
+  assert.deepStrictEqual([fac.linked_parent_id, fac.program_staff, fac.full_name], [par.id, true, 'وليّة مدرّسة']);
+  await admin('PUT', `/api/program/classes/${k.id}`, { name: 'قسم الولية', teacher_id: par.id });
+  assert.strictEqual((await admin('GET', '/api/program')).body.classes.find((x) => x.id === k.id).teacher_id, fac.id);
+  const sup = (await admin('POST', '/api/users', { role: 'teacher', username: 'pc-sup', full_name: 'معلم دعم', password: 'secret1', hourly_rate: 10 })).body.user;
+  await admin('PATCH', `/api/program/classes/${k.id}/teacher`, { teacher_id: sup.id });
+  assert.strictEqual((await admin('GET', '/api/users?role=teacher')).body.users.find((u) => u.id === sup.id).also_program, true);
+  // الشريك وليّ: معلوم ابنه «خصم من نصيب الشريك» يُطرح من نصيبه ولا يدخل الصندوق
+  const pp = (await admin('POST', '/api/users', { role: 'parent', username: 'pt-par', full_name: 'شريك ولي', password: 'secret1' })).body.user;
+  const st = (await admin('POST', '/api/students', { full_name: 'ابن الشريك', level: '6', parent_id: pp.id, start_date: `${month}-01`, monthly_fee: 60 })).body.student;
+  await admin('PUT', '/api/partners/settings', { owner: 'Alaa', partners: [{ name: 'Aymen', share: 25, from: '2026-09', opening: 0, parent_id: pp.id }] });
+  const before = (await admin('GET', '/api/partners')).body.summary[0].paid;
+  const cashBefore = (await admin('GET', '/api/cash')).body;
+  assert.strictEqual((await admin('POST', `/api/students/${st.id}/payments`, { month, amount: 60, method: 'partner' })).status, 201);
+  const pt = (await admin('GET', '/api/partners')).body;
+  assert.strictEqual(Math.round((pt.summary[0].paid - before) * 1000) / 1000, 60);
+  assert.ok(pt.payments.some((x) => x.offset && x.amount === 60));
+  assert.deepStrictEqual((await admin('GET', '/api/cash')).body.days, cashBefore.days);
+  // صلاحيات الأولياء: إيقاف الخلاص والرسائل
+  const parent = await login('pt-par', 'secret1');
+  assert.ok((await parent('GET', `/api/students/${st.id}`)).body.finance);
+  await admin('PUT', '/api/role-features', { values: { parent: { pay: false, messages: false } } });
+  const file = (await parent('GET', `/api/students/${st.id}`)).body;
+  assert.deepStrictEqual([file.finance, file.hidden.pay], [null, true]);
+  assert.strictEqual((await parent('GET', '/api/threads')).status, 403);
+  assert.strictEqual((await parent('GET', '/api/me')).body.user.features['parent.messages'], false);
+  await admin('PUT', '/api/role-features', { values: {} });
+  assert.strictEqual((await parent('GET', '/api/threads')).status, 200);
+  // للمدير فقط
+  const adm2 = (await admin('POST', '/api/users', { role: 'admin', username: 'rf-adm', full_name: 'إداري', password: 'secret1' })).body.user;
+  assert.ok(adm2);
+  assert.strictEqual((await (await login('rf-adm', 'secret1'))('GET', '/api/role-features')).status, 403);
+  await admin('PUT', '/api/partners/settings', { owner: 'Alaa', partners: [{ name: 'Aymen', share: 25, from: '2026-09', opening: 0 }] });
 });

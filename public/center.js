@@ -800,7 +800,7 @@ async function viewPermissions(el) {
     el.innerHTML = '<div class="card muted">هذه الصفحة للمدير فقط.</div>';
     return;
   }
-  const data = await api('GET', '/api/permissions');
+  const [data, rf] = await Promise.all([api('GET', '/api/permissions'), api('GET', '/api/role-features').catch(() => null)]);
   const { permissions, admins } = data;
   let roles = data.roles.map((r) => ({ ...r, perms: { ...r.perms } }));
   const switches = (perms, attr) =>
@@ -811,9 +811,9 @@ async function viewPermissions(el) {
   const render = () => {
     el.innerHTML = `
       <div class="page-head"><div><h2>🔐 الأدوار والصلاحيات</h2>
-        <p class="muted">أنواع الحسابات: <b>المدير</b> (كل الصلاحيات) · <b>أدوار الإدارة</b> أسفله (الإدارة، شريك، محاسبة… تنجم تزيد وتنقّص) · المعلمون · المؤطّرون · الأولياء.
+        <p class="muted">أنواع الحسابات: <b>المدير</b> (كل الصلاحيات) · <b>أدوار الإدارة</b> أسفله (الإدارة، شريك، محاسبة… تنجم تزيد وتنقّص) · <b>المعلمون والمؤطّرون والأولياء</b> (تبويب ثالث).
         لإضافة حساب إداري جديد: <a href="#/admins">الإدارة ← + حساب</a>، ثم اختر دوره هنا.</p></div></div>
-      ${fileTabs([['roles', '🎭 الأدوار'], ['accounts', '👤 الحسابات']])}
+      ${fileTabs([['roles', '🎭 الأدوار'], ['accounts', '👤 الحسابات'], rf ? ['others', '👩‍🏫 المعلمون والأولياء'] : null])}
       <div class="tab-panel" data-panel="roles">
         <div class="role-grid">${roles
           .map(
@@ -842,8 +842,31 @@ async function viewPermissions(el) {
                 </section>`
           )
           .join('')}
-      </div>`;
+      </div>
+      ${rf ? `<div class="tab-panel" data-panel="others">
+        <p class="muted">شنوّة يشوف وينجم يعمل كل نوع من الحسابات. اللي توقفو يتنحّى من القائمة والتطبيقة تمنعو.</p>
+        <div class="role-grid">${[['teacher', '📚 مدرّسو دروس الدعم'], ['program_staff', '🎨 مؤطّرو البرنامج التربوي'], ['parent', '👪 الأولياء']]
+          .map(([g, title]) => `<section class="card role-card"><div class="role-head"><b>${title}</b></div>
+            <div class="perm-list">${Object.entries(rf.features[g])
+              .map(([k, l]) => `<label class="perm-row"><span>${esc(l)}</span><span class="switch"><input type="checkbox" data-rf="${g}.${k}" ${rf.values[g][k] ? 'checked' : ''}><i></i></span></label>`)
+              .join('')}</div></section>`)
+          .join('')}</div>
+        <div class="perm-foot sticky"><button class="btn" id="rf-save">💾 حفظ</button><span class="muted small">يُطبَّق على كل حسابات هذا النوع فورًا.</span></div>
+      </div>` : ''}`;
     bindFileTabs(el);
+    $('#rf-save')?.addEventListener('click', async () => {
+      const values = {};
+      el.querySelectorAll('[data-rf]').forEach((x) => {
+        const [g, k] = x.dataset.rf.split('.');
+        (values[g] ||= {})[k] = x.checked;
+      });
+      try {
+        rf.values = (await api('PUT', '/api/role-features', { values })).values;
+        toast('تم حفظ صلاحيات المعلمين والأولياء');
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
     const readRoles = () =>
       el.querySelectorAll('.role-card').forEach((c) => {
         const r = roles[Number(c.dataset.i)];
@@ -977,7 +1000,7 @@ async function viewAccounting(el) {
       <div class="ak ${missing ? 'warn' : 'ok'}"><span>📎 الوصولات</span><b>${missing ? `${missing} ناقصة` : 'كاملة ✓'}</b><small>${data.documents.length} ملف مرفق</small></div>`;
     // البنك
     $('#ac-bank').innerHTML = `<section class="card">
-      <div class="section-head"><div><h3>🏦 ما دخل عبر حساب المركز البنكي · ${esc(monthLabel(mo))}</h3><p class="muted small">الدفوعات بـ«بنك الشركة»، التحويل والصكّ. أرفق وصل كل معاملة.</p></div>
+      <div class="section-head"><div><h3>🏦 ما دخل عبر حساب المركز البنكي · ${esc(monthLabel(mo))}</h3><p class="muted small">الدفوعات المسجّلة بـ«بنك الشركة» فقط (التحويلات والصكوك الأخرى لا تُحتسب هنا). أرفق وصل كل معاملة.</p></div>
         <button class="btn ghost small" id="ac-csv">⬇ Excel</button></div>
       ${
         data.bank.length
@@ -1349,4 +1372,143 @@ async function viewParent(el, id) {
     </section>`;
   $('#pp-edit').addEventListener('click', () => parentQuickEdit(id, () => viewParent(el, id)));
   $('#pp-pw').addEventListener('click', () => issuePassword(p));
+}
+
+// ---------- المصاريف القارّة: الكراء، المحاسبة والقباضة، أجور الإطار الإداري، الفواتير ----------
+const FIXED_ICON = { rent: '🏠', accounting: '🧮', bills: '💡', other: '📌' };
+const FIXED_PRESETS = [
+  ['rent', 'كراء المحلّ', 5],
+  ['accounting', 'أجرة المحاسب', 10],
+  ['accounting', 'القباضة (قسط شهري)', 15],
+  ['bills', 'الكهرباء والغاز (STEG)', 20],
+  ['bills', 'الماء (SONEDE)', 20],
+  ['bills', 'الإنترنت والهاتف', 10],
+];
+const FIXED_FROM_LABELS = { cash: '💵 من الصندوق', bank: '🏦 من البنك', owner: '👤 من سحب صاحب المشروع' };
+const FIXED_STATUS = {
+  paid: ['ok', '✓ مدفوع'],
+  late: ['late', '⏰ متأخّر'],
+  today: ['late', '📍 أجله اليوم'],
+  upcoming: ['soon', '🗓 قادم'],
+};
+
+async function viewFixed(el) {
+  el.innerHTML = `
+    <div class="page-head"><div><h2>📌 المصاريف القارّة</h2>
+      <p class="muted">كل ما يُدفع كل شهر في مكان واحد: الكراء، المحاسبة والقباضة، أجور الإطار الإداري، الفواتير. التطبيقة تذكّرك قبل الأجل وتطرحها من الربح المتوقّع.</p></div>
+      <div class="actions">${monthPicker('fx-month')}<button class="btn" id="fx-add">+ مصروف قارّ</button></div></div>
+    <div id="fx-body"><p class="muted">جاري التحميل…</p></div>`;
+  let data;
+  const month = () => $('#fx-month').value;
+  const form = (f, preset) =>
+    openModal(
+      f ? 'تعديل مصروف قارّ' : 'مصروف قارّ جديد',
+      `<label>الاسم<input name="name" required value="${esc(f?.name || preset?.[1] || '')}" placeholder="مثال: كراء المحلّ"></label>
+       <div class="row">
+         <label>الصنف<select name="category">${Object.entries(data.categories)
+           .map(([k, v]) => `<option value="${k}" ${(f?.category || preset?.[0]) === k ? 'selected' : ''}>${FIXED_ICON[k]} ${esc(v)}</option>`)
+           .join('')}</select></label>
+         <label>المبلغ الشهري (د.ت)<input name="amount" inputmode="decimal" required value="${esc(f?.amount ?? '')}"></label>
+       </div>
+       <div class="row">
+         <label>يوم الدفع في الشهر<input name="due_day" type="number" min="1" max="31" required value="${esc(f?.due_day ?? preset?.[2] ?? 1)}"></label>
+         <label>يُدفع عادةً<select name="paid_from">${Object.entries(FIXED_FROM_LABELS)
+           .map(([k, v]) => `<option value="${k}" ${(f?.paid_from || 'cash') === k ? 'selected' : ''}>${v}</option>`)
+           .join('')}</select></label>
+       </div>
+       <label>ملاحظات<input name="notes" value="${esc(f?.notes || '')}" placeholder="مثال: رقم العقد، اسم صاحب المحلّ…"></label>
+       <p class="muted small">أجور الإطار الإداري والعاملين تُضاف من «الأجور ← الموارد البشرية الأخرى» وتظهر هنا وحدها.</p>`,
+      async (d) => {
+        if (f) await api('PUT', `/api/fixed-expenses/${f.id}`, d);
+        else await api('POST', '/api/fixed-expenses', d);
+        toast('تم الحفظ');
+        load();
+      }
+    );
+  const pay = (f) =>
+    openModal(
+      `💸 دفع: ${f.name}`,
+      `<p class="muted">شهر <b>${esc(monthLabel(data.month))}</b> · الباقي <b>${fmtMoney(f.left)}</b></p>
+       <div class="row">
+         <label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(f.left)}"></label>
+         <label>تاريخ الدفع<input type="date" name="date" value="${today()}"></label>
+       </div>
+       <label>من أين؟<select name="paid_from">${Object.entries(FIXED_FROM_LABELS)
+         .map(([k, v]) => `<option value="${k}" ${f.paid_from === k ? 'selected' : ''}>${v}</option>`)
+         .join('')}</select></label>
+       <p class="muted small">يتسجّل وحدو في «المداخيل والمصاريف» كمصروف قارّ.</p>`,
+      async (d) => {
+        await api('POST', `/api/fixed-expenses/${f.id}/pay`, { ...d, month: data.month });
+        toast('تم تسجيل الدفع');
+        load();
+      }
+    );
+  const load = async () => {
+    data = await api('GET', '/api/fixed-expenses?month=' + month());
+    if (!$('#fx-body')) return;
+    const g = data.grand;
+    const pct = g.total ? Math.round((g.paid / g.total) * 100) : 0;
+    const byCat = Object.keys(data.categories).map((c) => [c, data.items.filter((x) => x.category === c)]).filter(([, l]) => l.length);
+    const card = (f) => {
+      const [cls, label] = FIXED_STATUS[f.status];
+      return `<article class="fx-item ${cls}">
+        <div class="fx-main"><b>${esc(f.name)}</b>
+          <small>${f.status === 'paid' ? `دُفع ${fmtDate(f.paid_on)}` : `يحلّ ${fmtDate(f.due_date)}`} · ${esc(FIXED_FROM_LABELS[f.paid_from] || '')}</small>
+          ${f.notes ? `<small class="muted">${esc(f.notes)}</small>` : ''}</div>
+        <div class="fx-amt"><b>${fmtMoney(f.amount)}</b><span class="fx-st ${cls}">${label}</span>
+          ${f.paid && f.left ? `<small>الباقي ${fmtMoney(f.left)}</small>` : ''}</div>
+        <div class="fx-acts">
+          ${f.left ? `<button class="btn small" data-pay="${f.id}">💸 دفع</button>` : ''}
+          <button class="btn ghost small" data-edit="${f.id}" aria-label="تعديل">✎</button>
+          <button class="btn ghost small danger" data-del="${f.id}" aria-label="حذف">🗑</button>
+        </div>
+      </article>`;
+    };
+    const staff = data.staff;
+    $('#fx-body').innerHTML = `
+      <div class="fb-kpis">
+        <div class="fb-kpi"><span>مجموع القارّ · ${esc(monthLabel(data.month))}</span><b>${fmtMoney(g.total)}</b><small>${data.items.length + staff.people.length} بند</small></div>
+        <div class="fb-kpi in"><span>المدفوع</span><b>${fmtMoney(g.paid)}</b><small>${pct}%</small></div>
+        <div class="fb-kpi out"><span>الباقي للدفع</span><b>${fmtMoney(g.left)}</b><small>يُطرح من الربح المتوقّع</small></div>
+      </div>
+      <div class="fx-bar"><i style="width:${pct}%"></i></div>
+      ${byCat
+        .map(
+          ([c, list]) => `<section class="card fx-sec"><div class="section-head"><h3>${FIXED_ICON[c]} ${esc(data.categories[c])}</h3>
+            <span class="muted small">${fmtMoney(list.reduce((t, x) => t + x.amount, 0))} / شهر</span></div>
+            <div class="fx-list">${list.map(card).join('')}</div></section>`
+        )
+        .join('')}
+      <section class="card fx-sec"><div class="section-head"><h3>👥 أجور الإطار الإداري والعاملين</h3>
+        <a class="btn ghost small" href="#/salaries">الدفع من «الأجور» ←</a></div>
+        ${staff.people.length
+          ? `<div class="fx-list">${staff.people
+              .map((p) => {
+                const left = Math.max(p.due - p.paid, 0);
+                const cls = left ? (data.month < today().slice(0, 7) ? 'late' : 'soon') : 'ok';
+                return `<article class="fx-item ${cls}"><div class="fx-main"><b>${esc(p.name)}</b><small>${esc(p.basis || '')}</small></div>
+                  <div class="fx-amt"><b>${fmtMoney(p.due)}</b><span class="fx-st ${cls}">${left ? `الباقي ${fmtMoney(left)}` : '✓ مدفوع'}</span></div></article>`;
+              })
+              .join('')}</div>`
+          : '<p class="muted">لا أحد مسجّل. زيد الإطار الإداري والعاملين من «الأجور ← الموارد البشرية الأخرى».</p>'}
+      </section>
+      ${data.items.length ? '' : `<section class="card"><h3>⚡ إضافة سريعة</h3><p class="muted small">اضغط على المصروف وكمّل المبلغ:</p>
+        <div class="fx-presets">${FIXED_PRESETS.map((p, i) => `<button class="chip-btn" data-preset="${i}">${FIXED_ICON[p[0]]} ${esc(p[1])}</button>`).join('')}</div></section>`}`;
+    const find = (id) => data.items.find((x) => x.id === Number(id));
+    el.querySelectorAll('[data-pay]').forEach((b) => b.addEventListener('click', () => pay(find(b.dataset.pay))));
+    el.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => form(find(b.dataset.edit))));
+    el.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => form(null, FIXED_PRESETS[Number(b.dataset.preset)])));
+    el.querySelectorAll('[data-del]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const f = find(b.dataset.del);
+        if (!confirmAction(`حذف «${f.name}» من المصاريف القارّة؟\nالدفعات السابقة تبقى مسجّلة.`)) return;
+        await api('DELETE', `/api/fixed-expenses/${f.id}`);
+        toast('تم الحذف');
+        load();
+      })
+    );
+  };
+  $('#fx-add').addEventListener('click', () => form(null));
+  bindMonth('fx-month', load);
+  load();
 }
