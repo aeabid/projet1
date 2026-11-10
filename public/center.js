@@ -1488,16 +1488,45 @@ async function viewFixed(el) {
       $('#fx-newcat').hidden = e.target.value !== '__new';
       if (e.target.value === '__new') $('#fx-newcat input').focus();
     });
-  // إدارة الأصناف التي أضافها المدير
-  const cats = () =>
+  // الأصناف: تسمية، حذف، إضافة (كلها ما عدا «أخرى»)
+  const cats = () => {
+    let list = data.category_list.map((c) => ({ ...c }));
+    const used = (k) => data.items.filter((x) => x.category === k).length;
+    const draw = () => {
+      $('#cat-list').innerHTML = list
+        .map((c, i) => `<li class="cat-row"><span>${FIXED_ICON[c.key] || '🏷️'}</span>
+            <input data-cat="${i}" value="${esc(c.label)}" aria-label="اسم الصنف" placeholder="اسم الصنف">
+            ${c.key && used(c.key) ? `<small class="muted">${used(c.key)} بند</small>` : ''}
+            <button type="button" class="link danger small" data-rm="${i}" aria-label="حذف">🗑</button></li>`)
+        .join('') + '<li class="cat-row fixed"><span>📌</span><b>أخرى</b><small class="muted">ثابت</small></li>';
+      $('#cat-list').querySelectorAll('[data-cat]').forEach((x) => x.addEventListener('input', () => (list[Number(x.dataset.cat)].label = x.value)));
+      $('#cat-list').querySelectorAll('[data-rm]').forEach((b) =>
+        b.addEventListener('click', () => {
+          const c = list[Number(b.dataset.rm)];
+          if (c.key && used(c.key) && !confirmAction(`حذف «${c.label}»؟ بنوده (${used(c.key)}) تولّي «أخرى».`)) return;
+          list.splice(Number(b.dataset.rm), 1);
+          draw();
+        })
+      );
+    };
     openModal(
       '🏷️ أصناف المصاريف القارّة',
-      `<p class="muted small">الأصناف الأساسية: الكراء، المحاسبة والقباضة، الفواتير، أخرى. تنجم تزيد أصناف من «+ مصروف قارّ ← الصنف ← ＋ صنف جديد».</p>
-       ${data.custom_categories.length ? `<ul class="levels">${data.custom_categories
-         .map((c) => `<li><span>🏷️ ${esc(c.label)}</span><button type="button" class="link danger small" data-delcat="${esc(c.key)}">حذف</button></li>`)
-         .join('')}</ul>` : '<p class="muted">ما زلت ما زدتش أصناف.</p>'}`,
-      async () => {}
+      `<p class="muted small">بدّل الاسم مباشرة، احذف بـ🗑، أو زيد صنف جديد. الحذف ما يفسخش البنود: تولّي في «أخرى».</p>
+       <ul class="cat-list" id="cat-list"></ul>
+       <button type="button" class="btn ghost small" id="cat-add">+ صنف جديد</button>`,
+      async () => {
+        await api('PUT', '/api/fixed-expenses/categories', { categories: list });
+        toast('تم حفظ الأصناف');
+        load();
+      }
     );
+    draw();
+    $('#cat-add').addEventListener('click', () => {
+      list.push({ key: '', label: '' });
+      draw();
+      $('#cat-list').querySelector(`[data-cat="${list.length - 1}"]`).focus();
+    });
+  };
   const pay = (f) =>
     openModal(
       `💸 دفع: ${f.name}`,
@@ -1608,20 +1637,7 @@ async function viewFixed(el) {
     );
   };
   $('#fx-add').addEventListener('click', () => form(null));
-  $('#fx-cats').addEventListener('click', () => {
-    if (!data) return;
-    cats();
-    $('#modal-form button[type=submit]').hidden = true;
-    document.querySelectorAll('[data-delcat]').forEach((b) =>
-      b.addEventListener('click', async () => {
-        if (!confirmAction('حذف هذا الصنف؟ بنوده تولّي «أخرى».')) return;
-        await api('POST', '/api/fixed-expenses/categories/delete', { key: b.dataset.delcat });
-        $('#modal').close();
-        toast('تم حذف الصنف');
-        load();
-      })
-    );
-  });
+  $('#fx-cats').addEventListener('click', () => data && cats());
   bindMonth('fx-month', load);
   load();
 }

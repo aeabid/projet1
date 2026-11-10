@@ -1621,10 +1621,16 @@ test('program WhatsApp groups reach the parent, custom fixed categories, expecte
   let list = (await admin('GET', '/api/fixed-expenses')).body;
   const item = list.items.find((x) => x.id === fx.id);
   assert.strictEqual(item.category_label, 'التأمين');
-  assert.ok(list.custom_categories.some((x) => x.label === 'التأمين'));
-  await admin('POST', '/api/fixed-expenses/categories/delete', { key: item.category });
+    assert.ok(list.category_list.some((x) => x.label === 'التأمين'));
+  // تعديل الأصناف: تسمية الكراء، حذف «التأمين»، إضافة صنف جديد
+  const cats = list.category_list.filter((c) => c.key !== item.category).map((c) => (c.key === 'rent' ? { ...c, label: 'كراء المقرّ' } : c));
+  const saved = (await admin('PUT', '/api/fixed-expenses/categories', { categories: [...cats, { label: 'النقل' }] })).body.categories;
+  assert.ok(saved.some((c) => c.key === 'rent' && c.label === 'كراء المقرّ'));
+  assert.ok(saved.some((c) => c.label === 'النقل'));
   list = (await admin('GET', '/api/fixed-expenses')).body;
   assert.strictEqual(list.items.find((x) => x.id === fx.id).category, 'other');
+  assert.strictEqual(list.categories.rent, 'كراء المقرّ');
+  assert.strictEqual((await admin('PUT', '/api/fixed-expenses/categories', { categories: [{ label: 'أ' }, { label: 'أ' }] })).status, 400);
   // الأجور المتوقّعة
   const sal = (await admin('GET', '/api/fixed-expenses/salaries')).body;
   assert.ok(Array.isArray(sal.groups) && typeof sal.expected === 'number');
