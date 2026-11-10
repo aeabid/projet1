@@ -2104,3 +2104,6 @@ a.fx-item { color: var(--text); text-decoration: none; grid-template-columns: 1f
   .parents-table .pk-rows { grid-template-columns: 1fr 1fr; }
   .parents-table td.row-actions { display: flex; flex-wrap: wrap; gap: .35rem; justify-content: flex-end; }
 }
+.ab-fc { margin: .2rem 0 .9rem; } .ab-fc .fcb-flow { margin-top: 0; }
+.fcb-step.goal i { color: #e9d5ff; }
+@media (max-width: 640px) { .fcb-step.goal.half { flex-basis: calc(50% - .5rem); } .fcb-step.goal.half b { font-size: 1.2rem; } }

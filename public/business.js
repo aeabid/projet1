@@ -1676,7 +1676,10 @@ async function activityBoard(box, key) {
     </section>`;
   const row = (label, value, cls = '') => `<div class="fb-row ${cls}"><span>${label}</span><b>${value}</b></div>`;
   const load = async () => {
-    const s = await api('GET', '/api/finance/summary?month=' + $(`#ab-${key}`).value);
+    const month = $(`#ab-${key}`).value;
+    // الرواتب المرتقبة (كل الحصص المبرمجة، دون غيابات): تُحسب بالتوازي وتُضاف حين تجهز
+    const fcP = api('GET', '/api/board/forecast?month=' + month).catch(() => null);
+    const s = await api('GET', '/api/finance/summary?month=' + month);
     const x = s.activities.find((a) => a.key === key);
     const acc = s.accrual[key];
     const cost = key === 'support' ? acc.teachers_due : acc.expenses;
@@ -1685,8 +1688,9 @@ async function activityBoard(box, key) {
       <div class="fb-kpis">
         <div class="fb-kpi in"><span>المداخيل</span><b>${fmtMoney(x.income)}</b><small>دفوعات الأولياء</small></div>
         <div class="fb-kpi out"><span>المصاريف</span><b>${fmtMoney(x.expense)}</b><small>رواتب ${who}</small></div>
-        <div class="fb-kpi net ${x.net < 0 ? 'neg' : ''}"><span>الصافي</span><b>${x.net < 0 ? '−' : ''}${fmtMoney(Math.abs(x.net))}</b><small>${x.net < 0 ? 'خسارة' : x.net > 0 ? 'ربح' : 'متوازن'}</small></div>
+        <div class="fb-kpi net ${x.net < 0 ? 'neg' : ''}"><span>الربح الحالي</span><b>${x.net < 0 ? '−' : ''}${fmtMoney(Math.abs(x.net))}</b><small>إلى اليوم</small></div>
       </div>
+      <div class="ab-fc" id="ab-${key}-fc"><p class="muted small">⏳ حساب الرواتب المرتقبة إلى آخر الشهر…</p></div>
       <div class="fb-cols">
         <div class="fb-panel">
           <h4>💵 ما دخل وما خرج فعليًا</h4>
@@ -1704,6 +1708,17 @@ async function activityBoard(box, key) {
           ${key === 'support' ? row('منها مدفوع', fmtMoney(acc.teachers_paid), 'muted') : ''}
           ${row('هامش الربح', netBadge(acc.margin), 'total')}
         </div>
+      </div>`;
+    const fc = await fcP;
+    const box2 = $(`#ab-${key}-fc`);
+    if (!box2 || $(`#ab-${key}`)?.value !== month) return;
+    const g = fc?.salaries?.find((x2) => x2.key === key);
+    if (!g) return void (box2.innerHTML = '');
+    const real = Math.round((x.net - g.left) * 1000) / 1000;
+    box2.innerHTML = `<div class="fcb-flow">
+        <div class="fcb-step"><small>− رواتب ${who} المرتقبة الباقية</small><b class="out">${fmtMoney(g.left)}</b><i>المرتقب للشهر ${fmtMoney(g.expected)} · كل الحصص دون غيابات</i></div>
+        <span class="fcb-op">=</span>
+        <div class="fcb-step goal half"><small>= الربح الحقيقي المنتظر</small><b class="${real < 0 ? 'neg' : ''}">${fmtMoney(real)}</b><i>الربح الحالي − الرواتب الباقية</i></div>
       </div>`;
   };
   const loadYear = async () => {
