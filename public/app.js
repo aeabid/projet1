@@ -508,7 +508,7 @@ const GROUP_PERM = { 'دروس الدعم': 'school', 'البرنامج التر
 const FEATURE_HASH = {
   '#/attendance': ['teacher.attendance'], '#/evaluations': ['teacher.evaluations'], '#/overview': ['teacher.evaluations'],
   '#/tasks': ['teacher.tasks'], '#/group-message': ['teacher.group_message'], '#/messages': ['teacher.messages', 'parent.messages'],
-  '#/my-pay': ['teacher.my_pay'], '#/todo': ['teacher.todo'],
+  '#/my-pay': ['teacher.my_pay'],
   '#/program/attendance': ['program_staff.attendance'], '#/program/posts': ['program_staff.posts'], '#/program/pay': ['program_staff.my_pay'],
   '#/my-receipts': ['parent.receipts'], '#/timetable': ['parent.timetable'],
 };
@@ -635,7 +635,6 @@ const NAV = {
     ['#/my-pay', 'ساعاتي وخلاصي'],
     ['#/program', 'البرنامج التربوي'],
     ['#/program/posts', 'أنشطة ورسائل قسمي'],
-    ['#/todo', 'مهامي'],
     ['#/account', 'حسابي'],
   ],
   // مؤطّر البرنامج التربوي: لا علاقة له بدروس الدعم
@@ -2908,6 +2907,28 @@ const loginBtn = (u, small = false) =>
     ? `<button type="button" class="btn wa ${small ? 'small' : 'login-btn'}" data-pw="${u.id}" title="يرسل الرابط واسم المستخدم وكلمة سر جديدة عبر واتساب">${WA_ICON} إرسال الدخول</button>`
     : `<button type="button" class="btn ghost ${small ? 'small' : 'login-btn'}" data-pw="${u.id}" title="لا رقم واتساب: تظهر البيانات للنسخ">🔑 بيانات الدخول</button>`;
 
+// الدخول: هل أُرسلت بيانات الدخول لهذا الحساب؟ (حتى لا يُعاد الإرسال بالغلط)
+const sentBadge = (u) =>
+  u.login_sent_at
+    ? `<span class="sent-badge ok" title="أُرسلت بيانات الدخول">✓ أُرسل الدخول ${fmtDate(u.login_sent_at.slice(0, 10))}</span>`
+    : '<span class="sent-badge no">✉️ لم يُرسل الدخول</span>';
+// خيارات فلتر الأولياء حسب البرنامج والمستوى والقسم (مع العدد)
+function parentProgOptions(users) {
+  const n = (pred) => users.filter(pred).length;
+  const lv = state.meta.levels.map((l) => [`lv:${l.code}`, `— ${l.label}`, n((u) => u.children.some((c) => c.level === l.code && c.status !== 'left'))]);
+  const classes = new Map();
+  for (const u of users) {
+    for (const c of u.program_children || []) if (c.class_id) classes.set(c.class_id, c.class_name);
+    for (const c of u.children) if (c.program_class_id) classes.set(c.program_class_id, c.program_class);
+  }
+  const cl = [...classes].map(([id, name]) => [`cl:${id}`, `— ${name}`, n((u) => (u.program_children || []).some((c) => c.class_id === id) || u.children.some((c) => c.program_class_id === id))]);
+  const opt = ([v, l, c]) => `<option value="${esc(v)}">${esc(l)} (${c})</option>`;
+  return `<option value="">كل البرامج (${users.length})</option>
+    <optgroup label="📚 دروس الدعم">${opt(['support', 'كل دروس الدعم', n((u) => u.children.some((c) => c.status !== 'left'))])}${lv.filter((x) => x[2]).map(opt).join('')}</optgroup>
+    <optgroup label="🎨 البرنامج التربوي">${opt(['program', 'كل البرنامج التربوي', n((u) => (u.program_children || []).length || u.children.some((c) => c.program_class_id))])}${cl.map(opt).join('')}</optgroup>
+    ${opt(['none', 'بلا أبناء', n((u) => !u.children.length && !(u.program_children || []).length)])}`;
+}
+
 // قائمة الأولياء: بطاقات أو جدول
 function viewParentsList(el, users, reload, edit) {
   // الأبناء: سطر لكل ابن (الاسم + القسم)، مرتّبة حتى لو كانوا 3 أو أكثر، و«+» لإضافة ابن آخر
@@ -2921,11 +2942,43 @@ function viewParentsList(el, users, reload, edit) {
   let view = studentsView('parentsView');
   el.innerHTML = `
     <div class="page-head"><h2>الأولياء <span class="muted small">(${users.length})</span></h2><button class="btn" id="add-user">+ ولي جديد</button></div>
-    <div class="filters"><input id="pq" type="search" placeholder="بحث بالاسم أو الهاتف أو اسم الابن…">${viewToggle()}</div>
+    <div class="filters">
+      <input id="pq" type="search" placeholder="بحث بالاسم أو الهاتف أو اسم الابن…">
+      <select id="p-prog" aria-label="البرنامج">${parentProgOptions(users)}</select>
+      <select id="p-sent" aria-label="بيانات الدخول"><option value="">الدخول: الكل</option><option value="no">✉️ لم تُرسل له بعد</option><option value="yes">✓ أُرسلت له</option></select>
+      ${viewToggle()}</div>
+    <div id="p-progress"></div>
     <div id="p-list"></div>`;
+  ['p-prog', 'p-sent'].forEach((k) => {
+    const v = sessionStorage.getItem(k);
+    if (v !== null && [...$('#' + k).options].some((o) => o.value === v)) $('#' + k).value = v;
+  });
+  // البرنامج: دروس الدعم (كل المستويات أو مستوى) / البرنامج التربوي (كل الأقسام أو قسم)
+  const inProg = (u, f) => {
+    if (!f) return true;
+    const sup = u.children.filter((c) => c.status !== 'left');
+    const progClasses = [...(u.program_children || []).map((c) => c.class_id), ...u.children.filter((c) => c.program_class_id).map((c) => c.program_class_id)];
+    if (f === 'support') return sup.length > 0;
+    if (f.startsWith('lv:')) return sup.some((c) => c.level === f.slice(3));
+    if (f === 'program') return (u.program_children || []).length > 0 || u.children.some((c) => c.program_class_id);
+    if (f.startsWith('cl:')) return progClasses.includes(Number(f.slice(3)));
+    if (f === 'none') return !u.children.length && !(u.program_children || []).length;
+    return true;
+  };
   const render = () => {
     const q = $('#pq').value.trim().toLowerCase();
-    const list = users.filter((u) => !q || [u.full_name, u.phone, u.username, u.cin, ...u.children.map((c) => c.full_name), ...(u.program_children || []).map((c) => c.full_name)].some((x) => String(x || '').toLowerCase().includes(q)));
+    const f = $('#p-prog').value;
+    const sent = $('#p-sent').value;
+    sessionStorage.setItem('p-prog', f);
+    sessionStorage.setItem('p-sent', sent);
+    const scoped = users.filter((u) => inProg(u, f) && (!q || [u.full_name, u.phone, u.username, u.cin, ...u.children.map((c) => c.full_name), ...(u.program_children || []).map((c) => c.full_name)].some((x) => String(x || '').toLowerCase().includes(q))));
+    const list = scoped.filter((u) => !sent || (sent === 'yes' ? u.login_sent_at : !u.login_sent_at));
+    const done = scoped.filter((u) => u.login_sent_at).length;
+    const pct = scoped.length ? Math.round((done / scoped.length) * 100) : 0;
+    $('#p-progress').innerHTML = scoped.length
+      ? `<div class="card sent-progress"><div><b>✉️ بيانات الدخول: أُرسلت لـ ${done} من ${scoped.length} ولي</b>${scoped.length - done ? `<small> · باقي ${scoped.length - done}</small>` : ' <small>· الكل ✓</small>'}</div>
+          <div class="sp-bar"><i style="width:${pct}%"></i></div></div>`
+      : '';
     $('#p-list').innerHTML = !list.length
       ? '<div class="card muted">لا يوجد أولياء.</div>'
       : view === 'cards'
@@ -2935,7 +2988,7 @@ function viewParentsList(el, users, reload, edit) {
               <a class="pc-head" href="#/parents/${u.id}">${avatar({ full_name: u.full_name }, 'md')}
                 <div><h3>${esc(u.full_name)}</h3><span class="muted small">${count(u) ? `${count(u)} ${count(u) === 1 ? 'ابن' : 'أبناء'}` : 'بلا أبناء'}${u.google_email ? ' · Google' : ''}</span>${lastSeen(u)}</div></a>
               <div class="pc-phones">${phones(u).length ? phones(u).map((p) => `<span class="pc-phone"><span dir="ltr">${esc(p)}</span><a class="pc-call" href="tel:${esc(p)}" aria-label="اتصال">📞</a>${waButton(p)}</span>`).join('') : '<span class="muted small">لا هاتف</span>'}</div>
-              ${loginBtn(u)}
+              ${sentBadge(u)}${loginBtn(u)}
               ${kidsBox(u)}
               <div class="pc-foot"><span class="muted small" dir="ltr">${esc(u.username)}${u.cin ? ` · ${esc(u.cin)}` : ''}</span>
                 <span><a class="btn ghost small" href="#/parents/${u.id}">الملف</a><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
@@ -2943,7 +2996,7 @@ function viewParentsList(el, users, reload, edit) {
           )
           .join('')}</div>`
       : `<div class="table-wrap parents-table"><table>
-          <thead><tr><th>الولي</th><th>الهاتف</th><th>الأبناء</th><th>اسم المستخدم</th><th>آخر دخول</th><th></th></tr></thead>
+          <thead><tr><th>الولي</th><th>الهاتف</th><th>الأبناء</th><th>اسم المستخدم</th><th>الدخول</th><th></th></tr></thead>
           <tbody>${list
             .map(
               (u) => `<tr>
@@ -2951,13 +3004,19 @@ function viewParentsList(el, users, reload, edit) {
                 <td>${phones(u).map((p) => `<span class="phone-line"><span dir="ltr">${esc(p)}</span>${waButton(p)}</span>`).join('') || '<span class="muted">—</span>'}</td>
                 <td class="kids-cell">${kidsBox(u)}</td>
                 <td class="nowrap" dir="ltr">${esc(u.username)}</td>
-                <td class="nowrap">${lastSeen(u)}</td>
+                <td class="nowrap">${sentBadge(u)}${lastSeen(u)}</td>
                 <td class="row-actions">${loginBtn(u, true)}<button class="btn ghost small" data-edit="${u.id}">تعديل</button>${u.id !== state.user.id ? `<button class="btn danger small" data-del="${u.id}">حذف</button>` : ''}</td>
               </tr>`
             )
             .join('')}</tbody></table></div>`;
     $('#p-list').querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => edit(users.find((u) => u.id === Number(b.dataset.edit)))));
-    $('#p-list').querySelectorAll('[data-pw]').forEach((b) => b.addEventListener('click', () => issuePassword(users.find((u) => u.id === Number(b.dataset.pw)))));
+    $('#p-list').querySelectorAll('[data-pw]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const u = users.find((x) => x.id === Number(b.dataset.pw));
+        if (u.login_sent_at && !confirmAction(`بيانات الدخول أُرسلت لـ ${u.full_name} يوم ${fmtDate(u.login_sent_at.slice(0, 10))}.\nإرسال كلمة سر جديدة (القديمة ما عادش تخدم)؟`)) return;
+        issuePassword(u, () => ((u.login_sent_at = new Date().toISOString()), render()));
+      })
+    );
     $('#p-list').querySelectorAll('[data-add-kid]').forEach((b) => b.addEventListener('click', () => addSiblingFor(Number(b.dataset.addKid), reload)));
     $('#p-list').querySelectorAll('[data-del]').forEach((b) =>
       b.addEventListener('click', async () => {
@@ -2971,6 +3030,8 @@ function viewParentsList(el, users, reload, edit) {
   bindViewToggle(el, 'parentsView', () => view, (v) => (view = v), render);
   let timer;
   $('#pq').addEventListener('input', () => (clearTimeout(timer), (timer = setTimeout(render, 150))));
+  $('#p-prog').addEventListener('change', render);
+  $('#p-sent').addEventListener('change', render);
   $('#add-user').addEventListener('click', () => edit(null));
   render();
 }

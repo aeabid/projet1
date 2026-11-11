@@ -907,3 +907,7 @@ ALTER TABLE program_requests ENABLE ROW LEVEL SECURITY;
 -- الموارد البشرية: أجرة شخص تُحتسب في فضاء المحاسبة (مثلًا أجرة المحاسب)، وحساب دخول لكل شخص
 ALTER TABLE staff ADD COLUMN IF NOT EXISTS accounting_category TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_id INT REFERENCES staff(id) ON DELETE SET NULL;
+
+-- ===== 20261130090000_login_sent.sql =====
+-- تاريخ إرسال بيانات الدخول (اسم المستخدم وكلمة السر) لصاحب الحساب
+ALTER TABLE users ADD COLUMN IF NOT EXISTS login_sent_at TIMESTAMPTZ;

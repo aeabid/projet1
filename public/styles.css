@@ -2209,3 +2209,11 @@ dialog .toast, #toast { z-index: 2147483647; }
 .pg-s b { font-size: .7rem; } .pg-s small { opacity: .75; }
 .pg-s.drag { z-index: 5; cursor: grabbing; box-shadow: 0 8px 20px rgba(60,20,100,.25); opacity: .95; }
 .per-closed { background: #f1f5f9; border-radius: 10px; padding: .45rem .7rem; font-size: .88rem; }
+
+/* ===== الأولياء: إرسال بيانات الدخول ===== */
+.sent-badge { display: inline-block; font-size: .72rem; font-weight: 800; border-radius: 99px; padding: .1rem .55rem; margin: .1rem 0 .25rem; white-space: nowrap; }
+.sent-badge.ok { background: #dcfce7; color: #166534; } .sent-badge.no { background: #fff7ed; color: #9a3412; }
+.sent-progress { display: flex; flex-direction: column; gap: .4rem; padding: .7rem .9rem; }
+.sent-progress small { color: var(--muted); }
+.sp-bar { height: 8px; background: var(--soft-2); border-radius: 99px; overflow: hidden; } .sp-bar i { display: block; height: 100%; background: linear-gradient(90deg, #22c55e, #16a34a); }
+td .sent-badge { display: block; width: max-content; }

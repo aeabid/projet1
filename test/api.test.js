@@ -482,11 +482,13 @@ test('center management: discounts, receipts, debts, people, tasks, meetings, al
   await admin('POST', '/api/todo', { title: 'إصلاح المكيّف', kind: 'problem', priority: 'urgent' });
   const late = (await admin('POST', '/api/todo', { title: 'تحضير امتحان', assignee_user_id: t.id, due_date: '2026-01-01' })).body.task;
   const teacher = await login('tcm', 'secret1');
-  assert.deepStrictEqual((await teacher('GET', '/api/todo')).body.tasks.map((x) => x.title), ['تحضير امتحان']);
+  // المهام للإدارة فقط
+  assert.strictEqual((await teacher('GET', '/api/todo')).status, 403);
   let alerts = (await admin('GET', '/api/alerts')).body;
   assert.ok(alerts.alerts.some((a) => a.link === '#/todo' && a.level === 'urgent'));
   assert.ok(alerts.alerts.some((a) => a.link === '#/debts'));
-  assert.strictEqual((await teacher('PATCH', `/api/todo/${late.id}`, { status: 'done' })).status, 200);
+  assert.strictEqual((await teacher('PATCH', `/api/todo/${late.id}`, { status: 'done' })).status, 403);
+  assert.strictEqual((await admin('PATCH', `/api/todo/${late.id}`, { status: 'done' })).status, 200);
 
   // اجتماع وقرار ← مهمة
   const m = (await admin('POST', '/api/meetings', { title: 'اجتماع الإطار', date: '2026-10-01', minutes: 'نقاش حول الرحلات' })).body.meeting;
@@ -1224,13 +1226,13 @@ test('task board: drag to another column, order, checklist; teacher ticks own ch
   await admin('POST', '/api/todo/reorder', { id: a.id, status: 'done', ids: [a.id] });
   t = (await admin('GET', '/api/todo')).body.tasks.find((x) => x.id === a.id);
   assert.strictEqual(t.status, 'done');
-  // المعلم المسؤول يشطّب قائمة التحقق، وغيره لا
+  // المهام للإدارة فقط: المعلم لا يصل إليها
   const tch = (await admin('POST', '/api/users', { role: 'teacher', username: 'kb-t', full_name: 'مدرّس لوحة', password: 'secret1' })).body.user;
   const c = (await admin('POST', '/api/todo', { title: 'مهمة المدرّس', assignee_user_id: tch.id, checklist: [{ text: 'x' }] })).body.task;
   const teacher = await login('kb-t', 'secret1');
-  assert.strictEqual((await teacher('PATCH', `/api/todo/${c.id}/checklist`, { checklist: [{ text: 'x', done: true }] })).status, 200);
-  assert.strictEqual((await teacher('PATCH', `/api/todo/${b.id}/checklist`, { checklist: [] })).status, 404);
-  assert.strictEqual((await teacher('POST', '/api/todo/reorder', { id: b.id, status: 'done', ids: [] })).status, 404);
+  assert.strictEqual((await teacher('PATCH', `/api/todo/${c.id}/checklist`, { checklist: [{ text: 'x', done: true }] })).status, 403);
+  assert.strictEqual((await teacher('POST', '/api/todo/reorder', { id: b.id, status: 'done', ids: [] })).status, 403);
+  assert.strictEqual((await admin('PATCH', `/api/todo/${c.id}/checklist`, { checklist: [{ text: 'x', done: true }] })).status, 200);
 });
 
 test('a 1:45 session counts 2 hours when the admin turns it on for a teacher', async () => {
@@ -1726,4 +1728,18 @@ test('special periods: copy timetable into exams period, teacher hours follow it
   assert.ok(after.every((x) => x.timetable_id === null));
   assert.strictEqual((await admin('POST', '/api/periods/copy', { id: 'nope' })).status, 404);
   await admin('PUT', '/api/periods', { rest_days: [], periods: [] });
+});
+
+test('parents list: login sent date is recorded, children carry level and program class for filtering', async () => {
+  const admin = await login('admin', 'admin123');
+  const par = (await admin('POST', '/api/users', { role: 'parent', username: 'sent-p', full_name: 'ولي الإرسال', password: 'secret1', phone: '20111999' })).body.user;
+  const k = (await admin('POST', '/api/program/classes', { name: 'قسم الفلترة' })).body.class;
+  const st = (await admin('POST', '/api/students', { full_name: 'تلميذ فلترة', level: '8', parent_id: par.id, start_date: '2026-10-01' })).body.student;
+  await admin('POST', '/api/program/children', { full_name: 'تلميذ فلترة', student_id: st.id, class_id: k.id, start_date: '2026-10-01' });
+  let row = (await admin('GET', '/api/users?role=parent')).body.users.find((u) => u.id === par.id);
+  assert.strictEqual(row.login_sent_at, null);
+  assert.deepStrictEqual([row.children[0].level, row.children[0].program_class_id], ['8', k.id]);
+  assert.strictEqual((await admin('POST', `/api/users/${par.id}/new-password`)).status, 200);
+  row = (await admin('GET', '/api/users?role=parent')).body.users.find((u) => u.id === par.id);
+  assert.ok(row.login_sent_at);
 });
