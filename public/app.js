@@ -924,8 +924,9 @@ function viewLogin(el) {
           <h1>متابعة التلاميذ في منصّة <em>فيد</em> التعليميّة</h1>
         </div>
         <form id="login-form">
-          <label>اسم المستخدم (أو رقم بطاقة التعريف)<input name="username" autocomplete="username" dir="ltr" autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
-          <label>كلمة السر<input name="password" type="password" autocomplete="current-password" dir="ltr" autocapitalize="none" spellcheck="false" required></label>
+          <label>اسم المستخدم<input name="username" autocomplete="username" dir="ltr" autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
+          <label>كلمة السر<span class="pw-wrap"><input name="password" type="password" autocomplete="current-password" dir="ltr" autocapitalize="none" spellcheck="false" required>
+            <button type="button" class="pw-eye" id="pw-eye" aria-label="إظهار كلمة السر" title="إظهار كلمة السر">👁</button></span></label>
           <p class="error" id="login-error" hidden></p>
           <button class="btn block">دخول</button>
           <div id="google-box" class="google-box" hidden><div class="or"><span>أو</span></div><div id="google-btn"></div></div>
@@ -933,6 +934,16 @@ function viewLogin(el) {
       </div>
     </div>`;
   setupGoogleLogin();
+  // إظهار / إخفاء كلمة السر
+  $('#pw-eye').addEventListener('click', () => {
+    const inp = $('#login-form input[name=password]');
+    const show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    $('#pw-eye').textContent = show ? '🙈' : '👁';
+    $('#pw-eye').setAttribute('aria-label', show ? 'إخفاء كلمة السر' : 'إظهار كلمة السر');
+    $('#pw-eye').title = $('#pw-eye').getAttribute('aria-label');
+    inp.focus();
+  });
   $('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
