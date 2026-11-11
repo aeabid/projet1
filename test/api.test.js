@@ -1792,3 +1792,12 @@ test('substitute a session: hours move to the substitute, who can take attendanc
   assert.strictEqual((await admin('DELETE', `/api/substitutions/${sub.id}`)).status, 200);
   assert.strictEqual((await tb('GET', q)).status, 403);
 });
+
+test('product sale to an outside buyer with phone and a custom price', async () => {
+  const admin = await login('admin', 'admin123');
+  const pr = (await admin('POST', '/api/products', { name: 'كتاب اختبار', price: 30 })).body;
+  const id = pr.product?.id || pr.id;
+  assert.strictEqual((await admin('POST', '/api/product-sales', { product_id: id, buyer_name: 'زائر', buyer_phone: '29 000 111', unit_price: 25, qty: 2 })).status, 201);
+  const sale = (await admin('GET', '/api/products')).body.sales.find((x) => x.buyer === 'زائر');
+  assert.deepStrictEqual([sale.unit_price, sale.amount, sale.buyer_phone], [25, 50, '29 000 111']);
+});

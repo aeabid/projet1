@@ -83,7 +83,7 @@ async function tryAsModal() {
 async function viewHome(el) {
   // الرئيسية: أيقونات الدخول فقط (الإحصائيات في «لوحة المشرف»)
   const tiles = [
-    can('stats') && ['#/board', '📊', 'لوحة المشرف', 'الإحصائيات، الخزينة اليومية، المداخيل والمصاريف، الغيابات، الإشعارات', 'board'],
+    can('stats') && ['#/board', '📊', 'لوحة المشرف', 'نظرة عامة، ملخّص اليوم، الغيابات والملاحظات', 'board'],
     can('school') && ['#/dashboard', '📚', 'دروس الدعم', 'التلاميذ، الجداول، الغيابات، الخلاص، المعلمون'],
     can('school') && ['#/program', '🎨', 'البرنامج التربوي', 'الأقسام حسب الأعمار، الأطفال، الخلاص الشهري'],
     can('school') && ['#/courses', '🏕️', 'الدورات والأنشطة', 'دورات العطل والصيف، الأنشطة، الرحلات والمخيمات'],
@@ -94,6 +94,10 @@ async function viewHome(el) {
   ].filter(Boolean);
   el.innerHTML = `
     ${heroBanner({ sub: 'مركز فيد: اختر الفضاء الذي تريد الدخول إليه.', art: '🌿' })}
+    ${can('expenses') ? `<div class="quick-money">
+        <button type="button" class="qm in" id="qm-in"><span>＋</span><div><b>مدخول</b><small>تسجيل مدخول آخر</small></div></button>
+        <button type="button" class="qm out" id="qm-out"><span>−</span><div><b>مصروف</b><small>تسجيل مصروف</small></div></button>
+      </div>` : ''}
     <div id="home-db"></div>
     <div class="home-tiles">${tiles
       .map(([h, i, t, sub, cls]) => `<a class="home-tile ${cls || ''}" href="${h}"><span class="ico">${i}</span><b>${t}</b><small>${sub}</small></a>`)
@@ -102,6 +106,10 @@ async function viewHome(el) {
     e.preventDefault();
     tryAsModal();
   });
+  // تسجيل مدخول أو مصروف مباشرة من الرئيسية (نفس نافذة «المداخيل والمصاريف»)
+  const done = () => toast('تم التسجيل ✓');
+  $('#qm-in')?.addEventListener('click', () => ledgerForm(null, 'income', done, { activity: 'general' }));
+  $('#qm-out')?.addEventListener('click', () => ledgerForm(null, 'expense', done, { activity: 'general' }));
   // نقل المعطيات إلى Supabase (يظهر فقط إن كانت قاعدة Supabase فارغة والقديمة فيها معطيات)
   if (state.user.super_admin)
     api('GET', '/api/admin/db-status').then((db) => {
@@ -2295,13 +2303,15 @@ async function sellProductModal(onDone, buyer = null, data = null) {
        buyer
          ? `<input type="hidden" name="${buyer.student_id ? 'student_id' : 'child_id'}" value="${buyer.student_id || buyer.child_id}">`
          : `<label>المشتري<select name="buyer">
+             <option value="other" selected>👤 شخص آخر (من خارج المركز)</option>
              <optgroup label="تلاميذ الدعم">${data.students.map((s) => `<option value="s:${s.id}">${esc(s.full_name)} · ${esc(levelLabel(s.level))}</option>`).join('')}</optgroup>
-             <optgroup label="البرنامج التربوي">${data.children.map((c) => `<option value="c:${c.id}">${esc(c.full_name)}</option>`).join('')}</optgroup>
-             <option value="other">شخص آخر…</option></select></label>
-           <label id="ps-other" hidden>اسم المشتري<input name="buyer_name"></label>`
+             <optgroup label="البرنامج التربوي">${data.children.map((c) => `<option value="c:${c.id}">${esc(c.full_name)}</option>`).join('')}</optgroup></select></label>
+           <div class="row" id="ps-other"><label>اسم المشتري<input name="buyer_name"></label>
+             <label>الهاتف<input name="buyer_phone" dir="ltr" inputmode="tel" placeholder="22 123 456"></label></div>`
      }
-     <div class="row"><label>الكمية<input name="qty" type="number" min="1" value="1"></label>
-       <label>التاريخ<input type="date" name="sold_on" value="${today()}"></label></div>
+     <div class="row"><label>السعر للوحدة (د.ت)<input name="unit_price" id="ps-price" inputmode="decimal"><small class="muted" id="ps-price-hint"></small></label>
+       <label>الكمية<input name="qty" type="number" min="1" value="1"></label></div>
+     <label>التاريخ<input type="date" name="sold_on" value="${today()}"></label>
      <p class="ps-total">المبلغ: <b id="ps-total"></b></p>
      <label>ملاحظة<input name="note"></label>`,
     async (f) => {
@@ -2317,13 +2327,22 @@ async function sellProductModal(onDone, buyer = null, data = null) {
     }
   );
   const m = $('#modal');
-  const total = () => {
-    const price = Number(m.querySelector('[name=product_id]').selectedOptions[0].dataset.price);
-    $('#ps-total').textContent = fmtMoney(price * Math.max(1, Number(m.querySelector('[name=qty]').value) || 1));
+  // السعر: سعر المنتج المعلن افتراضيًا، ويمكن كتابة سعر آخر
+  const listPrice = () => Number(m.querySelector('[name=product_id]').selectedOptions[0].dataset.price);
+  const priceIn = $('#ps-price');
+  const setPrice = () => {
+    priceIn.value = listPrice();
+    $('#ps-price-hint').textContent = `السعر المعلن: ${fmtMoney(listPrice())}`;
   };
-  m.querySelector('[name=product_id]').addEventListener('change', total);
+  const total = () => {
+    const price = Number(String(priceIn.value).replace(',', '.')) || 0;
+    $('#ps-total').innerHTML = `${fmtMoney(price * Math.max(1, Number(m.querySelector('[name=qty]').value) || 1))}${price !== listPrice() ? ' <small class="muted">(سعر خاص)</small>' : ''}`;
+  };
+  m.querySelector('[name=product_id]').addEventListener('change', () => (setPrice(), total()));
   m.querySelector('[name=qty]').addEventListener('input', total);
+  priceIn.addEventListener('input', total);
   m.querySelector('[name=buyer]')?.addEventListener('change', (e) => ($('#ps-other').hidden = e.target.value !== 'other'));
+  setPrice();
   total();
 }
 
@@ -2360,7 +2379,7 @@ async function viewProducts(el) {
           data.sales.length
             ? `<div class="table-wrap"><table><thead><tr><th>المشتري</th><th>المنتج</th><th>الكمية</th><th>المبلغ</th><th>التاريخ</th><th></th></tr></thead><tbody>${data.sales
                 .map(
-                  (s) => `<tr><td>${s.student_id ? `<a href="#/students/${s.student_id}">${esc(s.buyer)}</a>` : s.child_id ? `<a href="#/program/child/${s.child_id}">${esc(s.buyer)}</a>` : esc(s.buyer || '—')}${s.note ? `<div class="muted small">${esc(s.note)}</div>` : ''}</td>
+                  (s) => `<tr><td>${s.student_id ? `<a href="#/students/${s.student_id}">${esc(s.buyer)}</a>` : s.child_id ? `<a href="#/program/child/${s.child_id}">${esc(s.buyer)}</a>` : esc(s.buyer || '—')}${s.buyer_phone ? `<div class="phone-line small"><span dir="ltr">${esc(s.buyer_phone)}</span>${waButton(s.buyer_phone)}</div>` : ''}${s.note ? `<div class="muted small">${esc(s.note)}</div>` : ''}</td>
                     <td>${esc(s.product_name)}</td><td>${s.qty}</td><td><b>${fmtMoney(s.amount)}</b></td><td>${fmtDate(s.sold_on)}</td>
                     <td><button class="link danger small" data-sdel="${s.id}">إلغاء</button></td></tr>`
                 )
@@ -2485,7 +2504,7 @@ async function viewSalaries(el) {
                         <td>${p.paid ? `<b class="in">${fmtMoney(p.paid)}</b>` : '—'}</td>
                         <td class="row-actions">${
                           p.link
-                            ? `<a class="btn ghost small" href="${p.link}">التفاصيل</a>`
+                            ? `${p.due - p.paid > 0.001 ? `<button class="btn small" data-tpay="${p.id}" data-name="${esc(p.name)}" data-rest="${Math.round((p.due - p.paid) * 1000) / 1000}">خلاص</button> ` : p.paid ? '<span class="badge good">✓ خالص</span> ' : ''}<a class="btn ghost small" href="${p.link}">التفاصيل</a>`
                             : p.payment_id
                               ? `<span class="badge good">✓ خالص</span> <button class="link danger small" data-undo="${p.payment_id}">إلغاء</button>`
                               : `<button class="btn small" data-pay="${esc(p.pay)}" data-name="${esc(p.name)}" data-due="${p.due}">خلاص</button>`
@@ -2496,7 +2515,7 @@ async function viewSalaries(el) {
             }</section>`
         )
         .join('')}
-      <p class="muted small">مدرّسو الدعم يُخلَّصون بالساعة من «رواتب مدرّسي الدعم» (ساعات جدول الأوقات). كل أجرة تُسجَّل مصروفًا في نشاطها: الدعم، التربوي، أو المصاريف العامة للمركز.</p>`;
+      <p class="muted small">مدرّسو الدعم: أجرتهم بالساعة (ساعات جدول الأوقات)، و«خلاص» يسجّل الشهر كاملًا أو تسبقة. «التفاصيل» تعرض الحصص يومًا بيوم. كل أجرة تُسجَّل مصروفًا في نشاطها.</p>`;
     $('#sal-body').querySelectorAll('[data-pay]').forEach((b) =>
       b.addEventListener('click', () =>
         openModal(
@@ -2510,6 +2529,32 @@ async function viewSalaries(el) {
           }
         )
       )
+    );
+    // مدرّسو الدعم: خلاص كامل الشهر أو تسبقة (نفس نافذة صفحة المدرّس)
+    $('#sal-body').querySelectorAll('[data-tpay]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const rest = Number(b.dataset.rest);
+        openModal(
+          `خلاص ${b.dataset.name} — ${monthLabel(month)}`,
+          `<label class="check"><input type="radio" name="kind" value="full" checked> خلاص كامل الشهر (<b>${fmtMoney(rest)}</b>)</label>
+           <label class="check"><input type="radio" name="kind" value="advance"> تسبقة (جزء من الأجرة)</label>
+           <div class="row"><label>المبلغ (د.ت)<input name="amount" id="tpay-amt" inputmode="decimal" value="${rest}" required></label>
+             <label>طريقة الدفع<select name="method">${Object.entries(PAYMENT_LABELS).filter(([k]) => k !== 'partner').map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label></div>
+           <div class="row"><label>تاريخ الدفع<input type="date" name="paid_on" value="${today()}"></label><label>ملاحظة<input name="note"></label></div>`,
+          async (data) => {
+            await api('POST', `/api/payroll/${b.dataset.tpay}/payments`, { ...data, month });
+            toast(data.kind === 'advance' ? 'تم تسجيل التسبقة' : 'تم تسجيل الخلاص');
+            load();
+          }
+        );
+        document.querySelectorAll('#modal input[name=kind]').forEach((r) =>
+          r.addEventListener('change', () => {
+            const amt = $('#tpay-amt');
+            if (r.value === 'full' && r.checked) amt.value = rest;
+            if (r.value === 'advance' && r.checked) (amt.value = ''), amt.focus();
+          })
+        );
+      })
     );
     $('#sal-body').querySelectorAll('[data-undo]').forEach((b) =>
       b.addEventListener('click', async () => {

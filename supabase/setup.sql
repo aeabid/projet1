@@ -930,3 +930,7 @@ CREATE TABLE IF NOT EXISTS session_substitutions (
 );
 CREATE INDEX IF NOT EXISTS session_substitutions_sub_idx ON session_substitutions (substitute_id, date);
 ALTER TABLE session_substitutions ENABLE ROW LEVEL SECURITY;
+
+-- ===== 20261202090000_sale_phone.sql =====
+-- هاتف المشتري (شخص من خارج المركز) عند بيع منتج
+ALTER TABLE product_sales ADD COLUMN IF NOT EXISTS buyer_phone TEXT;
