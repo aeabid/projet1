@@ -1759,3 +1759,36 @@ test('disable / enable an account: a disabled parent cannot log in and loses ope
   const me = (await admin('GET', '/api/me')).body.user;
   assert.strictEqual((await admin('PATCH', `/api/users/${me.id}/active`, { active: false })).status, 400);
 });
+
+test('substitute a session: hours move to the substitute, who can take attendance for that class that day', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const fr = meta.subjects.find((x) => x.name === 'الفرنسية').id;
+  const ar = meta.subjects.find((x) => x.name === 'العربية').id;
+  const a = (await admin('POST', '/api/users', { role: 'teacher', username: 'sub-a', full_name: 'صفاء الأصلية', password: 'secret1', hourly_rate: 10, subject_ids: [fr] })).body.user;
+  const b = (await admin('POST', '/api/users', { role: 'teacher', username: 'sub-b', full_name: 'وصفي المعوّض', password: 'secret1', hourly_rate: 12, subject_ids: [ar] })).body.user;
+  const day = new Date().toISOString().slice(0, 10);
+  const dow = new Date(`${day}T12:00:00Z`).getUTCDay() || 7;
+  const slot = (await admin('POST', '/api/timetable', { level: '9', day: dow, start_time: '04:00', end_time: '06:00', subject_id: fr, teacher_id: a.id })).body.slot;
+  const st = (await admin('POST', '/api/students', { full_name: 'تلميذ تعويض', level: '9', subject_ids: [fr], start_date: '2026-09-01' })).body.student;
+  const tb = await login('sub-b', 'secret1');
+  const q = `/api/attendance?subject_id=${fr}&level=9&date=${day}`;
+  assert.strictEqual((await tb('GET', q)).status, 403);
+  // التعويض
+  assert.strictEqual((await admin('POST', '/api/substitutions', { timetable_id: slot.id, date: '2000-01-01', substitute_id: b.id })).status, 400);
+  const sub = (await admin('POST', '/api/substitutions', { timetable_id: slot.id, date: day, substitute_id: b.id, note: 'غياب' })).body.substitution;
+  assert.strictEqual(sub.substitute_name, 'وصفي المعوّض');
+  const month = day.slice(0, 7);
+  const pa = (await admin('GET', `/api/payroll/${a.id}?month=${month}`)).body.sessions.find((x) => x.date === day && x.timetable_id === slot.id);
+  assert.deepStrictEqual([pa.status, pa.hours], ['replaced', 0]);
+  const pb = (await admin('GET', `/api/payroll/${b.id}?month=${month}`)).body.sessions.find((x) => x.date === day && x.substitution_id === sub.id);
+  assert.deepStrictEqual([pb.status, pb.hours], ['substitute', 2]);
+  // المعوّض يرى الحصة ويسجّل الغيابات
+  assert.strictEqual((await tb('GET', '/api/my-substitutions')).body.substitutions.length, 1);
+  const list = (await tb('GET', q)).body.students;
+  assert.ok(list.some((x) => x.id === st.id));
+  assert.strictEqual((await tb('POST', '/api/attendance', { subject_id: fr, level: '9', date: day, absent_ids: [st.id] })).status, 200);
+  // إلغاء التعويض
+  assert.strictEqual((await admin('DELETE', `/api/substitutions/${sub.id}`)).status, 200);
+  assert.strictEqual((await tb('GET', q)).status, 403);
+});

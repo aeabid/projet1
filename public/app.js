@@ -3670,14 +3670,37 @@ async function viewAttendance(el) {
   if (admin) adminFilter();
   else filterByDay();
 
+  // المدرّس المعوّض: حصص زملائه التي يعوّضها في هذا اليوم
+  let override = null;
+  const showSubs = async () => {
+    if (admin) return;
+    const box = $('#a-subs') || ($('#a-hint').insertAdjacentHTML('afterend', '<div id="a-subs"></div>'), $('#a-subs'));
+    const { substitutions } = await api('GET', '/api/my-substitutions?date=' + $('#a-date').value).catch(() => ({ substitutions: [] }));
+    box.innerHTML = substitutions.length
+      ? `<div class="card subs-card"><b>🔁 تعويض في هذا اليوم</b>${substitutions
+          .map((x, i) => `<button type="button" class="btn small ${override?.id === x.id ? '' : 'ghost'}" data-subx="${i}">${esc(x.subject_name || '')} · ${esc(levelLabel(x.level))} · <bdi>${esc(x.start_time)}</bdi> <small>(عوض ${esc(x.teacher_name || '')})</small></button>`)
+          .join('')}</div>`
+      : '';
+    box.querySelectorAll('[data-subx]').forEach((b) =>
+      b.addEventListener('click', () => {
+        override = substitutions[Number(b.dataset.subx)];
+        showSubs();
+        load();
+      })
+    );
+  };
   const load = async () => {
-    if (!$('#a-subject').value || !$('#a-level').value) {
+    if (!override && (!$('#a-subject').value || !$('#a-level').value)) {
       $('#att-list').innerHTML = '<div class="card muted">لا توجد حصة في هذا اليوم. اختر تاريخًا آخر.</div>';
       return;
     }
-    const params = new URLSearchParams({ subject_id: $('#a-subject').value, level: $('#a-level').value, date: $('#a-date').value });
-    sessionStorage.setItem('attSubject', params.get('subject_id'));
-    sessionStorage.setItem('attLevel', params.get('level'));
+    const params = override
+      ? new URLSearchParams({ subject_id: override.subject_id, level: override.level, date: $('#a-date').value })
+      : new URLSearchParams({ subject_id: $('#a-subject').value, level: $('#a-level').value, date: $('#a-date').value });
+    if (!override) {
+      sessionStorage.setItem('attSubject', params.get('subject_id'));
+      sessionStorage.setItem('attLevel', params.get('level'));
+    }
     const list = $('#att-list');
     try {
       const { students } = await api('GET', '/api/attendance?' + params);
@@ -3725,9 +3748,10 @@ async function viewAttendance(el) {
     $('#a-level').addEventListener('change', () => (adminFilter(true), load()));
     $('#a-subject').addEventListener('change', load);
   } else {
-    $('#a-date').addEventListener('change', () => (filterByDay(), load()));
-    $('#a-subject').addEventListener('change', () => (filterByDay(), load()));
-    $('#a-level').addEventListener('change', load);
+    $('#a-date').addEventListener('change', () => ((override = null), filterByDay(), showSubs(), load()));
+    $('#a-subject').addEventListener('change', () => ((override = null), filterByDay(), showSubs(), load()));
+    $('#a-level').addEventListener('change', () => ((override = null), showSubs(), load()));
+    showSubs();
   }
   await load();
 }
@@ -4049,8 +4073,16 @@ async function viewTimetable(el, mode = 'level') {
     const hours = slots.reduce((t, x) => t + (toMinutes(x.end_time) - toMinutes(x.start_time)), 0) / 60;
     el.innerHTML = `<h2>جدولي</h2>
       <p class="muted">${slots.length} حصة في الأسبوع — ${hours.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} ساعة</p>
+      <div id="tt-subs"></div>
       <div class="card">${weekView(slots, { showLevel: true })}</div>
       <div id="tt-periods"></div>`;
+    api('GET', '/api/my-substitutions').then(({ substitutions }) => {
+      const up = substitutions.filter((x) => x.date >= today());
+      if (up.length && $('#tt-subs'))
+        $('#tt-subs').innerHTML = `<section class="card subs-card"><h3>🔁 حصص تعويض</h3><ul class="per-ses">${up
+          .map((x) => `<li><b>${weekdayName(x.date)} ${fmtDate(x.date)}</b><span dir="ltr">${esc(x.start_time)}–${esc(x.end_time)}</span><span>${esc(x.subject_name || '')} · ${esc(levelLabel(x.level))}</span><small class="muted">عوض ${esc(x.teacher_name || '')}</small></li>`)
+          .join('')}</ul><p class="muted small">تسجّل غيابات هذه الحصص من «الغيابات» في يومها.</p></section>`;
+    }).catch(() => {});
     mountPeriods($('#tt-periods'), { teacherId: state.user.id });
     return;
   }
@@ -4439,6 +4471,8 @@ const SESSION_LABELS = {
   adjusted: ['معدّلة', 'average'],
   extra: ['إضافية', 'level'],
   paused: ['موقوفة (عطلة)', 'status-left'],
+  replaced: ['عوّضه زميل', 'status-left'],
+  substitute: ['تعويض', 'level'],
 };
 const fmtHours = (h) => `${Number(h).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} س`;
 const payMonth = () => sessionStorage.getItem('payMonth') || today().slice(0, 7);
@@ -4715,20 +4749,20 @@ async function viewTeacherPay(el, teacherId) {
                     return `<tr class="${x.status === 'planned' ? 'planned' : ''}">
                       <td><b>${weekdayName(x.date)}</b> ${fmtDate(x.date)}</td>
                       <td>${
-                        x.timetable_id
-                          ? `من <bdi>${esc(x.start_time)}</bdi> إلى <bdi>${esc(x.end_time)}</bdi> — ${esc(x.subject_name || '')}
+                        x.start_time
+                          ? `${x.substitution_id && !x.timetable_id ? '🔁 ' : ''}من <bdi>${esc(x.start_time)}</bdi> إلى <bdi>${esc(x.end_time)}</bdi> — ${esc(x.subject_name || '')}
                              <span class="muted small">${esc(levelLabel(x.level))}${x.group_name ? ` (${esc(x.group_name)})` : ''}</span>`
                           : '<span class="muted">حصة إضافية</span>'
-                      }${x.note ? `<div class="muted small">📝 ${esc(x.note)}</div>` : ''}</td>
+                      }${x.note ? `<div class="muted small">${x.substitution_id ? '🔁' : '📝'} ${esc(x.note)}</div>` : ''}</td>
                       <td>${fmtHours(x.hours)}${x.status === 'adjusted' ? ` <span class="muted small">(بدل ${fmtHours(x.scheduled_hours)})</span>` : ''}</td>
                       <td><span class="badge ${cls}">${label}</span></td>
                       ${
                         isAdmin
                           ? `<td class="row-actions">${
-                              x.timetable_id && x.status !== 'absent'
-                                ? `<button class="link danger" data-absent="${i}">غياب</button> <button class="link" data-hours="${i}">تعديل</button>`
+                              x.timetable_id && !['absent', 'replaced', 'paused'].includes(x.status)
+                                ? `<button class="link danger" data-absent="${i}">غياب</button> <button class="link" data-hours="${i}">تعديل</button> <button class="link" data-sub="${i}">🔁 تعويض</button>`
                                 : ''
-                            }${x.adjustment_id ? ` <button class="link" data-undo="${x.adjustment_id}">${x.status === 'extra' ? 'حذف' : 'إلغاء التعديل'}</button>` : ''}</td>`
+                            }${x.substitution_id ? ` <button class="link danger" data-unsub="${x.substitution_id}">إلغاء التعويض</button>` : ''}${x.adjustment_id ? ` <button class="link" data-undo="${x.adjustment_id}">${x.status === 'extra' ? 'حذف' : 'إلغاء التعديل'}</button>` : ''}</td>`
                           : ''
                       }
                     </tr>`;
@@ -4779,6 +4813,37 @@ async function viewTeacherPay(el, teacherId) {
            <label>ملاحظة<input name="note" value="${esc(x.note || '')}"></label>`,
           (data) => adjust({ date: x.date, timetable_id: x.timetable_id, hours: data.hours, note: data.note })
         );
+      })
+    );
+    // تعويض الحصة بمدرّس آخر: الساعات له، ويسجّل غيابات تلك الحصة من تطبيقته
+    $('#tp-body').querySelectorAll('[data-sub]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const x = m.sessions[Number(b.dataset.sub)];
+        const { users } = await api('GET', '/api/users?role=teacher');
+        const others = users.filter((u) => !u.program_staff && u.id !== Number(teacherId) && u.approved !== false);
+        const fit = (u) => (u.subjects || []).some((sub) => sub.name === x.subject_name);
+        openModal(
+          `🔁 تعويض الحصة — ${weekdayName(x.date)} ${fmtDate(x.date)}`,
+          `<p><b>${esc(x.subject_name || '')}</b> · ${esc(levelLabel(x.level))} · من <bdi>${esc(x.start_time)}</bdi> إلى <bdi>${esc(x.end_time)}</bdi></p>
+           <label>المدرّس المعوّض<select name="substitute_id" required>${others
+             .sort((a, b) => fit(b) - fit(a))
+             .map((u) => `<option value="${u.id}">${esc(u.full_name)}${fit(u) ? ` — يدرّس ${esc(x.subject_name)}` : ''}</option>`)
+             .join('')}</select></label>
+           <label>ملاحظة<input name="note" placeholder="مثال: غياب بعذر"></label>
+           <p class="muted small">الحصة ما تتحسبش لهذا المدرّس، وتتحسب للمعوّض (في رواتبه)، والمعوّض يلقاها في تطبيقته ويسجّل غيابات التلاميذ.</p>`,
+          async (data) => {
+            await api('POST', '/api/substitutions', { timetable_id: x.timetable_id, date: x.date, substitute_id: data.substitute_id, note: data.note });
+            toast('تم التعويض');
+            reload();
+          }
+        );
+      })
+    );
+    $('#tp-body').querySelectorAll('[data-unsub]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirmAction('إلغاء التعويض؟ الحصة ترجع لمدرّسها الأصلي.')) return;
+        await api('DELETE', `/api/substitutions/${b.dataset.unsub}`).catch((err) => toast(err.message, true));
+        reload();
       })
     );
     $('#tp-body').querySelectorAll('[data-undo]').forEach((b) =>

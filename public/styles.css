@@ -2227,3 +2227,5 @@ tr.acc-off td { opacity: .55; } tr.acc-off td:last-child, tr.acc-off td:nth-last
 .pw-wrap input { padding-right: 3rem; }
 .pw-eye { position: absolute; right: .4rem; top: 50%; transform: translateY(-50%); width: 2.4rem; height: 2.4rem; border: 0; background: transparent; font-size: 1.25rem; cursor: pointer; border-radius: 10px; }
 .pw-eye:hover { background: var(--soft); }
+.subs-card { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; background: #f5f3ff; border-color: #ddd6fe; }
+.subs-card > b, .subs-card > h3 { width: 100%; }
