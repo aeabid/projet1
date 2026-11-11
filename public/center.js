@@ -1395,8 +1395,8 @@ async function viewParent(el, id) {
   el.innerHTML = `
     <a href="#/parents" class="muted small">→ الأولياء</a>
     <div class="page-head"><div class="parent-head">${avatar({ full_name: p.full_name }, 'lg')}
-      <div><h2>${esc(p.full_name)}</h2>
-        <div class="meta"><span class="pill">ولي</span>${activeSwitch(p)}${p.google_email ? '<span class="badge good">يدخل بـ Google</span>' : ''}${balance > 0 ? `<span class="badge weak">باقي ${fmtMoney(balance)}</span>` : '<span class="badge good">خالص</span>'}</div></div></div></div>
+      <div><h2>${esc(p.full_name)}${googleMark(p)}</h2>
+        <div class="meta"><span class="pill">ولي</span>${activeSwitch(p)}${p.google_email ? `<span class="badge good">يدخل بـ Google · <span dir="ltr">${esc(p.google_email)}</span></span>` : ''}${balance > 0 ? `<span class="badge weak">باقي ${fmtMoney(balance)}</span>` : '<span class="badge good">خالص</span>'}</div></div></div></div>
     ${quickActions([
       phones[0] ? { href: `tel:${phones[0]}`, icon: 'phone', label: 'اتصال', tone: 'blue' } : null,
       waNumber(p.phone) ? { href: waUrl(p.phone, ''), icon: 'wa', label: 'واتساب', tone: 'green' } : null,

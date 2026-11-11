@@ -126,35 +126,15 @@ async function viewHome(el) {
 const BOARD_TABS = [
   ['', '📊', 'نظرة عامة'],
   ['today', '☀️', 'ملخّص اليوم'],
-  ['cash', '💵', 'الخزينة اليومية'],
-  ['month', '📅', 'المداخيل والمصاريف'],
   ['absences', '📉', 'الغيابات والملاحظات'],
-  ['notices', '🔔', 'الإشعارات'],
 ];
 async function viewBoardHub(el, tab = '') {
   el.innerHTML = `
-    <div class="board-tabs" role="tablist">${BOARD_TABS.filter(([k]) => (k !== 'cash' || can('cash')) && (!['absences', 'notices', 'today'].includes(k) || can('school')))
+    <div class="board-tabs" role="tablist">${BOARD_TABS.filter(([k]) => !['absences', 'today'].includes(k) || can('school'))
       .map(([k, i, l]) => `<a href="#/board${k ? '/' + k : ''}" class="${k === tab ? 'on' : ''}" role="tab"><span>${i}</span>${l}<b class="bt-badge" data-badge="${k}" hidden></b></a>`)
       .join('')}</div>
     <div id="board-page"></div>`;
   const page = $('#board-page');
-  // عدد الإشعارات على التبويب
-  if (can('school')) api('GET', '/api/board/notices')
-    .then((n) => {
-      // الرقم يختفي بمجرد فتح تبويب الإشعارات، ولا يرجع إلا لإشعار جديد
-      const keys = [...n.salaries.map((x) => 's' + x.month + x.group + x.name), ...n.unpaid.map((x) => 'u' + n.month + x.kind + x.id)];
-      const store = 'noticesSeen:' + state.user.id;
-      let seen = [];
-      try { seen = JSON.parse(localStorage.getItem(store) || '[]'); } catch {}
-      if (tab === 'notices') {
-        try { localStorage.setItem(store, JSON.stringify(keys)); } catch {}
-        return;
-      }
-      const c = keys.filter((k) => !seen.includes(k)).length;
-      const b = el.querySelector('[data-badge="notices"]');
-      if (b && c) (b.textContent = c), (b.hidden = false);
-    })
-    .catch(() => {});
   if (tab === 'today') return boardToday(page);
   if (tab === 'cash') return viewCash(page);
   if (tab === 'month') return boardMonth(page);
@@ -171,7 +151,7 @@ async function boardOverview(el) {
     if (!$('#bo-kpis')) return;
     $('#bo-kpis').innerHTML = `<div class="kpis">
       <a class="kpi" href="#/people"><b>${k.support_active + k.program_active}</b><span>تلميذ وطفل مسجّل<small>${k.support_active} دعم · ${k.program_active} تربوي</small></span></a>
-      <a class="kpi" href="#/board/notices"><b>${k.collection_rate ?? '—'}${k.collection_rate !== null ? '%' : ''}</b><span>نسبة الاستخلاص هذا الشهر${k.billed ? `<small>المستخلص ${fmtMoney(k.collected)} من ${fmtMoney(k.billed)}</small>` : ''}</span></a>
+      <a class="kpi" href="#/debts"><b>${k.collection_rate ?? '—'}${k.collection_rate !== null ? '%' : ''}</b><span>نسبة الاستخلاص هذا الشهر${k.billed ? `<small>المستخلص ${fmtMoney(k.collected)} من ${fmtMoney(k.billed)}</small>` : ''}</span></a>
       <a class="kpi" href="#/debts"><b class="${k.debts_total ? 'out' : ''}">${fmtMoney(k.debts_total)}</b><span>متخلّد بذمّة ${k.debtors} عائلة</span></a>
       <a class="kpi" href="#/payroll"><b>${fmtHours(k.teacher_hours)}</b><span>ساعات تدريس هذا الشهر</span></a>
       <a class="kpi" href="#/board/absences"><b>${k.absences_month}</b><span>غياب هذا الشهر</span></a>
@@ -1842,7 +1822,7 @@ async function viewProgramBoard(el) {
     </div>
     <div id="pb-req"></div>
     <div id="program-board"></div>
-    ${regLinksCard()}
+    ${regLinksCard('program')}
     <details class="card fold"><summary><h3>🏫 الأقسام <span class="badge">${classes.length}</span></h3></summary><ul class="levels">${classes
       .map((k) => `<li><a href="#/program" data-class="${k.id}">${esc(k.name)}${k.age_range ? ` <span class="muted small">${esc(k.age_range)}</span>` : ''}</a>
         <b>${active.filter((c) => c.class_id === k.id).length}</b></li>`)

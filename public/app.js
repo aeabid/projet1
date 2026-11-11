@@ -614,7 +614,6 @@ const NAV = {
         ['#/support/teachers', 'مدرّسو دروس الدعم'],
         ['#/program/staff', 'مؤطّرو البرنامج التربوي'],
         ['#/parents', 'الأولياء'],
-        ['#/parent-requests', 'طلبات أولياء Google'],
         ['#/admins', 'الإدارة'],
         ['#/staff', 'الموارد البشرية'],
         ['#/permissions', 'الصلاحيات'],
@@ -990,7 +989,7 @@ async function viewDashboard(el) {
         ? `<a class="card alert-card" href="#/students" id="waiting-link">🕓 <b>${s.waiting}</b> تلميذ في الانتظار (تسجيلات جديدة) — اضغط للمراجعة والتأكيد</a>`
         : ''
     }
-    ${regLinksCard()}
+    ${regLinksCard('support')}
     <div id="support-board"></div>
     ${
       s.finance.unpaid.length
@@ -1054,10 +1053,12 @@ const REG_LINKS = [
   ['support', '📚 دروس الدعم', '#/register', 'سجّل ابنك في دروس الدعم بمركز فيد عبر هذا الرابط:'],
   ['program', '🎨 البرنامج التربوي', '#/register-program', 'سجّل ابنك في البرنامج التربوي بمركز فيد عبر هذا الرابط:'],
 ];
-function regLinksCard() {
-  return `<section class="card reg-links"><h3>🔗 روابط التسجيل للأولياء الجدد</h3>
-    <p class="muted small">ابعث الرابط المناسب للولي: يعمّر معطياته ومعطيات أبنائه، ثم تأكّد الإدارة التسجيل وتلحق كل ابن بمجموعته.</p>
-    ${REG_LINKS.map(([k, l, h, msg]) => `<div class="rl-row"><b>${l}</b><code dir="ltr">${PUBLIC_URL}/${h}</code>
+// kind: 'support' أو 'program' (رابط ذلك البرنامج فقط)، أو بلا = الاثنان
+function regLinksCard(kind = null) {
+  const links = REG_LINKS.filter(([k]) => !kind || k === kind);
+  return `<section class="card reg-links"><h3>🔗 ${links.length > 1 ? 'روابط' : 'رابط'} التسجيل للأولياء الجدد${links.length === 1 ? ` · ${links[0][1]}` : ''}</h3>
+    <p class="muted small">ابعث الرابط للولي: يعمّر معطياته ومعطيات أبنائه، ثم تأكّد الإدارة التسجيل وتلحق كل ابن بمجموعته.</p>
+    ${links.map(([k, l, h, msg]) => `<div class="rl-row"><b>${l}</b><code dir="ltr">${PUBLIC_URL}/${h}</code>
       <span class="rl-acts"><button type="button" class="btn small ghost" data-copy-reg="${k}">نسخ</button>
       <a class="btn small wa" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`${msg}\n${PUBLIC_URL}/${h}`)}">${WA_ICON} واتساب</a></span></div>`).join('')}
   </section>`;
@@ -1140,7 +1141,7 @@ async function viewProgramRequests(el) {
   el.innerHTML = `
     <div class="page-head"><div><a href="#/program" class="muted small">→ قائمة الأطفال</a><h2>🕓 طلبات التسجيل في البرنامج التربوي</h2>
       <p class="muted small">طلبات وصلت من رابط التسجيل. اختر قسم كل طفل ثم «تأكيد»: يُفتح للولي حساب (أو يُربط بحسابه إن وُجد).</p></div></div>
-    ${regLinksCard()}
+    ${regLinksCard('program')}
     ${requests.length
       ? requests
           .map((r) => `<section class="card req" data-id="${r.id}">
@@ -2918,6 +2919,9 @@ const loginBtn = (u, small = false) =>
     ? `<button type="button" class="btn wa ${small ? 'small' : 'login-btn'}" data-pw="${u.id}" title="يرسل الرابط واسم المستخدم وكلمة سر جديدة عبر واتساب">${WA_ICON} إرسال الدخول</button>`
     : `<button type="button" class="btn ghost ${small ? 'small' : 'login-btn'}" data-pw="${u.id}" title="لا رقم واتساب: تظهر البيانات للنسخ">🔑 بيانات الدخول</button>`;
 
+// شعار Google بجانب اسم من ربط حسابه بـ Google (يدخل بـ Google)
+const GOOGLE_G = '<svg viewBox="0 0 48 48" width="15" height="15" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.6 13.2l7.8 6.1C12.3 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.2.8-4.7l-7.8-6.1C1 16.5 0 20.1 0 24s1 7.5 2.6 10.8l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.2-8.5 2.2-6.3 0-11.7-4.1-13.6-9.8l-7.8 6.1C6.6 42.6 14.6 48 24 48z"/></svg>';
+const googleMark = (u) => (u.google_email ? `<span class="g-mark" title="يدخل بحساب Google: ${esc(u.google_email)}">${GOOGLE_G}</span>` : '');
 // تفعيل / إيقاف حساب: الحساب الموقوف لا يدخل للمنصّة
 const activeSwitch = (u) =>
   `<label class="act-switch ${u.disabled ? 'off' : 'on'}" title="${u.disabled ? 'الحساب موقوف: لا يدخل للمنصّة' : 'الحساب مفعّل'}"><span class="switch"><input type="checkbox" data-active="${u.id}" ${u.disabled ? '' : 'checked'}><i></i></span>${u.disabled ? '⛔ موقوف' : '🟢 مفعّل'}</label>`;
@@ -2978,7 +2982,7 @@ function viewParentsList(el, users, reload, edit) {
       <input id="pq" type="search" placeholder="بحث بالاسم أو الهاتف أو اسم الابن…">
       <select id="p-prog" aria-label="البرنامج">${parentProgOptions(users)}</select>
       <select id="p-sent" aria-label="بيانات الدخول"><option value="">الدخول: الكل</option><option value="no">✉️ لم تُرسل له بعد</option><option value="yes">✓ أُرسلت له</option></select>
-      <select id="p-act" aria-label="الحالة"><option value="">الحسابات: الكل</option><option value="on">🟢 مفعّلة</option><option value="off">⛔ موقوفة</option></select>
+      <select id="p-act" aria-label="الحالة"><option value="">الحسابات: الكل</option><option value="on">🟢 مفعّلة</option><option value="off">⛔ موقوفة</option><option value="google">G يدخلون بـ Google</option></select>
       ${viewToggle()}</div>
     <div id="p-progress"></div>
     <div id="p-list"></div>`;
@@ -3007,7 +3011,7 @@ function viewParentsList(el, users, reload, edit) {
     sessionStorage.setItem('p-sent', sent);
     sessionStorage.setItem('p-act', act);
     const scoped = users.filter((u) => inProg(u, f) && (!q || [u.full_name, u.phone, u.username, u.cin, ...u.children.map((c) => c.full_name), ...(u.program_children || []).map((c) => c.full_name)].some((x) => String(x || '').toLowerCase().includes(q))));
-    const list = scoped.filter((u) => (!sent || (sent === 'yes' ? u.login_sent_at : !u.login_sent_at)) && (!act || (act === 'off' ? u.disabled : !u.disabled)));
+    const list = scoped.filter((u) => (!sent || (sent === 'yes' ? u.login_sent_at : !u.login_sent_at)) && (!act || (act === 'google' ? u.google_email : act === 'off' ? u.disabled : !u.disabled)));
     const done = scoped.filter((u) => u.login_sent_at).length;
     const pct = scoped.length ? Math.round((done / scoped.length) * 100) : 0;
     $('#p-progress').innerHTML = scoped.length
@@ -3021,7 +3025,7 @@ function viewParentsList(el, users, reload, edit) {
           .map(
             (u) => `<article class="pcard ${u.disabled ? 'off' : ''}">
               <a class="pc-head" href="#/parents/${u.id}">${avatar({ full_name: u.full_name }, 'md')}
-                <div><h3>${esc(u.full_name)}</h3><span class="muted small">${count(u) ? `${count(u)} ${count(u) === 1 ? 'ابن' : 'أبناء'}` : 'بلا أبناء'}${u.google_email ? ' · Google' : ''}</span>${lastSeen(u)}</div></a>
+                <div><h3>${esc(u.full_name)}${googleMark(u)}</h3><span class="muted small">${count(u) ? `${count(u)} ${count(u) === 1 ? 'ابن' : 'أبناء'}` : 'بلا أبناء'}</span>${lastSeen(u)}</div></a>
               <div class="pc-phones">${phones(u).length ? phones(u).map((p) => `<span class="pc-phone"><span dir="ltr">${esc(p)}</span><a class="pc-call" href="tel:${esc(p)}" aria-label="اتصال">📞</a>${waButton(p)}</span>`).join('') : '<span class="muted small">لا هاتف</span>'}</div>
               ${activeSwitch(u)}${sentBadge(u)}${loginBtn(u)}
               ${kidsBox(u)}
@@ -3035,7 +3039,7 @@ function viewParentsList(el, users, reload, edit) {
           <tbody>${list
             .map(
               (u) => `<tr class="${u.disabled ? 'acc-off' : ''}">
-                <td><a class="who-cell" href="#/parents/${u.id}">${avatar({ full_name: u.full_name }, 'sm')}<b>${esc(u.full_name)}</b></a></td>
+                <td><a class="who-cell" href="#/parents/${u.id}">${avatar({ full_name: u.full_name }, 'sm')}<b>${esc(u.full_name)}</b>${googleMark(u)}</a></td>
                 <td>${phones(u).map((p) => `<span class="phone-line"><span dir="ltr">${esc(p)}</span>${waButton(p)}</span>`).join('') || '<span class="muted">—</span>'}</td>
                 <td class="kids-cell">${kidsBox(u)}</td>
                 <td class="nowrap" dir="ltr">${esc(u.username)}</td>
