@@ -366,6 +366,7 @@ const routes = [
   [/^#\/program\/requests$/, (el) => viewProgramRequests(el)],
   [/^#\/attendance$/, viewAttendance],
   [/^#\/levels$/, (el) => viewLevels(el)],
+  [/^#\/period\/([\w-]+)$/, (el, id) => viewPeriodGrid(el, id)],
   [/^#\/broadcast\/(teachers|staff)$/, (el, k) => viewStaffBroadcast(el, k)],
   [/^#\/tasks$/, viewTasks],
   [/^#\/timetable$/, viewTimetable],
@@ -3671,16 +3672,16 @@ function weekView(slots, { showLevel = false, showTeacher = false, showChild = f
 }
 
 // ---------- الامتحانات والعطل (جدول خاص بتاريخ بداية ونهاية) والراحة الأسبوعية ----------
-const PERIOD_ICON = { exams: '📝', holiday: '🏖️' };
+const PERIOD_ICON = { exams: '📝', holiday: '🏖️', closed: '🛌' };
 // levels: المستويات المعنية (الولي: مستويات أبنائه؛ المعلم: مستوياته)، فارغ = الكل
-function periodsBox(data, { levels = null, admin = false } = {}) {
+function periodsBox(data, { levels = null, admin = false, teacherId = null } = {}) {
   const t = today();
   const list = data.periods.filter((p) => p.to >= addDaysIso(t, -7));
   const rest = data.rest_days.map((d) => DAYS_AR[d - 1]).join('، ');
-  const mine = (x) => !x.level || !levels || levels.includes(x.level);
+  const mine = (x) => (teacherId ? x.teacher_id === teacherId : !x.level || !levels || levels.includes(x.level));
   return `<section class="card periods">
     <div class="section-head"><h3>📆 الامتحانات والعطل والراحة</h3>${admin ? '<button class="btn ghost small" id="per-edit">⚙️ تعديل</button>' : ''}</div>
-    ${rest ? `<p class="per-rest">🛌 الراحة الأسبوعية: <b>${esc(rest)}</b></p>` : ''}
+    ${rest ? `<p class="per-rest">🛌 الراحة الأسبوعية (المركز مغلق): <b>${esc(rest)}</b></p>` : ''}
     ${list.length
       ? list
           .map((p) => {
@@ -3690,9 +3691,14 @@ function periodsBox(data, { levels = null, admin = false } = {}) {
                 <span class="per-ico">${PERIOD_ICON[p.kind]}</span><span class="per-main"><b>${esc(p.title)}</b><small>من ${fmtDate(p.from)} إلى ${fmtDate(p.to)}</small></span>
                 ${now ? '<span class="badge average">جارية</span>' : p.from > t ? '<span class="badge">قادمة</span>' : '<span class="badge">انتهت</span>'}</summary>
               ${p.note ? `<p class="muted small">${esc(p.note)}</p>` : ''}
-              ${ses.length
+              ${admin && p.kind !== 'closed' ? `<p><a class="btn small" href="#/period/${esc(p.id)}">🗓 الجدول الخاص (${p.sessions.length} حصة)</a></p>` : ''}
+              ${p.kind === 'closed'
+                ? '<p class="per-closed">🛌 المركز مغلق في دروس الدعم: لا حصص، وعدّاد ساعات المدرّسين متوقّف.</p>'
+                : admin
+                ? ''
+                : ses.length
                 ? `<ul class="per-ses">${ses
-                    .map((x) => `<li><b>${esc(fmtDate(x.date))}</b><span dir="ltr">${esc(x.start)}–${esc(x.end)}</span><span>${esc(x.label || '')}</span>${x.level && !levels?.length ? `<small class="muted">${esc(levelLabel(x.level))}</small>` : ''}</li>`)
+                    .map((x) => `<li><b>${esc(fmtDate(x.date))}</b><span dir="ltr">${esc(x.start)}–${esc(x.end)}</span><span>${x.kind === 'skills' ? '🎯 ' : ''}${esc(x.subject_name || x.label || '')}</span>${x.teacher_name && !teacherId ? `<small class="muted">👩‍🏫 ${esc(x.teacher_name)}</small>` : ''}${x.level && (teacherId || !levels?.length) ? `<small class="muted">${esc(levelLabel(x.level))}</small>` : ''}</li>`)
                     .join('')}</ul>`
                 : `<p class="muted small">${p.kind === 'holiday' ? 'لا حصص خلال هذه العطلة.' : 'الجدول الخاص بهذه الفترة لم يُضبط بعد.'}</p>`}
             </details>`;
@@ -3709,7 +3715,6 @@ const addDaysIso = (d, n) => {
 function periodsEditor(data, onDone) {
   let periods = JSON.parse(JSON.stringify(data.periods));
   const rest = new Set(data.rest_days);
-  const lvOpts = (v) => `<option value="">كل المستويات</option>${state.meta.levels.map((l) => `<option value="${esc(l.code)}" ${l.code === v ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}`;
   const draw = () => {
     $('#pe-list').innerHTML = periods
       .map((p, i) => `<div class="pe-card" data-i="${i}">
@@ -3717,36 +3722,23 @@ function periodsEditor(data, onDone) {
           <label>العنوان<input data-f="title" value="${esc(p.title || '')}" placeholder="مثال: امتحانات الثلاثي الأول"></label></div>
         <div class="row"><label>يبدأ من<input type="date" data-f="from" value="${esc(p.from || '')}"></label><label>وينتهي في<input type="date" data-f="to" value="${esc(p.to || '')}"></label></div>
         <label>ملاحظة<input data-f="note" value="${esc(p.note || '')}" placeholder="مثال: حصص مراجعة فقط"></label>
-        <p class="muted small">الجدول الخاص بهذه الفترة (يعوّض الجدول العادي):</p>
-        <div class="pe-ses">${p.sessions
-          .map((x, j) => `<div class="pe-s" data-j="${j}"><input type="date" data-s="date" value="${esc(x.date)}"><input type="time" data-s="start" value="${esc(x.start)}"><input type="time" data-s="end" value="${esc(x.end)}">
-            <select data-s="level">${lvOpts(x.level)}</select><input data-s="label" value="${esc(x.label || '')}" placeholder="المادة / البيان"><button type="button" class="link danger" data-rm-s="${j}">✕</button></div>`)
-          .join('')}</div>
-        <div class="pe-acts"><button type="button" class="btn ghost small" data-add-s>+ حصة</button><button type="button" class="link danger small" data-rm-p>حذف الفترة</button></div>
+        <p class="muted small">${p.kind === 'closed' ? '🛌 المركز مغلق: لا حصص وعدّاد المدرّسين متوقّف.' : `🗓 ${p.sessions.length} حصة في الجدول الخاص — تُضبط من زر «الجدول الخاص» بعد الحفظ.`}</p>
+        <div class="pe-acts"><span></span><button type="button" class="link danger small" data-rm-p>حذف الفترة</button></div>
       </div>`)
       .join('') || '<p class="muted">لا فترات بعد.</p>';
     $('#pe-list').querySelectorAll('.pe-card').forEach((card) => {
       const p = periods[Number(card.dataset.i)];
       card.querySelectorAll('[data-f]').forEach((x) => x.addEventListener('input', () => (p[x.dataset.f] = x.value)));
-      card.querySelectorAll('.pe-s').forEach((row) => {
-        const ses = p.sessions[Number(row.dataset.j)];
-        row.querySelectorAll('[data-s]').forEach((x) => x.addEventListener('input', () => (ses[x.dataset.s] = x.value)));
-      });
-      card.querySelectorAll('[data-rm-s]').forEach((b) => b.addEventListener('click', () => (p.sessions.splice(Number(b.dataset.rmS), 1), draw())));
-      card.querySelector('[data-add-s]').addEventListener('click', () => {
-        const last = p.sessions[p.sessions.length - 1];
-        p.sessions.push({ date: last?.date || p.from || today(), start: last?.start || '09:00', end: last?.end || '10:00', level: last?.level || '', label: '' });
-        draw();
-      });
+      card.querySelector('[data-f="kind"]').addEventListener('change', (e) => ((p.kind = e.target.value), draw()));
       card.querySelector('[data-rm-p]').addEventListener('click', () => confirmAction('حذف هذه الفترة؟') && (periods.splice(Number(card.dataset.i), 1), draw()));
     });
   };
   openModal(
     '📆 الامتحانات والعطل والراحة',
-    `<label>🛌 الراحة الأسبوعية</label>
+    `<label>🛌 الراحة الأسبوعية <small class="muted">(المركز مغلق في الدعم، وعدّاد المدرّسين متوقّف)</small></label>
      <div class="pe-rest">${DAYS_AR.map((d, i) => `<label class="chip-check"><input type="checkbox" data-rest="${i + 1}" ${rest.has(i + 1) ? 'checked' : ''}><span>${d}</span></label>`).join('')}</div>
      <div id="pe-list"></div>
-     <p><button type="button" class="btn ghost small" id="pe-add-ex">+ فترة امتحانات</button> <button type="button" class="btn ghost small" id="pe-add-ho">+ عطلة</button></p>`,
+     <p><button type="button" class="btn ghost small" id="pe-add-ex">+ فترة امتحانات</button> <button type="button" class="btn ghost small" id="pe-add-ho">+ عطلة</button> <button type="button" class="btn ghost small" id="pe-add-cl">+ راحة (المركز مغلق)</button></p>`,
     async () => {
       const rest_days = [...document.querySelectorAll('[data-rest]')].filter((x) => x.checked).map((x) => Number(x.dataset.rest));
       await api('PUT', '/api/periods', { periods, rest_days });
@@ -3761,8 +3753,190 @@ function periodsEditor(data, onDone) {
   };
   $('#pe-add-ex').addEventListener('click', add('exams'));
   $('#pe-add-ho').addEventListener('click', add('holiday'));
+  $('#pe-add-cl').addEventListener('click', add('closed'));
   draw();
 }
+// ---------- الجدول الخاص بفترة (امتحانات / عطلة): شبكة أيام × ساعات، سحب وإفلات ----------
+const PG_START = 8; // 08:00
+const PG_END = 21; // 21:00
+const PG_PX = 56; // بكسل في الساعة
+const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+const toHHMM = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+async function viewPeriodGrid(el, id) {
+  const [data, { users: teachersAll }] = await Promise.all([api('GET', '/api/periods'), api('GET', '/api/users?role=teacher')]);
+  const teachers = teachersAll.filter((t) => !t.program_staff);
+  let period = data.periods.find((p) => p.id === id);
+  if (!period) {
+    el.innerHTML = '<div class="card muted">الفترة غير موجودة. <a href="#/timetable">← جداول الأوقات</a></div>';
+    return;
+  }
+  let sessions = period.sessions.map((x) => ({ ...x }));
+  let dirty = false;
+  const level = () => sessionStorage.getItem('pgLevel') || '';
+  const days = [];
+  for (let d = period.from; d <= period.to && days.length < 31; d = addDaysIso(d, 1)) {
+    const dow = new Date(`${d}T12:00:00`).getDay() || 7;
+    if (!data.rest_days.includes(dow)) days.push(d);
+  }
+  const dayName = (d) => DAYS_AR[(new Date(`${d}T12:00:00`).getDay() || 7) - 1];
+  const save = async () => {
+    const periods = data.periods.map((p) => (p.id === id ? { ...p, sessions } : p));
+    const r = await api('PUT', '/api/periods', { periods, rest_days: data.rest_days });
+    data.periods = r.periods;
+    period = r.periods.find((p) => p.id === id);
+    sessions = period.sessions.map((x) => ({ ...x }));
+    dirty = false;
+    toast('تم حفظ الجدول الخاص ✓');
+    render();
+  };
+  const lanes = (list) => {
+    // حصص متداخلة في نفس اليوم: كل واحدة في «مسار» حتى لا تتغطّى
+    const sorted = [...list].sort((a, b) => toMin(a.start) - toMin(b.start));
+    const ends = [];
+    for (const x of sorted) {
+      let i = ends.findIndex((e) => e <= toMin(x.start));
+      if (i < 0) i = ends.length;
+      ends[i] = toMin(x.end);
+      x._lane = i;
+    }
+    for (const x of sorted) x._lanes = ends.length;
+    return sorted;
+  };
+  const render = () => {
+    const lv = level();
+    const shown = sessions.filter((x) => !lv || x.level === lv || !x.level);
+    el.innerHTML = `
+      <div class="page-head"><div><a href="#/timetable" class="muted small">→ جداول الأوقات</a>
+        <h2>${PERIOD_ICON[period.kind]} ${esc(period.title)}</h2>
+        <p class="muted small">من ${fmtDate(period.from)} إلى ${fmtDate(period.to)} · ${sessions.length} حصة · اسحب الحصة لتغيير اليوم أو الوقت، اضغط عليها للتعديل، واضغط على مكان فارغ لإضافة حصة.</p></div>
+        <div class="actions"><button class="btn ghost" id="pg-copy">📋 نسخ جدول الأوقات العادي</button><button class="btn" id="pg-save" ${dirty ? '' : 'disabled'}>💾 حفظ${dirty ? ' *' : ''}</button></div></div>
+      <div class="filters"><select id="pg-level"><option value="">كل المستويات</option>${state.meta.levels.map((l) => `<option value="${esc(l.code)}" ${l.code === lv ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}</select>
+        <span class="legend"><span><i style="background:#7c3aed"></i>دعم</span><span><i style="background:#f59e0b"></i>مهارات</span></span></div>
+      ${days.length
+        ? `<div class="pg-wrap"><div class="pg" style="--cols:${days.length}">
+          <div class="pg-hours">${Array.from({ length: PG_END - PG_START }, (_, i) => `<div style="height:${PG_PX}px"><small>${toHHMM((PG_START + i) * 60)}</small></div>`).join('')}</div>
+          ${days
+            .map(
+              (d) => `<div class="pg-day"><div class="pg-head ${d === today() ? 'today' : ''}"><b>${dayName(d)}</b><small>${fmtDate(d).slice(0, 5)}</small></div>
+              <div class="pg-col" data-date="${d}" style="height:${(PG_END - PG_START) * PG_PX}px">${lanes(shown.filter((x) => x.date === d))
+                .map((x) => {
+                  const top = ((toMin(x.start) - PG_START * 60) / 60) * PG_PX;
+                  const h = ((toMin(x.end) - toMin(x.start)) / 60) * PG_PX;
+                  const w = 100 / x._lanes;
+                  return `<div class="pg-s ${x.kind}" data-sid="${esc(x.id)}" style="top:${top}px;height:${Math.max(h, 22)}px;inset-inline-start:${x._lane * w}%;width:calc(${w}% - 3px)">
+                    <b dir="ltr">${esc(x.start)}–${esc(x.end)}</b><span>${x.kind === 'skills' ? '🎯 ' : ''}${esc(x.subject_name || x.label || '—')}</span>
+                    <small>${esc(levelShort(x.level) || 'الكل')}${x.teacher_name ? ` · ${esc(x.teacher_name.split(' ')[0])}` : ''}</small></div>`;
+                })
+                .join('')}</div></div>`
+            )
+            .join('')}
+        </div></div>`
+        : '<div class="card muted">لا أيام دراسة في هذه الفترة.</div>'}`;
+    $('#pg-level').addEventListener('change', (e) => (sessionStorage.setItem('pgLevel', e.target.value), render()));
+    $('#pg-save').addEventListener('click', () => save().catch((err) => toast(err.message, true)));
+    $('#pg-copy').addEventListener('click', async () => {
+      if (sessions.some((x) => x.kind !== 'skills') && !confirmAction('نسخ جدول الأوقات العادي يعوّض حصص الدعم الموجودة في هذه الفترة (حصص المهارات تبقى). نواصل؟')) return;
+      if (dirty) await save();
+      const r = await api('POST', '/api/periods/copy', { id });
+      period = r.period;
+      sessions = period.sessions.map((x) => ({ ...x }));
+      data.periods = data.periods.map((p) => (p.id === id ? period : p));
+      toast(`تم نسخ ${sessions.length} حصة — حرّكها كما تحب ثم «حفظ»`);
+      render();
+    });
+    // إضافة حصة: ضغطة على مكان فارغ
+    el.querySelectorAll('.pg-col').forEach((col) =>
+      col.addEventListener('click', (e) => {
+        if (e.target !== col) return;
+        const y = e.clientY - col.getBoundingClientRect().top;
+        const start = Math.round(((y / PG_PX) * 60 + PG_START * 60) / 15) * 15;
+        form({ id: '', date: col.dataset.date, start: toHHMM(start), end: toHHMM(Math.min(start + 90, PG_END * 60)), level: level(), kind: 'support' }, true);
+      })
+    );
+    // سحب وإفلات (فأرة ولمس): اليوم من العمود، والوقت من الارتفاع (كل 15 دقيقة)
+    el.querySelectorAll('.pg-s').forEach((card) => {
+      card.addEventListener('pointerdown', (e) => {
+        const x = sessions.find((y) => y.id === card.dataset.sid);
+        const dur = toMin(x.end) - toMin(x.start);
+        const rect = card.getBoundingClientRect();
+        const offY = e.clientY - rect.top;
+        const sx = e.clientX;
+        const sy = e.clientY;
+        let moved = false;
+        let target = null;
+        card.setPointerCapture(e.pointerId);
+        const move = (ev) => {
+          if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+          moved = true;
+          card.classList.add('drag');
+          card.style.transform = `translate(${ev.clientX - sx}px, ${ev.clientY - sy}px)`;
+          card.style.pointerEvents = 'none';
+          const col = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.pg-col');
+          card.style.pointerEvents = '';
+          el.querySelectorAll('.pg-col.over').forEach((c) => c.classList.remove('over'));
+          if (col) {
+            col.classList.add('over');
+            const y = ev.clientY - offY - col.getBoundingClientRect().top;
+            let start = Math.round(((y / PG_PX) * 60 + PG_START * 60) / 15) * 15;
+            start = Math.max(PG_START * 60, Math.min(start, PG_END * 60 - dur));
+            target = { date: col.dataset.date, start };
+            card.querySelector('b').textContent = `${toHHMM(start)}–${toHHMM(start + dur)}`;
+          }
+        };
+        const up = () => {
+          card.removeEventListener('pointermove', move);
+          card.removeEventListener('pointerup', up);
+          card.removeEventListener('pointercancel', up);
+          el.querySelectorAll('.pg-col.over').forEach((c) => c.classList.remove('over'));
+          if (!moved) return form(x, false);
+          if (target) {
+            x.date = target.date;
+            x.start = toHHMM(target.start);
+            x.end = toHHMM(target.start + dur);
+            dirty = true;
+          }
+          render();
+        };
+        card.addEventListener('pointermove', move);
+        card.addEventListener('pointerup', up);
+        card.addEventListener('pointercancel', up);
+      });
+    });
+  };
+  // نافذة الحصة: إضافة، تعديل، حذف
+  const form = (x, isNew) => {
+    const subjects = state.meta.subjects;
+    openModal(
+      isNew ? '+ حصة في الجدول الخاص' : 'تعديل الحصة',
+      `<div class="row"><label>النوع<select name="kind"><option value="support">📚 دعم مدرسي</option><option value="skills" ${x.kind === 'skills' ? 'selected' : ''}>🎯 مهارات</option></select></label>
+         <label>اليوم<select name="date">${days.map((d) => `<option value="${d}" ${d === x.date ? 'selected' : ''}>${dayName(d)} ${fmtDate(d)}</option>`).join('')}</select></label></div>
+       <div class="row"><label>من<input type="time" name="start" value="${esc(x.start)}" required></label><label>إلى<input type="time" name="end" value="${esc(x.end)}" required></label></div>
+       <div class="row"><label>المستوى<select name="level"><option value="">كل المستويات</option>${state.meta.levels.map((l) => `<option value="${esc(l.code)}" ${l.code === x.level ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}</select></label>
+         <label>المادة<select name="subject_id"><option value="">—</option>${subjects.map((m) => `<option value="${m.id}" ${m.id === x.subject_id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label></div>
+       <label>المدرّس (تُحتسب الساعات في رواتبه)<select name="teacher_id"><option value="">—</option>${teachers.map((t) => `<option value="${t.id}" ${t.id === x.teacher_id ? 'selected' : ''}>${esc(t.full_name)}</option>`).join('')}</select></label>
+       <label>البيان (اختياري)<input name="label" value="${esc(x.label || '')}" placeholder="مثال: ورشة الخط، مراجعة شاملة…"></label>
+       ${isNew ? '' : '<p><button type="button" class="link danger" id="pg-del">🗑 حذف الحصة</button></p>'}`,
+      async (d) => {
+        if (d.end <= d.start) throw new Error('وقت النهاية قبل البداية');
+        const sub = subjects.find((m) => m.id === Number(d.subject_id));
+        const t = teachers.find((m) => m.id === Number(d.teacher_id));
+        Object.assign(x, { kind: d.kind, date: d.date, start: d.start, end: d.end, level: d.level, subject_id: sub?.id || null, subject_name: sub?.name || '',
+          teacher_id: t?.id || null, teacher_name: t?.full_name || '', label: d.label });
+        if (isNew) sessions.push({ ...x, id: `n${Date.now().toString(36)}` });
+        dirty = true;
+        render();
+      }
+    );
+    $('#pg-del')?.addEventListener('click', () => {
+      sessions = sessions.filter((y) => y !== x);
+      dirty = true;
+      $('#modal').close();
+      render();
+    });
+  };
+  render();
+}
+
 async function mountPeriods(host, opts) {
   const data = await api('GET', '/api/periods').catch(() => null);
   if (!data || !host.isConnected) return;
@@ -3779,7 +3953,7 @@ async function viewTimetable(el, mode = 'level') {
       <p class="muted">${slots.length} حصة في الأسبوع — ${hours.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} ساعة</p>
       <div class="card">${weekView(slots, { showLevel: true })}</div>
       <div id="tt-periods"></div>`;
-    mountPeriods($('#tt-periods'), { levels: [...new Set(slots.map((x) => x.level))] });
+    mountPeriods($('#tt-periods'), { teacherId: state.user.id });
     return;
   }
   if (role === 'parent') {

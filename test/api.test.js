@@ -1696,3 +1696,34 @@ test('pack-only level: pack forced, subjects ignored, pack fee from levels page'
   // إرجاع الأقسام كما كانت
   await admin('PUT', '/api/levels', { levels: lv.levels.map((l) => ({ code: l.code, label: l.label })) });
 });
+
+test('special periods: copy timetable into exams period, teacher hours follow it; rest period stops the counter', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const math = meta.subjects.find((x) => x.name === 'الرياضيات').id;
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'per-t', full_name: 'مدرّس الفترات', password: 'secret1', hourly_rate: 10, subject_ids: [math] })).body.user;
+  const day = new Date().toISOString().slice(0, 10);
+  const dow = new Date(`${day}T12:00:00Z`).getUTCDay() || 7;
+  assert.strictEqual((await admin('POST', '/api/timetable', { level: '8', day: dow, start_time: '06:00', end_time: '08:00', subject_id: math, teacher_id: t.id })).status, 201);
+  const month = day.slice(0, 7);
+  const hoursToday = async () => (await admin('GET', `/api/payroll/${t.id}?month=${month}`)).body.sessions.filter((x) => x.date === day);
+  assert.strictEqual((await hoursToday()).reduce((a, x) => a + x.hours, 0), 2);
+  // راحة: المركز مغلق، العدّاد متوقّف
+  await admin('PUT', '/api/periods', { rest_days: [], periods: [{ id: 'closed1', kind: 'closed', title: 'راحة', from: day, to: day }] });
+  const closed = await hoursToday();
+  assert.deepStrictEqual([closed[0].status, closed[0].hours], ['paused', 0]);
+  // امتحانات: نسخ الجدول ثم تحريك الحصة (ساعة واحدة)
+  await admin('PUT', '/api/periods', { rest_days: [], periods: [{ id: 'ex1', kind: 'exams', title: 'امتحانات', from: day, to: day }] });
+  const cp = (await admin('POST', '/api/periods/copy', { id: 'ex1' })).body.period;
+  const mine = cp.sessions.filter((x) => x.teacher_id === t.id);
+  assert.strictEqual(mine.length, 1);
+  assert.strictEqual((await hoursToday()).reduce((a, x) => a + x.hours, 0), 2);
+  mine[0].start = '07:00';
+  cp.sessions.push({ id: 'sk1', date: day, start: '05:00', end: '06:00', level: '8', kind: 'skills', label: 'مهارات', teacher_id: t.id });
+  await admin('PUT', '/api/periods', { rest_days: [], periods: [cp] });
+  const after = await hoursToday();
+  assert.strictEqual(after.reduce((a, x) => a + x.hours, 0), 2); // ساعة دعم + ساعة مهارات
+  assert.ok(after.every((x) => x.timetable_id === null));
+  assert.strictEqual((await admin('POST', '/api/periods/copy', { id: 'nope' })).status, 404);
+  await admin('PUT', '/api/periods', { rest_days: [], periods: [] });
+});
