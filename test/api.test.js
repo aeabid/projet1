@@ -1743,3 +1743,19 @@ test('parents list: login sent date is recorded, children carry level and progra
   row = (await admin('GET', '/api/users?role=parent')).body.users.find((u) => u.id === par.id);
   assert.ok(row.login_sent_at);
 });
+
+test('disable / enable an account: a disabled parent cannot log in and loses open sessions', async () => {
+  const admin = await login('admin', 'admin123');
+  const par = (await admin('POST', '/api/users', { role: 'parent', username: 'off-p', full_name: 'ولي موقوف', password: 'secret1' })).body.user;
+  const parent = await login('off-p', 'secret1');
+  assert.strictEqual((await parent('GET', '/api/me')).status, 200);
+  assert.strictEqual((await admin('PATCH', `/api/users/${par.id}/active`, { active: false })).status, 200);
+  assert.strictEqual((await parent('GET', '/api/me')).status, 401);
+  const denied = await call('POST', '/api/login', { username: 'off-p', password: 'secret1' });
+  assert.strictEqual(denied.status, 403);
+  assert.strictEqual((await admin('GET', '/api/users?role=parent')).body.users.find((u) => u.id === par.id).disabled, true);
+  await admin('PATCH', `/api/users/${par.id}/active`, { active: true });
+  assert.strictEqual((await call('POST', '/api/login', { username: 'off-p', password: 'secret1' })).status, 200);
+  const me = (await admin('GET', '/api/me')).body.user;
+  assert.strictEqual((await admin('PATCH', `/api/users/${me.id}/active`, { active: false })).status, 400);
+});

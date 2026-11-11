@@ -2907,6 +2907,27 @@ const loginBtn = (u, small = false) =>
     ? `<button type="button" class="btn wa ${small ? 'small' : 'login-btn'}" data-pw="${u.id}" title="يرسل الرابط واسم المستخدم وكلمة سر جديدة عبر واتساب">${WA_ICON} إرسال الدخول</button>`
     : `<button type="button" class="btn ghost ${small ? 'small' : 'login-btn'}" data-pw="${u.id}" title="لا رقم واتساب: تظهر البيانات للنسخ">🔑 بيانات الدخول</button>`;
 
+// تفعيل / إيقاف حساب: الحساب الموقوف لا يدخل للمنصّة
+const activeSwitch = (u) =>
+  `<label class="act-switch ${u.disabled ? 'off' : 'on'}" title="${u.disabled ? 'الحساب موقوف: لا يدخل للمنصّة' : 'الحساب مفعّل'}"><span class="switch"><input type="checkbox" data-active="${u.id}" ${u.disabled ? '' : 'checked'}><i></i></span>${u.disabled ? '⛔ موقوف' : '🟢 مفعّل'}</label>`;
+function bindActiveSwitches(root, users, after) {
+  root.querySelectorAll('[data-active]').forEach((x) =>
+    x.addEventListener('change', async () => {
+      const u = users.find((y) => y.id === Number(x.dataset.active));
+      const active = x.checked;
+      if (!active && !confirmAction(`إيقاف حساب ${u.full_name}؟ ما عادش ينجم يدخل للمنصّة حتى تفعّلو من جديد.`)) return void (x.checked = true);
+      try {
+        await api('PATCH', `/api/users/${u.id}/active`, { active });
+        u.disabled = !active;
+        toast(active ? `تم تفعيل حساب ${u.full_name}` : `تم إيقاف حساب ${u.full_name}`);
+        after();
+      } catch (err) {
+        x.checked = !active;
+        toast(err.message, true);
+      }
+    })
+  );
+}
 // الدخول: هل أُرسلت بيانات الدخول لهذا الحساب؟ (حتى لا يُعاد الإرسال بالغلط)
 const sentBadge = (u) =>
   u.login_sent_at
@@ -2946,10 +2967,11 @@ function viewParentsList(el, users, reload, edit) {
       <input id="pq" type="search" placeholder="بحث بالاسم أو الهاتف أو اسم الابن…">
       <select id="p-prog" aria-label="البرنامج">${parentProgOptions(users)}</select>
       <select id="p-sent" aria-label="بيانات الدخول"><option value="">الدخول: الكل</option><option value="no">✉️ لم تُرسل له بعد</option><option value="yes">✓ أُرسلت له</option></select>
+      <select id="p-act" aria-label="الحالة"><option value="">الحسابات: الكل</option><option value="on">🟢 مفعّلة</option><option value="off">⛔ موقوفة</option></select>
       ${viewToggle()}</div>
     <div id="p-progress"></div>
     <div id="p-list"></div>`;
-  ['p-prog', 'p-sent'].forEach((k) => {
+  ['p-prog', 'p-sent', 'p-act'].forEach((k) => {
     const v = sessionStorage.getItem(k);
     if (v !== null && [...$('#' + k).options].some((o) => o.value === v)) $('#' + k).value = v;
   });
@@ -2969,10 +2991,12 @@ function viewParentsList(el, users, reload, edit) {
     const q = $('#pq').value.trim().toLowerCase();
     const f = $('#p-prog').value;
     const sent = $('#p-sent').value;
+    const act = $('#p-act').value;
     sessionStorage.setItem('p-prog', f);
     sessionStorage.setItem('p-sent', sent);
+    sessionStorage.setItem('p-act', act);
     const scoped = users.filter((u) => inProg(u, f) && (!q || [u.full_name, u.phone, u.username, u.cin, ...u.children.map((c) => c.full_name), ...(u.program_children || []).map((c) => c.full_name)].some((x) => String(x || '').toLowerCase().includes(q))));
-    const list = scoped.filter((u) => !sent || (sent === 'yes' ? u.login_sent_at : !u.login_sent_at));
+    const list = scoped.filter((u) => (!sent || (sent === 'yes' ? u.login_sent_at : !u.login_sent_at)) && (!act || (act === 'off' ? u.disabled : !u.disabled)));
     const done = scoped.filter((u) => u.login_sent_at).length;
     const pct = scoped.length ? Math.round((done / scoped.length) * 100) : 0;
     $('#p-progress').innerHTML = scoped.length
@@ -2984,11 +3008,11 @@ function viewParentsList(el, users, reload, edit) {
       : view === 'cards'
       ? `<div class="pcards">${list
           .map(
-            (u) => `<article class="pcard">
+            (u) => `<article class="pcard ${u.disabled ? 'off' : ''}">
               <a class="pc-head" href="#/parents/${u.id}">${avatar({ full_name: u.full_name }, 'md')}
                 <div><h3>${esc(u.full_name)}</h3><span class="muted small">${count(u) ? `${count(u)} ${count(u) === 1 ? 'ابن' : 'أبناء'}` : 'بلا أبناء'}${u.google_email ? ' · Google' : ''}</span>${lastSeen(u)}</div></a>
               <div class="pc-phones">${phones(u).length ? phones(u).map((p) => `<span class="pc-phone"><span dir="ltr">${esc(p)}</span><a class="pc-call" href="tel:${esc(p)}" aria-label="اتصال">📞</a>${waButton(p)}</span>`).join('') : '<span class="muted small">لا هاتف</span>'}</div>
-              ${sentBadge(u)}${loginBtn(u)}
+              ${activeSwitch(u)}${sentBadge(u)}${loginBtn(u)}
               ${kidsBox(u)}
               <div class="pc-foot"><span class="muted small" dir="ltr">${esc(u.username)}${u.cin ? ` · ${esc(u.cin)}` : ''}</span>
                 <span><a class="btn ghost small" href="#/parents/${u.id}">الملف</a><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
@@ -2999,12 +3023,12 @@ function viewParentsList(el, users, reload, edit) {
           <thead><tr><th>الولي</th><th>الهاتف</th><th>الأبناء</th><th>اسم المستخدم</th><th>الدخول</th><th></th></tr></thead>
           <tbody>${list
             .map(
-              (u) => `<tr>
+              (u) => `<tr class="${u.disabled ? 'acc-off' : ''}">
                 <td><a class="who-cell" href="#/parents/${u.id}">${avatar({ full_name: u.full_name }, 'sm')}<b>${esc(u.full_name)}</b></a></td>
                 <td>${phones(u).map((p) => `<span class="phone-line"><span dir="ltr">${esc(p)}</span>${waButton(p)}</span>`).join('') || '<span class="muted">—</span>'}</td>
                 <td class="kids-cell">${kidsBox(u)}</td>
                 <td class="nowrap" dir="ltr">${esc(u.username)}</td>
-                <td class="nowrap">${sentBadge(u)}${lastSeen(u)}</td>
+                <td class="nowrap">${activeSwitch(u)}${sentBadge(u)}${lastSeen(u)}</td>
                 <td class="row-actions">${loginBtn(u, true)}<button class="btn ghost small" data-edit="${u.id}">تعديل</button>${u.id !== state.user.id ? `<button class="btn danger small" data-del="${u.id}">حذف</button>` : ''}</td>
               </tr>`
             )
@@ -3017,6 +3041,7 @@ function viewParentsList(el, users, reload, edit) {
         issuePassword(u, () => ((u.login_sent_at = new Date().toISOString()), render()));
       })
     );
+    bindActiveSwitches($('#p-list'), users, render);
     $('#p-list').querySelectorAll('[data-add-kid]').forEach((b) => b.addEventListener('click', () => addSiblingFor(Number(b.dataset.addKid), reload)));
     $('#p-list').querySelectorAll('[data-del]').forEach((b) =>
       b.addEventListener('click', async () => {
@@ -3032,6 +3057,7 @@ function viewParentsList(el, users, reload, edit) {
   $('#pq').addEventListener('input', () => (clearTimeout(timer), (timer = setTimeout(render, 150))));
   $('#p-prog').addEventListener('change', render);
   $('#p-sent').addEventListener('change', render);
+  $('#p-act').addEventListener('change', render);
   $('#add-user').addEventListener('click', () => edit(null));
   render();
 }

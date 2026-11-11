@@ -24,13 +24,13 @@ async function viewMessages(el) {
   const { threads } = await api('GET', '/api/threads' + (filter === 'all' ? '' : `?status=${filter}`));
   const role = state.user.role;
   el.innerHTML = `
-    <div class="page-head"><h2>✉️ الرسائل</h2></div>
+    <div class="page-head"><h2>✉️ الرسائل</h2>${role === 'parent' ? '<button class="btn" id="msg-new">✉️ رسالة جديدة</button>' : ''}</div>
     <div class="class-chips">${Object.entries({ open: 'مفتوحة', closed: 'مغلقة', all: 'الكل' })
       .map(([k, v]) => `<button class="chip ${filter === k ? 'on' : ''}" data-f="${k}">${v}</button>`)
       .join('')}</div>
     <p class="muted small">${
       role === 'parent'
-        ? 'لمراسلة أستاذ(ة) مادة أو الإدارة: افتح ملف ابنك واضغط «✉️ مراسلة».'
+        ? 'راسل أستاذ(ة) أي مادة أو الإدارة بزر «✉️ رسالة جديدة». الإدارة تطّلع على كل الرسائل.'
         : 'محادثات الأولياء حول أبنائهم. لبدء محادثة مع وليّ: من ملف التلميذ «✉️ مراسلة الولي».'
     }</p>
     ${
@@ -54,6 +54,36 @@ async function viewMessages(el) {
       viewMessages(el);
     })
   );
+  $('#msg-new')?.addEventListener('click', () => parentNewMessage());
+}
+
+// الولي: رسالة جديدة لأستاذ(ة) مادة (مع اسمه) أو للإدارة، عن أحد أبنائه
+async function parentNewMessage() {
+  const { kids } = await api('GET', '/api/family');
+  const students = kids.filter((k) => k.type === 'student' && k.status !== 'left');
+  if (!students.length) return toast('المراسلة متاحة لتلاميذ دروس الدعم. للبرنامج التربوي اتّصل بالإدارة.', true);
+  const files = await Promise.all(students.map((k) => api('GET', `/api/students/${k.id}`)));
+  const targets = (f) => {
+    const teacherOf = (sid) => [...new Set((f.timetable || []).filter((x) => x.subject_id === sid && x.teacher_name).map((x) => x.teacher_name))].join(' / ');
+    return `<option value="admin">🏢 إدارة فيد</option>${(f.student.subjects || [])
+      .map((x) => `<option value="${x.id}">👩‍🏫 ${esc(x.name)}${teacherOf(x.id) ? ` — ${esc(teacherOf(x.id))}` : ''}</option>`)
+      .join('')}`;
+  };
+  openModal(
+    '✉️ رسالة جديدة',
+    `<label>عن<select name="student_id" id="pm-kid">${students.map((k, i) => `<option value="${k.id}" data-i="${i}">${esc(k.full_name)}</option>`).join('')}</select></label>
+     <label>إلى<select name="target_pick" id="pm-to">${targets(files[0])}</select></label>
+     <p class="muted small">تصل رسالتك للأستاذ(ة) المعني، والإدارة تطّلع على كل الرسائل.</p>
+     <label>الموضوع (اختياري)<input name="title" maxlength="150"></label>
+     <label>الرسالة<textarea name="body" rows="4" required></textarea></label>`,
+    async (data) => {
+      const subjectId = data.target_pick === 'admin' ? null : Number(data.target_pick);
+      const { thread } = await api('POST', '/api/threads', { student_id: Number(data.student_id), target: subjectId ? 'subject' : 'admin', subject_id: subjectId, title: data.title, body: data.body });
+      location.hash = `#/messages/${thread.id}`;
+    }
+  );
+  $('#modal-form button[type=submit]').textContent = '✉️ إرسال';
+  $('#pm-kid').addEventListener('change', (e) => ($('#pm-to').innerHTML = targets(files[Number(e.target.selectedOptions[0].dataset.i)])));
 }
 
 async function viewThread(el, id) {

@@ -2217,3 +2217,8 @@ dialog .toast, #toast { z-index: 2147483647; }
 .sent-progress small { color: var(--muted); }
 .sp-bar { height: 8px; background: var(--soft-2); border-radius: 99px; overflow: hidden; } .sp-bar i { display: block; height: 100%; background: linear-gradient(90deg, #22c55e, #16a34a); }
 td .sent-badge { display: block; width: max-content; }
+.act-switch { display: inline-flex; align-items: center; gap: .35rem; font-size: .76rem; font-weight: 800; cursor: pointer; margin: 0 0 .25rem; white-space: nowrap; }
+.act-switch.on { color: #166534; } .act-switch.off { color: #b91c1c; }
+td .act-switch { display: flex; width: max-content; }
+tr.acc-off td { opacity: .55; } tr.acc-off td:last-child, tr.acc-off td:nth-last-child(2) { opacity: 1; }
+.pcard.off { opacity: .7; border-color: #fecaca; background: #fffafa; }

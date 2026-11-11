@@ -911,3 +911,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_id INT REFERENCES staff(id) ON 
 -- ===== 20261130090000_login_sent.sql =====
 -- تاريخ إرسال بيانات الدخول (اسم المستخدم وكلمة السر) لصاحب الحساب
 ALTER TABLE users ADD COLUMN IF NOT EXISTS login_sent_at TIMESTAMPTZ;
+
+-- ===== 20261130100000_account_disabled.sql =====
+-- حساب موقوف: لا يدخل للمنصّة (مثلًا ولي خرج ابنه)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled BOOLEAN NOT NULL DEFAULT false;

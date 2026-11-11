@@ -1396,7 +1396,7 @@ async function viewParent(el, id) {
     <a href="#/parents" class="muted small">→ الأولياء</a>
     <div class="page-head"><div class="parent-head">${avatar({ full_name: p.full_name }, 'lg')}
       <div><h2>${esc(p.full_name)}</h2>
-        <div class="meta"><span class="pill">ولي</span>${p.google_email ? '<span class="badge good">يدخل بـ Google</span>' : ''}${balance > 0 ? `<span class="badge weak">باقي ${fmtMoney(balance)}</span>` : '<span class="badge good">خالص</span>'}</div></div></div></div>
+        <div class="meta"><span class="pill">ولي</span>${activeSwitch(p)}${p.google_email ? '<span class="badge good">يدخل بـ Google</span>' : ''}${balance > 0 ? `<span class="badge weak">باقي ${fmtMoney(balance)}</span>` : '<span class="badge good">خالص</span>'}</div></div></div></div>
     ${quickActions([
       phones[0] ? { href: `tel:${phones[0]}`, icon: 'phone', label: 'اتصال', tone: 'blue' } : null,
       waNumber(p.phone) ? { href: waUrl(p.phone, ''), icon: 'wa', label: 'واتساب', tone: 'green' } : null,
@@ -1428,6 +1428,7 @@ async function viewParent(el, id) {
   $('#pp-edit').addEventListener('click', () => parentQuickEdit(id, () => viewParent(el, id)));
   $('#pp-pw').addEventListener('click', () => issuePassword(p));
   $('#pp-add-kid').addEventListener('click', () => addSiblingFor(id, () => viewParent(el, id)));
+  bindActiveSwitches(el, [p], () => viewParent(el, id));
 }
 
 // ---------- المصاريف القارّة: الكراء، المحاسبة والقباضة، أجور الإطار الإداري، الفواتير ----------
