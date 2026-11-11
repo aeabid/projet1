@@ -59,6 +59,19 @@ const PUBLIC_URL = 'https://education.feed.tn';
 
 // ---------- واتساب ----------
 // رقم دولي لواتساب: الرقم الأول فقط، والأرقام التونسية (8 أرقام) يُضاف لها 216
+// الهاتف: الأول دائمًا رقم الواتساب، والثاني اختياري (يُحفظان معًا «الأول / الثاني»)
+const cleanTel = (t) => String(t || '').replace(/\s+/g, '').replace(/^\+?216/, '');
+function phoneFields(phone) {
+  const [t1, t2] = String(phone || '').split(/\s*[\/,;]\s*/);
+  return `<div class="row"><label>الهاتف الأول (واتساب)<input name="tel1" value="${esc(t1 || '')}" dir="ltr" inputmode="tel" placeholder="98123456"></label>
+    <label>هاتف ثانٍ (اختياري)<input name="tel2" value="${esc(t2 || '')}" dir="ltr" inputmode="tel"></label></div>`;
+}
+function joinPhones(data) {
+  data.phone = [cleanTel(data.tel1), cleanTel(data.tel2)].filter(Boolean).join(' / ');
+  delete data.tel1;
+  delete data.tel2;
+  return data;
+}
 function waNumber(phone) {
   const first = String(phone || '').split(/[\/,;]|\s-\s|-(?=\d{6})/)[0];
   let digits = first.replace(/\D/g, '').replace(/^00/, '');
@@ -1542,7 +1555,7 @@ async function studentForm(student, onDone, preChild = null, preset = null) {
      </label>
      <details class="new-parent" id="np-box"><summary>+ ولي جديد (غير موجود في القائمة)</summary>
        <div class="row"><label>اسم الولي ولقبه<input id="np-name"></label>
-         <label>الهاتف<input id="np-phone" inputmode="tel" placeholder="مثال: 98123456"></label></div>
+         <label>الهاتف (واتساب)<input id="np-phone" inputmode="tel" placeholder="مثال: 98123456"></label></div>
        <p class="muted small">يُنشأ له حساب: اسم المستخدم وكلمة السر = رقم الهاتف (يبدّلها من بعد).</p>
        <button type="button" class="btn small" id="np-add">إضافة الولي واختياره</button>
        <p class="np-msg" id="np-msg" hidden></p>
@@ -3133,10 +3146,8 @@ async function viewUsers(el, role, scope = null) {
     openModal(
       user ? 'تعديل الحساب' : addLabels[role].slice(2),
       `<label>الاسم واللقب<input name="full_name" value="${esc(u.full_name)}" required></label>
-       <div class="row">
-         <label>اسم المستخدم<input name="username" value="${esc(u.username)}" dir="ltr" required></label>
-         <label>الهاتف<input name="phone" value="${esc(u.phone)}" dir="ltr"></label>
-       </div>
+       <label>اسم المستخدم<input name="username" value="${esc(u.username)}" dir="ltr" required></label>
+       ${phoneFields(u.phone)}
        ${role === 'teacher' && !prog ? `<label>معلوم الساعة (د.ت)<input name="hourly_rate" inputmode="decimal" value="${esc(u.hourly_rate ?? '')}" placeholder="مثال: 20"></label>` : ''}
        ${prog ? `${programPayFields(u)}
          <p class="muted small">القسم الذي يرافقه يُحدَّد من «الأطفال والأقسام» (تعديل القسم ← المؤطّر).</p>` : ''}
@@ -3167,6 +3178,7 @@ async function viewUsers(el, role, scope = null) {
            : ''
        }`,
       async (data) => {
+        joinPhones(data);
         if (prog) data.program_staff = true;
         else if (role === 'teacher') {
           data.subject_levels = {};

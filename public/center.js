@@ -1309,14 +1309,10 @@ async function viewCash(el) {
 // تعديل سريع لمعطيات الولي (الاسم والهاتف…) دون المرور بقائمة الأولياء
 async function parentQuickEdit(parentId, onDone) {
   const { parent: u } = await api('GET', `/api/parents/${parentId}`);
-  const [tel1, tel2] = String(u.phone || '').split(/\s*[\/,;]\s*/);
   openModal(
     `تعديل الولي — ${u.full_name}`,
     `<label>الاسم واللقب<input name="full_name" value="${esc(u.full_name)}" required></label>
-     <div class="row">
-       <label>الهاتف<input name="tel1" value="${esc(tel1 || '')}" dir="ltr" inputmode="tel" placeholder="98123456"></label>
-       <label>هاتف ثانٍ (اختياري)<input name="tel2" value="${esc(tel2 || '')}" dir="ltr" inputmode="tel"></label>
-     </div>
+     ${phoneFields(u.phone)}
      <div class="row">
        <label>البريد الإلكتروني (للدخول بـ Google)<input name="email" type="email" value="${esc(u.email || '')}" dir="ltr"></label>
        <label>رقم بطاقة التعريف<input name="cin" value="${esc(u.cin || '')}" dir="ltr" inputmode="numeric"></label>
@@ -1324,8 +1320,7 @@ async function parentQuickEdit(parentId, onDone) {
      <label>العنوان<input name="address" value="${esc(u.address || '')}"></label>
      <p class="muted small">اسم المستخدم للدخول: <b dir="ltr">${esc(u.username)}</b></p>`,
     async (data) => {
-      const clean = (t) => String(t || '').replace(/\s+/g, '').replace(/^\+?216/, '');
-      const phone = [clean(data.tel1), clean(data.tel2)].filter(Boolean).join(' / ');
+      const { phone } = joinPhones({ ...data });
       await api('PUT', `/api/users/${u.id}`, { full_name: data.full_name, username: u.username, phone, email: data.email, cin: data.cin, address: data.address });
       state.parentsCache = null;
       toast('تم حفظ معطيات الولي');
@@ -1342,7 +1337,7 @@ function familyStrip(parentId, parentName, current) {
   }
   return `<section class="card fam-strip" data-cur="${current.kind}:${current.id}">
     <div class="fs-head"><a class="fs-parent" href="#/parents/${parentId}">${avatar({ full_name: parentName || '?' }, 'sm')}<span><small>الولي</small><b>${esc(parentName || 'ملف الولي')}</b></span><i>←</i></a>
-      <button type="button" class="btn ghost small" data-add-sib>+ ابن آخر</button></div>
+      <span class="fs-acts"><button type="button" class="btn ghost small" data-edit-par>✏️ الولي والهاتف</button><button type="button" class="btn ghost small" data-add-sib>+ ابن آخر</button></span></div>
     <div class="fs-kids" id="fs-kids"></div>
   </section>`;
 }
@@ -1350,6 +1345,7 @@ function bindFamilyStrip(el, parentId, onDone) {
   const box = el.querySelector('.fam-strip[data-cur]');
   if (!box || !parentId) return;
   box.querySelector('[data-add-sib]').addEventListener('click', () => addSiblingFor(parentId, onDone));
+  box.querySelector('[data-edit-par]').addEventListener('click', () => parentQuickEdit(parentId, onDone));
   const [ck, ci] = box.dataset.cur.split(':');
   api('GET', `/api/parents/${parentId}`)
     .then(({ kids }) => {

@@ -1142,13 +1142,14 @@ async function viewProgramChild(el, id) {
               { icon: 'calendar', label: 'تاريخ الدخول للمركز', value: c.start_date && fmtDate(c.start_date), sub: c.end_date ? `خرج في ${fmtDate(c.end_date)}` : '' },
               { icon: 'cake', label: 'تاريخ الولادة', value: c.birth_date && fmtDate(c.birth_date), sub: c.birth_date ? yearsOld(c.birth_date) : '' },
               { icon: 'user', label: 'الولي', value: c.contact_name && esc(c.contact_name), raw: true,
-                sub: c.contact_phone ? `<a href="tel:${esc(c.contact_phone)}" dir="ltr">${esc(c.contact_phone)}</a>` : '' },
+                sub: String(c.contact_phone || '').split(/\s*[\/,;]\s*/).filter(Boolean)
+                  .map((t, i) => `<a href="tel:${esc(t)}" dir="ltr">${esc(t)}</a>${i === 0 ? ' <small class="muted">(واتساب)</small>' : ''}`).join('<br>') },
               finance ? { icon: 'coin', label: 'المبلغ الشهري', value: c.free ? 'مجاني' : finance.monthly_fee ? fmtMoney(finance.monthly_fee) : '', strong: true, raw: true,
                 sub: finance.sibling_pct ? `تخفيض الإخوة ${finance.sibling_pct}%` : '' } : null,
               c.notes ? { icon: 'book', label: 'ملاحظات', value: c.notes, wide: true } : null,
             ])}
           </section>
-          <div class="info-acts"><button class="btn" id="child-edit">✏️ تعديل المعطيات</button></div></div>`
+          <div class="info-acts"><button class="btn" id="child-edit">✏️ تعديل المعطيات</button>${c.family_parent_id || c.parent_id ? '<button class="btn ghost" id="child-par">👤 تعديل الولي (الهاتف…)</button>' : ''}</div></div>`
         : ''
     }`;
   const reload = () => viewProgramChild(el, id);
@@ -1167,6 +1168,7 @@ async function viewProgramChild(el, id) {
   bindFileTabs(el);
   if (role === 'admin') bindFamilyStrip(el, c.family_parent_id || c.parent_id, reload);
   if (role === 'admin') mountFileNav(el, 'program', id, (x) => `#/program/child/${x}`);
+  $('#child-par')?.addEventListener('click', () => parentQuickEdit(c.family_parent_id || c.parent_id, reload));
   $('#to-support')?.addEventListener('click', () => studentForm(null, () => viewProgramChild(el, id), Number(id)));
 }
 
