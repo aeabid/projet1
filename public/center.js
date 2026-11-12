@@ -868,7 +868,7 @@ async function viewPermissions(el) {
       }
     });
     const readRoles = () =>
-      el.querySelectorAll('.role-card').forEach((c) => {
+      el.querySelectorAll('.role-card[data-i]').forEach((c) => {
         const r = roles[Number(c.dataset.i)];
         r.name = c.querySelector('.role-name').value;
         c.querySelectorAll('[data-rp]').forEach((x) => (r.perms[x.dataset.rp] = x.checked));

@@ -2240,3 +2240,6 @@ tr.acc-off td { opacity: .55; } tr.acc-off td:last-child, tr.acc-off td:nth-last
 .qm.in > span { background: linear-gradient(135deg, #22c55e, #15803d); } .qm.in { border-color: #bbf7d0; }
 .qm.out > span { background: linear-gradient(135deg, #f43f5e, #be123c); } .qm.out { border-color: #fecdd3; }
 .fs-acts { display: flex; gap: .35rem; flex-wrap: wrap; justify-content: flex-end; }
+/* زر الحفظ الثابت لا يغطّي آخر الصلاحيات */
+.tab-panel .role-grid { padding-bottom: 1rem; }
+.perm-foot.sticky { z-index: 4; }
