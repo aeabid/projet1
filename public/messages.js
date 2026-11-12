@@ -220,6 +220,7 @@ async function viewEvaluations(el) {
     sessionStorage.removeItem('cardSubject');
     reload();
   });
+  el.querySelectorAll('.cv-row').forEach(attachVoiceNote);
   $('#cv-subject').addEventListener('change', reload);
   $('#cv-month').addEventListener('change', reload);
   $('#cv-form')?.addEventListener('submit', async (e) => {

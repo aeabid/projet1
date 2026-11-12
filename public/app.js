@@ -254,6 +254,7 @@ function openModal(title, bodyHtml, onSubmit) {
   $('#modal-form button[type=submit]').textContent = 'حفظ';
   $('#modal-form button[type=submit]').hidden = false;
   $('#modal-body').innerHTML = bodyHtml;
+  attachVoiceNote($('#modal-body'));
   error.hidden = true;
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -268,6 +269,96 @@ function openModal(title, bodyHtml, onSubmit) {
   $('#modal-cancel').onclick = () => dialog.close();
   dialog.showModal();
   form.querySelector('input, select, textarea')?.focus();
+}
+
+// ---------- 🎤 ملاحظة بالمايك + تعمير الحقول الفارغة بالذكاء الاصطناعي ----------
+// يُركَّب تلقائيًا على كل استمارة فيها نص ملاحظة (content) مع حقول التقييم (category / rating / behavior)
+const AI_FIELDS = ['category', 'rating', 'behavior'];
+function attachVoiceNote(scope) {
+  const area = scope.querySelector('textarea[name=content]');
+  const selects = AI_FIELDS.map((n) => scope.querySelector(`select[name=${n}]`)).filter(Boolean);
+  if (!area || !selects.length || area.dataset.voice) return;
+  area.dataset.voice = '1';
+  const ai = !!state.meta?.ai_notes;
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Rec && !ai) return;
+  selects.forEach((s) => s.addEventListener('change', () => (s.dataset.touched = '1')));
+  const bar = document.createElement('div');
+  bar.className = 'voice-bar';
+  bar.innerHTML = `${Rec ? '<button type="button" class="btn small ghost vb-mic">🎤 إملاء الملاحظة</button>' : ''}
+    ${ai ? '<button type="button" class="btn small ghost vb-ai" title="الذكاء الاصطناعي يعمّر الحقول الفارغة من نص الملاحظة">✨ تعمير الحقول</button>' : ''}
+    <span class="vb-status muted small">${Rec ? (ai ? 'قل الملاحظة (المستوى، السلوك…) والتطبيق يعمّر الباقي' : 'قل الملاحظة وتُكتب تلقائيًا') : 'اكتب الملاحظة (أو استعمل مايك لوحة المفاتيح) ثم ✨'}</span>`;
+  (area.closest('label') || area).after(bar);
+  const status = bar.querySelector('.vb-status');
+  const micBtn = bar.querySelector('.vb-mic');
+  const aiBtn = bar.querySelector('.vb-ai');
+  const say = (msg, bad) => {
+    status.textContent = msg;
+    status.classList.toggle('error', !!bad);
+  };
+
+  const fill = async () => {
+    const said = area.value.trim();
+    if (!said) return say('اكتب أو أملِ الملاحظة أولًا', true);
+    const fields = {};
+    selects.forEach((s) => {
+      fields[s.name] = [...s.options].filter((o) => o.value).map((o) => ({ value: o.value, label: o.textContent.trim() }));
+    });
+    say('✨ جاري التحليل…');
+    if (aiBtn) aiBtn.disabled = true;
+    try {
+      const out = await api('POST', '/api/ai/note-fill', { text: said, fields });
+      const filled = [];
+      selects.forEach((s) => {
+        const empty = s.name === 'category' ? !s.dataset.touched : !s.value;
+        if (empty && out[s.name] && out[s.name] !== s.value) {
+          s.value = out[s.name];
+          s.classList.add('ai-filled');
+          filled.push(s.closest('label')?.firstChild?.textContent.trim() || s.name);
+        }
+      });
+      if (out.content) area.value = out.content;
+      area.classList.add('ai-filled');
+      say(filled.length ? `✅ تمّ تعمير: ${filled.join('، ')} — راجع قبل الحفظ` : '✅ تمّ تنقيح النص — راجع قبل الحفظ');
+    } catch (err) {
+      say(err.message, true);
+    } finally {
+      if (aiBtn) aiBtn.disabled = false;
+    }
+  };
+  aiBtn?.addEventListener('click', fill);
+
+  if (!Rec) return;
+  let rec = null;
+  micBtn.addEventListener('click', () => {
+    if (rec) return rec.stop();
+    rec = new Rec();
+    rec.lang = 'ar-TN';
+    rec.continuous = true;
+    rec.interimResults = true;
+    const base = area.value.trim();
+    let finalText = '';
+    rec.onresult = (e) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' ';
+        else interim += e.results[i][0].transcript;
+      }
+      area.value = [base, (finalText + interim).trim()].filter(Boolean).join(' ');
+    };
+    rec.onerror = (e) => say(e.error === 'not-allowed' ? 'اسمح للمتصفح باستعمال المايك' : 'تعذّر التقاط الصوت، أعد المحاولة', true);
+    rec.onend = () => {
+      rec = null;
+      micBtn.textContent = '🎤 إملاء الملاحظة';
+      micBtn.classList.remove('recording');
+      if (ai && finalText.trim()) fill();
+      else if (finalText.trim()) say('✅ تمّت الكتابة — راجع قبل الحفظ');
+    };
+    rec.start();
+    micBtn.textContent = '⏹ إيقاف';
+    micBtn.classList.add('recording');
+    say('🔴 أتكلّم الآن… ثم اضغط «إيقاف»');
+  });
 }
 
 function confirmAction(message) {

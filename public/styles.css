@@ -2243,3 +2243,11 @@ tr.acc-off td { opacity: .55; } tr.acc-off td:last-child, tr.acc-off td:nth-last
 /* زر الحفظ الثابت لا يغطّي آخر الصلاحيات */
 .tab-panel .role-grid { padding-bottom: 1rem; }
 .perm-foot.sticky { z-index: 4; }
+
+/* 🎤 ملاحظة بالمايك + تعمير بالذكاء الاصطناعي */
+.voice-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -2px 0 8px; }
+.voice-bar .vb-status { flex: 1 1 160px; }
+.voice-bar .vb-status.error { color: var(--danger, #c0392b); }
+.voice-bar .recording { background: #fde2e2; border-color: #e57373; color: #b71c1c; animation: vb-pulse 1.2s infinite; }
+@keyframes vb-pulse { 50% { box-shadow: 0 0 0 5px rgba(229, 115, 115, .25); } }
+.ai-filled { outline: 2px solid #b39ddb; outline-offset: 1px; background-color: #f7f3ff; }

@@ -1801,3 +1801,42 @@ test('product sale to an outside buyer with phone and a custom price', async () 
   const sale = (await admin('GET', '/api/products')).body.sales.find((x) => x.buyer === 'زائر');
   assert.deepStrictEqual([sale.unit_price, sale.amount, sale.buyer_phone], [25, 50, '29 000 111']);
 });
+
+test('dictated note: AI fills the empty fields with allowed values only; disabled without a key', async () => {
+  const admin = await login('admin', 'admin123');
+  const cookie = await (async () => {
+    const res = await call('POST', '/api/login', { username: 'admin', password: 'admin123' });
+    return res.headers.get('set-cookie').split(';')[0];
+  })();
+  // دون مفتاح: الخاصية معطّلة
+  assert.strictEqual((await admin('GET', '/api/meta')).body.ai_notes, false);
+  assert.strictEqual((await admin('POST', '/api/ai/note-fill', { text: 'ممتاز' })).status, 503);
+  let seen = null;
+  const aiHandle = createHandler(pool, {
+    adminPassword: 'admin123',
+    fillNote: async (input) => {
+      seen = input;
+      return { content: 'تلميذ مجتهد لكنه كثير الكلام في القسم.', category: 'behavior', rating: 'good', behavior: 'hacked' };
+    },
+  });
+  const ai = async (method, url, body) => {
+    const res = await aiHandle(new Request('http://localhost' + url, {
+      method, headers: { cookie, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined,
+    }));
+    return { status: res.status, body: await res.json() };
+  };
+  assert.strictEqual((await ai('GET', '/api/meta')).body.ai_notes, true);
+  const opts = (vals) => vals.map((v) => ({ value: v, label: v }));
+  const r = await ai('POST', '/api/ai/note-fill', {
+    text: 'يخدم مليح أما يحكي برشا في القسم',
+    fields: { category: opts(['level', 'behavior', 'general']), rating: [...opts(['excellent', 'good']), { value: 'evil', label: 'x' }], behavior: opts(['good', 'weak']), extra: opts(['a']) },
+  });
+  assert.strictEqual(r.status, 200);
+  assert.deepStrictEqual(r.body, { content: 'تلميذ مجتهد لكنه كثير الكلام في القسم.', category: 'behavior', rating: 'good' });
+  // القيم غير المسموح بها لا تصل إلى النموذج
+  assert.deepStrictEqual(Object.keys(seen.fields), ['category', 'rating', 'behavior']);
+  assert.deepStrictEqual(seen.fields.rating.map((o) => o.value), ['excellent', 'good']);
+  assert.strictEqual((await ai('POST', '/api/ai/note-fill', { text: '' })).status, 400);
+  // الولي لا يستعمل الخاصية
+  assert.strictEqual((await call('POST', '/api/ai/note-fill', { text: 'x' })).status, 401);
+});
