@@ -491,7 +491,9 @@ async function arenaAdmin(el, hub) {
     p.querySelectorAll('[data-b]').forEach((b) => b.addEventListener('click', () => ((gameState.board = b.dataset.b), arenaAdmin(el, hub))));
   } else {
     const qs = new URLSearchParams();
-    if (gameState.qLevel) qs.set('level', gameState.qLevel);
+    // كل سنة لوحدها: بنك أسئلة مستقلّ لكل قسم
+    if (!state.meta.levels.some((l) => l.code === gameState.qLevel)) gameState.qLevel = gameState.level || state.meta.levels[0]?.code || '';
+    qs.set('level', gameState.qLevel);
     if (gameState.qSubject) qs.set('subject_id', gameState.qSubject);
     if (gameState.qKind) qs.set('kind', gameState.qKind);
     const { questions } = await api('GET', '/api/game/questions?' + qs);
@@ -503,12 +505,15 @@ async function arenaAdmin(el, hub) {
       : q.data.pairs.map((x) => `${esc(x[0])} ↔ ${esc(x[1])}`).join(' · ');
     p.innerHTML = `
       <div class="g-bank-head">
-        <div class="filters">${levelSelect('g-ql', gameState.qLevel, true)}
+        <div class="g-years">${state.meta.levels
+          .map((l) => `<button class="g-year ${l.code === gameState.qLevel ? 'on' : ''}" data-year="${esc(l.code)}">${esc(l.label)}<small>${hub.levels.find((x) => x.code === l.code)?.questions ?? 0}</small></button>`)
+          .join('')}</div>
+        <div class="filters">
           <select id="g-qs"><option value="">— كل المواد —</option>${state.meta.subjects.map((x) => `<option value="${x.id}" ${String(x.id) === gameState.qSubject ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
           <select id="g-qk"><option value="">— كل الأنواع —</option>${Object.entries(GAME_KIND_LABELS).map(([k, v]) => `<option value="${k}" ${k === gameState.qKind ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
         <button class="btn" id="g-qadd">+ سؤال جديد</button>
       </div>
-      <p class="muted small">${questions.length} سؤال${questions.filter((q) => !q.active).length ? ` · ${questions.filter((q) => !q.active).length} موقوف/مؤرشف` : ''}</p>
+      <p class="muted small">${esc(lvl(gameState.qLevel))}: ${questions.length} سؤال${questions.filter((q) => !q.active).length ? ` · ${questions.filter((q) => !q.active).length} موقوف/مؤرشف` : ''}</p>
       ${
         questions.length
           ? `<div class="g-qlist">${questions
@@ -527,7 +532,7 @@ async function arenaAdmin(el, hub) {
           : '<div class="card empty-state"><span>📚</span><p>لا أسئلة بعد. ابدأ بإضافة أوّل سؤال!</p></div>'
       }`;
     const reload = () => arenaAdmin(el, hub);
-    $('#g-ql').addEventListener('change', (e) => ((gameState.qLevel = e.target.value), reload()));
+    p.querySelectorAll('[data-year]').forEach((b) => b.addEventListener('click', () => ((gameState.qLevel = b.dataset.year), reload())));
     $('#g-qs').addEventListener('change', (e) => ((gameState.qSubject = e.target.value), reload()));
     $('#g-qk').addEventListener('change', (e) => ((gameState.qKind = e.target.value), reload()));
     $('#g-qadd').addEventListener('click', () => questionForm({ level: gameState.qLevel, subject_id: gameState.qSubject }, reload));
@@ -578,7 +583,7 @@ function questionForm(q, done) {
   openModal(
     editing ? '✏️ تعديل سؤال' : '+ سؤال جديد — ركن التحدّي',
     `<div class="row">
-       <label>القسم<select name="level"><option value="">— كل الأقسام —</option>${state.meta.levels.map((l) => `<option value="${esc(l.code)}" ${l.code === (q?.level || '') ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}</select></label>
+       <label>القسم (السنة)<select name="level" required>${state.meta.levels.map((l) => `<option value="${esc(l.code)}" ${l.code === (q?.level || gameState.qLevel) ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}</select></label>
        <label>المادة<select name="subject_id"><option value="">—</option>${state.meta.subjects.map((x) => `<option value="${x.id}" ${String(x.id) === String(q?.subject_id || '') ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
      </div>
      <label>نوع السؤال<select name="kind" id="g-fkind">${Object.entries(GAME_KIND_LABELS).map(([k, v]) => `<option value="${k}" ${k === kind ? 'selected' : ''}>${v}</option>`).join('')}</select></label>

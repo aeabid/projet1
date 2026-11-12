@@ -2438,3 +2438,8 @@ body.g-playing { overflow: hidden; }
   .g-tabs button { font-size: .85rem; padding: 8px 4px; }
 }
 @media (prefers-reduced-motion: reduce) { .g-play-btn, .g-flame.hot, .g-confetti i { animation: none; } }
+.g-years { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin-bottom: 6px; }
+.g-year { border: 1.5px solid var(--border); background: var(--soft); border-radius: 12px; padding: 7px 12px; font: inherit; font-weight: 700; cursor: pointer; color: var(--text); display: inline-flex; gap: 6px; align-items: center; }
+.g-year small { background: #fff; border-radius: 999px; padding: 0 7px; color: var(--muted); }
+.g-year.on { background: var(--feed-purple); border-color: var(--feed-purple); color: #fff; }
+.g-year.on small { color: var(--feed-purple); }

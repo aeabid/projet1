@@ -1904,6 +1904,8 @@ test('game corner: admin-only question bank, server-side scoring, streaks, stars
   assert.strictEqual((await teacher('POST', '/api/game/questions', { kind: 'truefalse', prompt: 'x', data: { answer: true } })).status, 403);
   assert.strictEqual((await parent('GET', '/api/game/questions')).status, 403);
   assert.strictEqual((await mk({ kind: 'mcq', prompt: '2+2', data: { options: ['3', '4'], answer: 5 } })).status, 400);
+  // كل سنة لوحدها: القسم إجباري
+  assert.strictEqual((await admin('POST', '/api/game/questions', { kind: 'truefalse', prompt: 'x', data: { answer: true } })).status, 400);
   assert.strictEqual((await mk({ kind: 'order', prompt: 'رتّب', data: { items: ['أ', 'أ', 'ب'] } })).status, 400);
   const ids = [];
   ids.push((await mk({ kind: 'mcq', prompt: '2+2=?', data: { options: ['3', '4', '5'], answer: 1 }, points: 10, explanation: 'اثنان واثنان أربعة' })).body.question.id);
