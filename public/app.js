@@ -278,6 +278,8 @@ function attachVoiceNote(scope) {
   const area = scope.querySelector('textarea[name=content]');
   const selects = AI_FIELDS.map((n) => scope.querySelector(`select[name=${n}]`)).filter(Boolean);
   if (!area || !selects.length || area.dataset.voice) return;
+  // المدير يفتح أو يعطّل الخاصية للمعلمين والمؤطّرين من «الصلاحيات»
+  if (featureOff('teacher.voice_notes') || featureOff('program_staff.voice_notes')) return;
   area.dataset.voice = '1';
   const ai = !!state.meta?.ai_notes;
   const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;

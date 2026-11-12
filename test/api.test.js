@@ -1839,4 +1839,15 @@ test('dictated note: AI fills the empty fields with allowed values only; disable
   assert.strictEqual((await ai('POST', '/api/ai/note-fill', { text: '' })).status, 400);
   // الولي لا يستعمل الخاصية
   assert.strictEqual((await call('POST', '/api/ai/note-fill', { text: 'x' })).status, 401);
+  // المدير يعطّل الخاصية للمعلمين ثم يفتحها
+  await admin('POST', '/api/users', { role: 'teacher', username: 'voice-t', full_name: 'معلم المايك', password: 'secret1', subject_ids: [1] });
+  const tc = (await call('POST', '/api/login', { username: 'voice-t', password: 'secret1' })).headers.get('set-cookie').split(';')[0];
+  const tAi = async () => (await aiHandle(new Request('http://localhost/api/ai/note-fill', { method: 'POST', headers: { cookie: tc, 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'ممتاز' }) }))).status;
+  assert.strictEqual(await tAi(), 200);
+  assert.strictEqual((await admin('PUT', '/api/role-features', { values: { teacher: { voice_notes: false } } })).status, 200);
+  assert.strictEqual(await tAi(), 403);
+  const me = (await call('GET', '/api/me', null, tc)).body.user;
+  assert.strictEqual(me.features['teacher.voice_notes'], false);
+  await admin('PUT', '/api/role-features', { values: {} });
+  assert.strictEqual(await tAi(), 200);
 });
