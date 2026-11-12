@@ -581,6 +581,8 @@ const routes = [
   [/^#\/report\/(\d+)$/, (el, id) => viewReport(el, Number(id))],
   [/^#\/report-class$/, (el) => viewClassReports(el)],
   [/^#\/messages$/, (el) => viewMessages(el)],
+  [/^#\/arena$/, (el) => viewArena(el)],
+  [/^#\/arena\/play\/(\d+)$/, (el, id) => viewArenaPlay(el, id)],
   [/^#\/messages\/(\d+)$/, (el, id) => viewThread(el, Number(id))],
   [/^#\/evaluations$/, (el) => viewEvaluations(el)],
   [/^#\/overview$/, (el) => viewOverview(el)],
@@ -655,7 +657,7 @@ const HASH_PERM = {
   '#/board': 'stats', '#/finance': 'stats', '#/general': 'stats', '#/dashboard': 'school', '#/program/board': 'school',
   '#/payroll': 'salaries', '#/program/pay': 'salaries', '#/salaries': 'salaries', '#/staff': 'salaries',
   '#/fees': 'fees', '#/accounting': 'accounting', '#/cash': 'cash', '#/ledger': 'expenses',
-  '#/partners': 'partners', '#/permissions': 'super', '#/admins': 'super', '#/center-debts': 'expenses',
+  '#/arena': 'school', '#/partners': 'partners', '#/permissions': 'super', '#/admins': 'super', '#/center-debts': 'expenses',
   '#/people': 'school', '#/parents': 'school', '#/parent-requests': 'school', '#/students': 'school', '#/program': 'school',
   '#/attendance': 'school', '#/messages': 'school', '#/broadcast': 'school', '#/whatsapp': 'school', '#/courses': 'school',
   '#/support/teachers': 'accounts', '#/program/staff': 'accounts', '#/debts': 'expenses',
@@ -668,7 +670,7 @@ const FEATURE_HASH = {
   '#/tasks': ['teacher.tasks'], '#/group-message': ['teacher.group_message'], '#/messages': ['teacher.messages', 'parent.messages'],
   '#/my-pay': ['teacher.my_pay'],
   '#/program/attendance': ['program_staff.attendance'], '#/program/posts': ['program_staff.posts'], '#/program/pay': ['program_staff.my_pay'],
-  '#/my-receipts': ['parent.receipts'], '#/timetable': ['parent.timetable'],
+  '#/my-receipts': ['parent.receipts'], '#/timetable': ['parent.timetable'], '#/arena': ['parent.game'],
 };
 const featureOff = (key) => state.user?.features?.[key] === false;
 const navAllowed = (h) => {
@@ -955,6 +957,8 @@ function renderTopbar() {
   });
   $('#vmenu').querySelectorAll('a').forEach((a) => a.addEventListener('click', closeVmenu));
   $('#mail').hidden = state.user.role === 'admin' && !can('school');
+  // 🏆 ركن التحدّي: أيقونة مستقلّة (الإدارة والأولياء فقط)
+  $('#arena-btn').hidden = !(state.user.role === 'admin' ? can('school') : state.user.role === 'parent' && !featureOff('parent.game'));
   $('#bell').hidden = state.user.role !== 'admin' || !can('school');
   if (state.user.role === 'admin' && can('school')) refreshBell();
   refreshMail();

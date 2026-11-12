@@ -1885,3 +1885,99 @@ test('voice messages: admin records a clip, sends it to a parent and to a whole 
   const gt = (await parentA('GET', '/api/threads')).body.threads.find((x) => x.title === 'تذكير');
   assert.strictEqual((await parentA('GET', `/api/threads/${gt.id}`)).body.messages[0].audio_id, clip2.id);
 });
+
+test('game corner: admin-only question bank, server-side scoring, streaks, stars, badges and level leaderboard', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const math = meta.subjects[0].id;
+  const pa = (await admin('POST', '/api/users', { role: 'parent', username: 'game-p', full_name: 'ولي اللعب', password: 'secret1' })).body.user;
+  const pb = (await admin('POST', '/api/users', { role: 'parent', username: 'game-q', full_name: 'ولي ثان', password: 'secret1' })).body.user;
+  const s1 = (await admin('POST', '/api/students', { full_name: 'Yassine Gamer', level: '6', parent_id: pa.id, subject_ids: [math] })).body.student;
+  const s2 = (await admin('POST', '/api/students', { full_name: 'Amira Rival', level: '6', parent_id: pb.id, subject_ids: [math] })).body.student;
+  await admin('POST', '/api/users', { role: 'teacher', username: 'game-t', full_name: 'معلم', password: 'secret1', subject_ids: [math] });
+  const teacher = await login('game-t', 'secret1');
+  const parent = await login('game-p', 'secret1');
+  const rival = await login('game-q', 'secret1');
+
+  const mk = (b) => admin('POST', '/api/game/questions', { level: '6', subject_id: math, ...b });
+  // المعلم والولي لا يدخلان الأسئلة
+  assert.strictEqual((await teacher('POST', '/api/game/questions', { kind: 'truefalse', prompt: 'x', data: { answer: true } })).status, 403);
+  assert.strictEqual((await parent('GET', '/api/game/questions')).status, 403);
+  assert.strictEqual((await mk({ kind: 'mcq', prompt: '2+2', data: { options: ['3', '4'], answer: 5 } })).status, 400);
+  assert.strictEqual((await mk({ kind: 'order', prompt: 'رتّب', data: { items: ['أ', 'أ', 'ب'] } })).status, 400);
+  const ids = [];
+  ids.push((await mk({ kind: 'mcq', prompt: '2+2=?', data: { options: ['3', '4', '5'], answer: 1 }, points: 10, explanation: 'اثنان واثنان أربعة' })).body.question.id);
+  ids.push((await mk({ kind: 'truefalse', prompt: 'الأرض كروية', data: { answer: true } })).body.question.id);
+  ids.push((await mk({ kind: 'order', prompt: 'رتّب تصاعديًا', data: { items: ['1', '2', '3', '4'] } })).body.question.id);
+  ids.push((await mk({ kind: 'match', prompt: 'اربط', data: { pairs: [['تونس', 'إفريقيا'], ['فرنسا', 'أوروبا'], ['اليابان', 'آسيا']] } })).body.question.id);
+  assert.strictEqual((await admin('GET', '/api/game/questions?level=6')).body.questions.length >= 4, true);
+
+  // الولي يلعب لابنه فقط
+  assert.strictEqual((await parent('POST', '/api/game/sessions', { student_id: s2.id })).status, 404);
+  assert.strictEqual((await teacher('POST', '/api/game/sessions', { level: '6' })).status, 403);
+  const hub0 = (await parent('GET', '/api/game/hub')).body;
+  assert.strictEqual(hub0.student.id, s1.id);
+  assert.strictEqual(hub0.total_questions, 4);
+  const sess = (await parent('POST', '/api/game/sessions', { student_id: s1.id, subject_id: math })).body;
+  assert.strictEqual(sess.total, 4);
+  assert.strictEqual((await rival('GET', `/api/game/sessions/${sess.id}/next`)).status, 404);
+  const right = (q) =>
+    q.kind === 'mcq' ? 1 : q.kind === 'truefalse' ? true : q.kind === 'order' ? [0, 1, 2, 3] : [0, 1, 2];
+  let last;
+  for (let i = 0; i < 4; i++) {
+    const n = (await parent('GET', `/api/game/sessions/${sess.id}/next`)).body;
+    assert.strictEqual(n.index, i);
+    // الإجابة لا تُرسل مع السؤال
+    assert.ok(!('answer' in n.question) && !('data' in n.question));
+    if (n.question.kind === 'mcq') assert.deepStrictEqual(n.question.options.map((o) => o.text).sort(), ['3', '4', '5']);
+    // نفس السؤال عند إعادة الطلب
+    assert.strictEqual((await parent('GET', `/api/game/sessions/${sess.id}/next`)).body.question.id, n.question.id);
+    last = (await parent('POST', `/api/game/sessions/${sess.id}/answer`, { answer: right(n.question) })).body;
+    assert.strictEqual(last.correct, true);
+    assert.ok(last.points >= 10);
+    assert.strictEqual(last.streak, i + 1);
+    if (i === 2) assert.ok(last.bonus.streak > 0);
+    // إجابة ثانية لنفس السؤال مرفوضة
+    if (i < 3) assert.strictEqual((await parent('POST', `/api/game/sessions/${sess.id}/answer`, { answer: 1 })).status, 409);
+  }
+  assert.strictEqual(last.done, true);
+  assert.deepStrictEqual([last.summary.correct, last.summary.total, last.summary.stars, last.summary.rank_week], [4, 4, 3, 1]);
+  assert.deepStrictEqual(last.summary.new_badges.map((b) => b.key).sort(), ['champion', 'first_round', 'perfect'].sort());
+
+  // جولة ثانية: إجابات خاطئة، إعادة الأسئلة الصحيحة بربع النقاط، ترتيب جزئي
+  const sess2 = (await parent('POST', '/api/game/sessions', { student_id: s1.id })).body;
+  let wrong = 0;
+  for (let i = 0; i < sess2.total; i++) {
+    const n = (await parent('GET', `/api/game/sessions/${sess2.id}/next`)).body;
+    const ans = n.question.kind === 'order' ? [0, 1, 3, 2] : n.question.kind === 'mcq' ? 0 : n.question.kind === 'truefalse' ? false : [2, 1, 0];
+    const r = (await parent('POST', `/api/game/sessions/${sess2.id}/answer`, { answer: ans })).body;
+    assert.strictEqual(r.correct, false);
+    assert.strictEqual(r.streak, 0);
+    if (n.question.kind === 'order') assert.strictEqual(r.partial, 0.5);
+    if (n.question.kind === 'mcq') assert.strictEqual(r.reveal.answer, 1);
+    wrong++;
+    if (r.done) assert.strictEqual(r.summary.stars, 0);
+  }
+  assert.strictEqual(wrong, 4);
+
+  // الترتيب في القسم + جولة تجريبية للإدارة لا تُحتسب
+  const sr = (await rival('POST', '/api/game/sessions', { student_id: s2.id })).body;
+  const n1 = (await rival('GET', `/api/game/sessions/${sr.id}/next`)).body;
+  await rival('POST', `/api/game/sessions/${sr.id}/answer`, { answer: right(n1.question) });
+  const hub = (await parent('GET', '/api/game/hub')).body;
+  assert.deepStrictEqual(hub.leaderboard.week.map((r) => [r.name, r.me]), [['Yassine G.', true], ['Amira R.', false]]);
+  assert.strictEqual(hub.stats.rounds, 2);
+  assert.ok(hub.badges.find((b) => b.key === 'perfect').earned);
+  const prev = (await admin('POST', '/api/game/sessions', { level: '6' })).body;
+  assert.strictEqual(prev.preview, true);
+  const pn = (await admin('GET', `/api/game/sessions/${prev.id}/next`)).body;
+  await admin('POST', `/api/game/sessions/${prev.id}/answer`, { answer: right(pn.question) });
+  const ah = (await admin('GET', '/api/game/hub?level=6')).body;
+  assert.strictEqual(ah.leaderboard.all.length, 2);
+  // سؤال مستعمل يُؤرشف ولا يُحذف
+  assert.deepStrictEqual((await admin('DELETE', `/api/game/questions/${ids[0]}`)).body, { archived: true });
+  // المدير يوقف الخاصية للأولياء
+  await admin('PUT', '/api/role-features', { values: { parent: { game: false } } });
+  assert.strictEqual((await parent('GET', '/api/game/hub')).status, 403);
+  await admin('PUT', '/api/role-features', { values: {} });
+});
