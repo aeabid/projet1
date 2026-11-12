@@ -101,20 +101,28 @@ async function viewThread(el, id) {
     <div class="chat">${messages
       .map(
         (m) => `<div class="bubble ${m.mine ? 'mine' : ''}"><div class="who-line">${esc(m.from)} · ${fmtTime(m.created_at)}</div>
-          <p>${esc(m.body)}</p></div>`
+          ${m.audio_id ? voicePlayer(m.audio_id, m.audio_seconds) : ''}${m.audio_id && m.body === '🎤 رسالة صوتية' ? '' : `<p>${esc(m.body)}</p>`}</div>`
       )
       .join('')}</div>
     <form id="th-reply" class="card">
-      <label>ردّ<textarea name="body" rows="3" required placeholder="اكتب رسالتك…"></textarea></label>
+      <label>ردّ<textarea name="body" rows="3" ${canVoice() ? '' : 'required'} placeholder="اكتب رسالتك…"></textarea></label>
+      ${canVoice() ? '<div id="th-voice"></div>' : ''}
       <button class="btn">إرسال</button>
     </form>`;
+  const vr = canVoice() ? voiceRecorder($('#th-voice')) : null;
   el.querySelector('.chat .bubble:last-child')?.scrollIntoView({ block: 'nearest' });
   $('#th-reply').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const btn = e.target.querySelector('button.btn');
     try {
-      await api('POST', `/api/threads/${id}/messages`, formData(e.target));
+      const d = formData(e.target);
+      if (!d.body?.trim() && !vr?.has()) throw new Error('اكتب رسالة أو سجّل رسالة صوتية');
+      btn.disabled = true;
+      const audio_id = vr ? await vr.take() : null;
+      await api('POST', `/api/threads/${id}/messages`, { body: d.body, audio_id });
       viewThread(el, id);
     } catch (err) {
+      btn.disabled = false;
       toast(err.message, true);
     }
   });
@@ -143,10 +151,14 @@ function newThreadForm(student, subjects) {
            : '<input type="hidden" name="target_pick" value="admin">'
      }
      <label>الموضوع (اختياري)<input name="title" maxlength="150"></label>
-     <label>الرسالة<textarea name="body" rows="4" required></textarea></label>`,
+     <label>الرسالة<textarea name="body" rows="4" ${canVoice() ? '' : 'required'}></textarea></label>
+     ${canVoice() ? '<div id="nt-voice"></div>' : ''}`,
     async (data) => {
       const subjectId = data.target_pick === 'admin' ? null : Number(data.target_pick);
+      if (!data.body?.trim() && !vr?.has()) throw new Error('اكتب رسالة أو سجّل رسالة صوتية');
+      const audio_id = vr ? await vr.take() : null;
       const { thread } = await api('POST', '/api/threads', {
+        audio_id,
         student_id: student.id,
         target: subjectId ? 'subject' : 'admin',
         subject_id: subjectId,
@@ -156,6 +168,7 @@ function newThreadForm(student, subjects) {
       location.hash = `#/messages/${thread.id}`;
     }
   );
+  const vr = canVoice() ? voiceRecorder($('#nt-voice')) : null;
 }
 
 // ---------- إدخال بطاقات التقييم لقسم كامل (من البطاقات الورقية) ----------
@@ -466,7 +479,8 @@ async function viewGroupMessage(el) {
       </div>
       <label id="gm-program" hidden>القسم<select name="class_id">${programClasses.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('')}</select></label>
       <label>الموضوع<input name="title" placeholder="مثال: تذكير بالامتحان" required></label>
-      <label>الرسالة<textarea name="body" rows="5" required></textarea></label>
+      <label>الرسالة<textarea name="body" rows="5"></textarea></label>
+      <div id="gm-voice"></div>
       <p class="muted small" id="gm-hint"></p>
       <button class="btn">إرسال لكل أولياء القسم</button>
     </form>`;
@@ -474,6 +488,7 @@ async function viewGroupMessage(el) {
     el.querySelector('#gm-form').outerHTML = '<div class="card muted">لا يوجد قسم مسند إليك بعد.</div>';
     return;
   }
+  const vr = voiceRecorder($('#gm-voice'));
   let tab = canSupport ? 'support' : 'program';
   const levelSel = $('#gm-level');
   const fillLevels = () => {
@@ -502,13 +517,15 @@ async function viewGroupMessage(el) {
     e.preventDefault();
     const d = formData(e.target);
     const btn = e.target.querySelector('button.btn');
+    if (!d.body?.trim() && !vr.has()) return toast('اكتب رسالة أو سجّل رسالة صوتية', true);
     btn.disabled = true;
     try {
+      const audio_id = await vr.take();
       if (tab === 'support') {
-        const r = await api('POST', '/api/threads/group', { level: d.level, subject_id: d.subject_id || null, title: d.title, body: d.body });
+        const r = await api('POST', '/api/threads/group', { level: d.level, subject_id: d.subject_id || null, title: d.title, body: d.body, audio_id });
         toast(`تم الإرسال إلى ${r.sent} ولي`);
       } else {
-        const r = await api('POST', '/api/program/posts', { class_id: d.class_id, kind: 'message', title: d.title, body: d.body });
+        const r = await api('POST', '/api/program/posts', { class_id: d.class_id, kind: 'message', title: d.title, body: d.body, audio_id });
         toast(`تم الإرسال لأولياء القسم (${r.parents})`);
       }
       e.target.reset();
@@ -549,7 +566,7 @@ async function viewProgramPosts(el) {
               (p) => `<li class="task"><div><b>${p.kind === 'message' ? '✉️' : '🧩'} ${esc(p.title)}</b>
                 <span class="muted small">${esc(p.class_name)} · ${fmtDate(String(p.created_at).slice(0, 10))}${p.author_name ? ' · ' + esc(p.author_name) : ''}${p.due_date ? ` · آخر أجل ${fmtDate(p.due_date)}` : ''}</span>
                 ${state.user.role === 'admin' || p.author_id === state.user.id ? `<button class="link danger small" data-del="${p.id}">حذف</button>` : ''}</div>
-                ${p.body ? `<p>${esc(p.body)}</p>` : ''}${contentBlock(p.video_url, p.files, '/api/program-post-files/')}</li>`
+                ${p.audio_id ? voicePlayer(p.audio_id) : ''}${p.body ? `<p>${esc(p.body)}</p>` : ''}${contentBlock(p.video_url, p.files, '/api/program-post-files/')}</li>`
             )
             .join('')}</ul>`
         : '<p class="muted">لا توجد منشورات بعد.</p>'

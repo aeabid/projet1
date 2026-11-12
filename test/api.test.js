@@ -1851,3 +1851,37 @@ test('dictated note: AI fills the empty fields with allowed values only; disable
   await admin('PUT', '/api/role-features', { values: {} });
   assert.strictEqual(await tAi(), 200);
 });
+
+test('voice messages: admin records a clip, sends it to a parent and to a whole level; only those parents can listen', async () => {
+  const admin = await login('admin', 'admin123');
+  const pa = (await admin('POST', '/api/users', { role: 'parent', username: 'vp-a', full_name: 'ولي صوت', password: 'secret1' })).body.user;
+  await admin('POST', '/api/users', { role: 'parent', username: 'vp-b', full_name: 'ولي آخر', password: 'secret1' });
+  const st = (await admin('POST', '/api/students', { full_name: 'تلميذ الصوت', level: '8', parent_id: pa.id, subject_ids: [1] })).body.student;
+  const audio = 'data:audio/webm;codecs=opus;base64,' + Buffer.from('fake-opus-bytes').toString('base64');
+  assert.strictEqual((await admin('POST', '/api/voice-clips', { data: 'data:text/plain;base64,aGk=' })).status, 400);
+  const clip = (await admin('POST', '/api/voice-clips', { data: audio, seconds: 12 })).body;
+  // رسالة صوتية دون نص
+  assert.strictEqual((await admin('POST', '/api/threads', { student_id: st.id, target: 'admin' })).status, 400);
+  const th = (await admin('POST', '/api/threads', { student_id: st.id, target: 'admin', audio_id: clip.id })).status;
+  assert.strictEqual(th, 201);
+  const parentA = await login('vp-a', 'secret1');
+  const parentB = await login('vp-b', 'secret1');
+  const t = (await parentA('GET', '/api/threads')).body.threads.find((x) => x.student_id === st.id);
+  const msgs = (await parentA('GET', `/api/threads/${t.id}`)).body.messages;
+  assert.deepStrictEqual([msgs[0].audio_id, msgs[0].audio_seconds, msgs[0].body], [clip.id, 12, '🎤 رسالة صوتية']);
+  // الاستماع
+  const res = await handle(new Request(`http://localhost/api/voice-clips/${clip.id}`, { headers: { cookie: (await call('POST', '/api/login', { username: 'vp-a', password: 'secret1' })).headers.get('set-cookie').split(';')[0] } }));
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.headers.get('content-type'), 'audio/webm');
+  assert.strictEqual(Buffer.from(await res.arrayBuffer()).toString(), 'fake-opus-bytes');
+  assert.strictEqual((await parentB('GET', `/api/voice-clips/${clip.id}`)).status, 403);
+  // تسجيل شخص آخر لا يُرسل
+  const other = (await parentB('POST', '/api/voice-clips', { data: audio })).body;
+  assert.strictEqual((await admin('POST', `/api/threads/${t.id}/messages`, { audio_id: other.id })).status, 400);
+  // رسالة صوتية لكامل القسم
+  const clip2 = (await admin('POST', '/api/voice-clips', { data: audio, seconds: 5 })).body;
+  const g = await admin('POST', '/api/threads/group', { level: '8', title: 'تذكير', audio_id: clip2.id });
+  assert.strictEqual(g.status, 201);
+  const gt = (await parentA('GET', '/api/threads')).body.threads.find((x) => x.title === 'تذكير');
+  assert.strictEqual((await parentA('GET', `/api/threads/${gt.id}`)).body.messages[0].audio_id, clip2.id);
+});

@@ -996,7 +996,7 @@ function classPostsSection(posts) {
     .map(
       (p) => `<li class="task"><div><b>${p.kind === 'message' ? '✉️' : '🧩'} ${esc(p.title)}</b>
         <span class="muted small">${fmtDate(String(p.created_at).slice(0, 10))}${p.author_name ? ' · ' + esc(p.author_name) : ''}${p.due_date ? ` · آخر أجل ${fmtDate(p.due_date)}` : ''}</span></div>
-        ${p.body ? `<p>${esc(p.body)}</p>` : ''}${contentBlock(p.video_url, p.files, '/api/program-post-files/')}</li>`
+        ${p.audio_id ? voicePlayer(p.audio_id) : ''}${p.body ? `<p>${esc(p.body)}</p>` : ''}${contentBlock(p.video_url, p.files, '/api/program-post-files/')}</li>`
     )
     .join('')}</ul></section>`;
 }

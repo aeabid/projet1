@@ -271,43 +271,36 @@ function openModal(title, bodyHtml, onSubmit) {
   form.querySelector('input, select, textarea')?.focus();
 }
 
-// ---------- 🎤 ملاحظة بالمايك + تعمير الحقول الفارغة بالذكاء الاصطناعي ----------
-// يُركَّب تلقائيًا على كل استمارة فيها نص ملاحظة (content) مع حقول التقييم (category / rating / behavior)
+// ---------- ✨ تعمير حقول الملاحظة الفارغة بالذكاء الاصطناعي (من نص الملاحظة) ----------
 const AI_FIELDS = ['category', 'rating', 'behavior'];
 function attachVoiceNote(scope) {
   const area = scope.querySelector('textarea[name=content]');
   const selects = AI_FIELDS.map((n) => scope.querySelector(`select[name=${n}]`)).filter(Boolean);
-  if (!area || !selects.length || area.dataset.voice) return;
+  if (!area || !selects.length || area.dataset.voice || !state.meta?.ai_notes) return;
   // المدير يفتح أو يعطّل الخاصية للمعلمين والمؤطّرين من «الصلاحيات»
   if (featureOff('teacher.voice_notes') || featureOff('program_staff.voice_notes')) return;
   area.dataset.voice = '1';
-  const ai = !!state.meta?.ai_notes;
-  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!Rec && !ai) return;
   selects.forEach((s) => s.addEventListener('change', () => (s.dataset.touched = '1')));
   const bar = document.createElement('div');
   bar.className = 'voice-bar';
-  bar.innerHTML = `${Rec ? '<button type="button" class="btn small ghost vb-mic">🎤 إملاء الملاحظة</button>' : ''}
-    ${ai ? '<button type="button" class="btn small ghost vb-ai" title="الذكاء الاصطناعي يعمّر الحقول الفارغة من نص الملاحظة">✨ تعمير الحقول</button>' : ''}
-    <span class="vb-status muted small">${Rec ? (ai ? 'قل الملاحظة (المستوى، السلوك…) والتطبيق يعمّر الباقي' : 'قل الملاحظة وتُكتب تلقائيًا') : 'اكتب الملاحظة (أو استعمل مايك لوحة المفاتيح) ثم ✨'}</span>`;
+  bar.innerHTML = `<button type="button" class="btn small ghost vb-ai" title="الذكاء الاصطناعي يعمّر الحقول الفارغة من نص الملاحظة">✨ تعمير الحقول</button>
+    <span class="vb-status muted small">اكتب الملاحظة ثم ✨ والتطبيق يعمّر الباقي</span>`;
   (area.closest('label') || area).after(bar);
   const status = bar.querySelector('.vb-status');
-  const micBtn = bar.querySelector('.vb-mic');
   const aiBtn = bar.querySelector('.vb-ai');
   const say = (msg, bad) => {
     status.textContent = msg;
     status.classList.toggle('error', !!bad);
   };
-
-  const fill = async () => {
+  aiBtn.addEventListener('click', async () => {
     const said = area.value.trim();
-    if (!said) return say('اكتب أو أملِ الملاحظة أولًا', true);
+    if (!said) return say('اكتب الملاحظة أولًا', true);
     const fields = {};
     selects.forEach((s) => {
       fields[s.name] = [...s.options].filter((o) => o.value).map((o) => ({ value: o.value, label: o.textContent.trim() }));
     });
     say('✨ جاري التحليل…');
-    if (aiBtn) aiBtn.disabled = true;
+    aiBtn.disabled = true;
     try {
       const out = await api('POST', '/api/ai/note-fill', { text: said, fields });
       const filled = [];
@@ -325,43 +318,102 @@ function attachVoiceNote(scope) {
     } catch (err) {
       say(err.message, true);
     } finally {
-      if (aiBtn) aiBtn.disabled = false;
+      aiBtn.disabled = false;
     }
-  };
-  aiBtn?.addEventListener('click', fill);
-
-  if (!Rec) return;
-  let rec = null;
-  micBtn.addEventListener('click', () => {
-    if (rec) return rec.stop();
-    rec = new Rec();
-    rec.lang = 'ar-TN';
-    rec.continuous = true;
-    rec.interimResults = true;
-    const base = area.value.trim();
-    let finalText = '';
-    rec.onresult = (e) => {
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' ';
-        else interim += e.results[i][0].transcript;
-      }
-      area.value = [base, (finalText + interim).trim()].filter(Boolean).join(' ');
-    };
-    rec.onerror = (e) => say(e.error === 'not-allowed' ? 'اسمح للمتصفح باستعمال المايك' : 'تعذّر التقاط الصوت، أعد المحاولة', true);
-    rec.onend = () => {
-      rec = null;
-      micBtn.textContent = '🎤 إملاء الملاحظة';
-      micBtn.classList.remove('recording');
-      if (ai && finalText.trim()) fill();
-      else if (finalText.trim()) say('✅ تمّت الكتابة — راجع قبل الحفظ');
-    };
-    rec.start();
-    micBtn.textContent = '⏹ إيقاف';
-    micBtn.classList.add('recording');
-    say('🔴 أتكلّم الآن… ثم اضغط «إيقاف»');
   });
 }
+
+// ---------- 🎙️ رسالة صوتية (المعلم والإدارة ← الأولياء) ----------
+// يُرجع { take() } : يرفع التسجيل إن وُجد ويُرجع رقمه (أو null)
+const VOICE_MAX_SECONDS = 180;
+function voiceRecorder(host) {
+  const can = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+  host.innerHTML = can
+    ? `<div class="voice-rec"><button type="button" class="btn small ghost vr-btn">🎙️ تسجيل رسالة صوتية</button>
+        <audio class="vr-audio" controls hidden></audio><button type="button" class="btn small ghost vr-del" hidden title="حذف التسجيل">🗑</button>
+        <span class="muted small vr-hint"></span></div>`
+    : '<p class="muted small">التسجيل الصوتي غير متاح في هذا المتصفح.</p>';
+  let blob = null;
+  let seconds = 0;
+  let rec = null;
+  let timer = null;
+  if (!can) return { take: async () => null, has: () => false };
+  const btn = host.querySelector('.vr-btn');
+  const audio = host.querySelector('.vr-audio');
+  const del = host.querySelector('.vr-del');
+  const hint = host.querySelector('.vr-hint');
+  const clock = (n) => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
+  const clear = () => {
+    blob = null;
+    seconds = 0;
+    audio.hidden = del.hidden = true;
+    audio.removeAttribute('src');
+    btn.hidden = false;
+    hint.textContent = '';
+  };
+  del.addEventListener('click', clear);
+  btn.addEventListener('click', async () => {
+    if (rec) return rec.stop();
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      return (hint.textContent = 'اسمح للمتصفح باستعمال المايك');
+    }
+    const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find((t) => MediaRecorder.isTypeSupported?.(t));
+    rec = new MediaRecorder(stream, type ? { mimeType: type, audioBitsPerSecond: 32000 } : undefined);
+    const chunks = [];
+    const started = Date.now();
+    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    rec.onstop = () => {
+      clearInterval(timer);
+      stream.getTracks().forEach((t) => t.stop());
+      seconds = Math.max(1, Math.round((Date.now() - started) / 1000));
+      blob = new Blob(chunks, { type: rec.mimeType || type || 'audio/webm' });
+      rec = null;
+      audio.src = URL.createObjectURL(blob);
+      audio.hidden = del.hidden = false;
+      btn.hidden = true;
+      btn.classList.remove('recording');
+      btn.textContent = '🎙️ تسجيل رسالة صوتية';
+      hint.textContent = `🎧 ${clock(seconds)} — استمع ثم أرسل، أو 🗑 لإعادة التسجيل`;
+    };
+    rec.start();
+    btn.classList.add('recording');
+    const tick = () => {
+      const n = Math.round((Date.now() - started) / 1000);
+      btn.textContent = `⏹ إيقاف التسجيل (${clock(n)})`;
+      if (n >= VOICE_MAX_SECONDS) rec?.stop();
+    };
+    tick();
+    timer = setInterval(tick, 500);
+  });
+  return {
+    has: () => !!blob || !!rec,
+    async take() {
+      if (rec) {
+        const r = rec;
+        const stopped = new Promise((ok) => r.addEventListener('stop', () => setTimeout(ok, 0), { once: true }));
+        r.stop();
+        await stopped;
+      }
+      if (!blob) return null;
+      const data = await new Promise((ok, ko) => {
+        const fr = new FileReader();
+        fr.onload = () => ok(fr.result);
+        fr.onerror = ko;
+        fr.readAsDataURL(blob);
+      });
+      const { id } = await api('POST', '/api/voice-clips', { data, seconds });
+      clear();
+      return id;
+    },
+  };
+}
+const canVoice = () => ['admin', 'teacher'].includes(state.user?.role);
+const voicePlayer = (id, seconds) =>
+  `<div class="voice-wrap"><span class="muted small">🎤 رسالة صوتية${seconds ? ` · ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : ''}</span>
+    <audio class="voice-msg" controls preload="none" src="/api/voice-clips/${Number(id)}"></audio></div>`;
 
 function confirmAction(message) {
   return window.confirm(message);
