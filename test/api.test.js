@@ -1706,7 +1706,7 @@ test('special periods: copy timetable into exams period, teacher hours follow it
   const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'per-t', full_name: 'مدرّس الفترات', password: 'secret1', hourly_rate: 10, subject_ids: [math] })).body.user;
   const day = new Date().toISOString().slice(0, 10);
   const dow = new Date(`${day}T12:00:00Z`).getUTCDay() || 7;
-  assert.strictEqual((await admin('POST', '/api/timetable', { level: '8', day: dow, start_time: '06:00', end_time: '08:00', subject_id: math, teacher_id: t.id })).status, 201);
+  assert.strictEqual((await admin('POST', '/api/timetable', { level: '8', day: dow, start_time: '10:00', end_time: '12:00', subject_id: math, teacher_id: t.id })).status, 201);
   const month = day.slice(0, 7);
   const hoursToday = async () => (await admin('GET', `/api/payroll/${t.id}?month=${month}`)).body.sessions.filter((x) => x.date === day);
   assert.strictEqual((await hoursToday()).reduce((a, x) => a + x.hours, 0), 2);
@@ -1720,8 +1720,8 @@ test('special periods: copy timetable into exams period, teacher hours follow it
   const mine = cp.sessions.filter((x) => x.teacher_id === t.id);
   assert.strictEqual(mine.length, 1);
   assert.strictEqual((await hoursToday()).reduce((a, x) => a + x.hours, 0), 2);
-  mine[0].start = '07:00';
-  cp.sessions.push({ id: 'sk1', date: day, start: '05:00', end: '06:00', level: '8', kind: 'skills', label: 'مهارات', teacher_id: t.id });
+  mine[0].start = '11:00';
+  cp.sessions.push({ id: 'sk1', date: day, start: '09:00', end: '10:00', level: '8', kind: 'skills', label: 'مهارات', teacher_id: t.id });
   await admin('PUT', '/api/periods', { rest_days: [], periods: [cp] });
   const after = await hoursToday();
   assert.strictEqual(after.reduce((a, x) => a + x.hours, 0), 2); // ساعة دعم + ساعة مهارات
@@ -2000,4 +2000,44 @@ test('a session saved twice (old + new version overlapping) is counted once in t
   const days = pay.sessions.filter((x) => x.start_time === '05:00').map((x) => x.date);
   assert.strictEqual(new Set(days).size, days.length);
   assert.ok(days.length >= 4);
+});
+
+test('no clashes: a teacher never has two sessions at once, a level never has two subjects at once (also in special periods and substitutions)', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const fit = (lv) => meta.subjects.filter((x) => !x.levels || x.levels.includes(lv));
+  const [s1, s2] = fit('8');
+  const ta = (await admin('POST', '/api/users', { role: 'teacher', username: 'clash-a', full_name: 'مدرّس أ', password: 'secret1', subject_ids: [s1.id] })).body.user;
+  const tb = (await admin('POST', '/api/users', { role: 'teacher', username: 'clash-b', full_name: 'مدرّس ب', password: 'secret1', subject_ids: [s2.id] })).body.user;
+  const slot = (b) => admin('POST', '/api/timetable', { day: 6, ...b });
+  const first = await slot({ level: '8', start_time: '01:00', end_time: '02:00', subject_id: s1.id, teacher_id: ta.id });
+  assert.strictEqual(first.status, 201);
+  // نفس القسم، مادة أخرى في وقت متداخل: مرفوض
+  const lv = await slot({ level: '8', start_time: '01:30', end_time: '02:30', subject_id: s2.id, teacher_id: tb.id });
+  assert.strictEqual(lv.status, 409);
+  assert.match(lv.body.error, /الثامنة/);
+  // نفس المدرّس في قسم آخر في نفس الوقت: مرفوض
+  assert.strictEqual((await slot({ level: '9', start_time: '01:00', end_time: '02:00', subject_id: fit('9')[0].id, teacher_id: ta.id })).status, 409);
+  // بعد انتهاء الحصة مباشرة: مقبول
+  assert.strictEqual((await slot({ level: '8', start_time: '02:00', end_time: '03:00', subject_id: s2.id, teacher_id: tb.id })).status, 201);
+  // فوجان مختلفان من نفس القسم: مقبول
+  const g1 = await slot({ level: '7', group_name: 'أ', start_time: '01:00', end_time: '02:00', subject_id: fit('7')[0].id });
+  const g2 = await slot({ level: '7', group_name: 'ب', start_time: '01:00', end_time: '02:00', subject_id: fit('7')[1].id });
+  assert.deepStrictEqual([g1.status, g2.status], [201, 201]);
+  assert.strictEqual((await slot({ level: '7', start_time: '01:30', end_time: '02:30', subject_id: fit('7')[2].id })).status, 409);
+  // التعويض: المعوّض مشغول في نفس التوقيت
+  const tc = (await admin('POST', '/api/users', { role: 'teacher', username: 'clash-c', full_name: 'مدرّس ج', password: 'secret1', subject_ids: [fit('9')[0].id] })).body.user;
+  await slot({ level: '9', start_time: '01:00', end_time: '02:00', subject_id: fit('9')[0].id, teacher_id: tc.id });
+  const sat = (() => { const d = new Date(); d.setUTCDate(d.getUTCDate() + ((6 - (d.getUTCDay() || 7) + 7) % 7)); return d.toISOString().slice(0, 10); })();
+  const r = await admin('POST', '/api/substitutions', { timetable_id: first.body.slot.id, date: sat, substitute_id: tc.id });
+  assert.strictEqual(r.status, 409);
+  assert.strictEqual((await admin('POST', '/api/substitutions', { timetable_id: first.body.slot.id, date: sat, substitute_id: tb.id })).status, 201);
+  // الفترات الخاصة
+  const base = (await admin('GET', '/api/periods')).body;
+  const per = (sessions) => admin('PUT', '/api/periods', { rest_days: base.rest_days, periods: [...base.periods, { kind: 'exams', title: 'تجربة', from: '2027-01-04', to: '2027-01-05', sessions }] });
+  const s = (b) => ({ date: '2027-01-04', start: '09:00', end: '10:00', level: '8', subject_id: s1.id, subject_name: 'م', ...b });
+  assert.strictEqual((await per([s({ teacher_id: ta.id }), s({ level: '9', teacher_id: ta.id, start: '09:30', end: '10:30' })])).status, 409);
+  assert.strictEqual((await per([s({}), s({ start: '09:30', end: '10:30', subject_id: s2.id })])).status, 409);
+  assert.strictEqual((await per([s({ teacher_id: ta.id }), s({ level: '9', teacher_id: tb.id })])).status, 200);
+  await admin('PUT', '/api/periods', base);
 });
