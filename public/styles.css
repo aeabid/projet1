@@ -2443,3 +2443,7 @@ body.g-playing { overflow: hidden; }
 .g-year small { background: #fff; border-radius: 999px; padding: 0 7px; color: var(--muted); }
 .g-year.on { background: var(--feed-purple); border-color: var(--feed-purple); color: #fff; }
 .g-year.on small { color: var(--feed-purple); }
+.switch-pill { border: 1.5px solid var(--feed-purple); background: #f1e6fa; color: var(--feed-purple); font: inherit; font-weight: 800; font-size: .85rem; border-radius: 999px; padding: 6px 12px; cursor: pointer; white-space: nowrap; }
+.switch-pill:hover { background: var(--feed-purple); color: #fff; }
+.note-voice { background: var(--soft); border-radius: 12px; padding: 8px 10px; margin: 4px 0 10px; }
+.note-voice p { margin: 0 0 4px; }

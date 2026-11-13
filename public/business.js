@@ -1024,7 +1024,7 @@ function childFollowUpSection(file, role) {
                   ${n.rating ? `<span class="badge ${n.rating}">${RATING_LABELS[n.rating]}</span>` : ''}
                   <span class="muted small">${fmtDate(n.date)} · ${esc(n.author_name || '')}</span>
                   ${canWrite && mine(n.author_id) ? `<button class="link danger" data-del-pnote="${n.id}">حذف</button>` : ''}
-                </div><p>${esc(n.content)}</p></li>`
+                </div>${n.audio_id ? voicePlayer(n.audio_id, n.audio_seconds) : ''}${n.content ? `<p>${esc(n.content)}</p>` : ''}</li>`
               )
               .join('')}</ul>`
           : '<p class="muted">لا توجد ملاحظات بعد.</p>'
@@ -1053,7 +1053,7 @@ function childProgramSections(file, role) {
 
 function bindChildFollowUp(el, file, reload) {
   const id = file.child.id;
-  el.querySelector(`[data-pnote="${id}"]`)?.addEventListener('click', () =>
+  el.querySelector(`[data-pnote="${id}"]`)?.addEventListener('click', () => {
     openModal(
       'ملاحظة — البرنامج التربوي',
       `<div class="row">
@@ -1063,14 +1063,18 @@ function bindChildFollowUp(el, file, reload) {
            .join('')}</select></label>
        </div>
        <label>التاريخ<input type="date" name="date" value="${today()}"></label>
-       <label>الملاحظة<textarea name="content" rows="4" required placeholder="مثال: يتابع أنشطة المحتوى بانتظام ويشارك بحماس"></textarea></label>`,
+       <label>الملاحظة<textarea name="content" rows="4" placeholder="مثال: يتابع أنشطة المحتوى بانتظام ويشارك بحماس"></textarea></label>
+       <div class="note-voice"><p class="small muted">🎙️ تقييم صوتي (اختياري) — يسمعه الولي</p><div id="note-voice"></div></div>`,
       async (data) => {
+        if (!data.content?.trim() && !noteVoice.has()) throw new Error('اكتب الملاحظة أو سجّل تقييمًا صوتيًا');
+        data.audio_id = await noteVoice.take();
         await api('POST', `/api/program/children/${id}/notes`, data);
         toast('تمت إضافة الملاحظة');
         reload();
       }
-    )
-  );
+    );
+    const noteVoice = voiceRecorder($('#note-voice'));
+  });
   el.querySelector(`[data-pabs="${id}"]`)?.addEventListener('click', () =>
     openModal(
       'تسجيل غياب',
@@ -1179,15 +1183,19 @@ function quickChildNote(c, reload) {
     `📝 تقييم ${c.full_name}`,
     `<div class="row"><label>النوع<select name="category">${Object.entries(PROGRAM_NOTE_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
        <label>التقييم<select name="rating"><option value="">—</option>${Object.entries(LEVEL_WORDS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label></div>
-     <label>الملاحظة<textarea name="content" rows="4" required placeholder="مثال: حفظ ممتاز للسورة، يشارك بحماس…"></textarea></label>
+     <label>الملاحظة<textarea name="content" rows="4" placeholder="مثال: حفظ ممتاز للسورة، يشارك بحماس…"></textarea></label>
+     <div class="note-voice"><p class="small muted">🎙️ تقييم صوتي (اختياري) — يسمعه الولي</p><div id="note-voice"></div></div>
      <label>التاريخ<input type="date" name="date" value="${today()}"></label>
      <p class="muted small">تظهر الملاحظة للولي في ملف ابنه (تبويب «التقييم»).</p>`,
     async (d) => {
+      if (!d.content?.trim() && !noteVoice.has()) throw new Error('اكتب الملاحظة أو سجّل تقييمًا صوتيًا');
+      d.audio_id = await noteVoice.take();
       await api('POST', `/api/program/children/${c.id}/notes`, d);
       toast('تم حفظ التقييم');
       reload?.();
     }
   );
+  const noteVoice = voiceRecorder($('#note-voice'));
 }
 
 // أطفال المؤطّر حسب المجموعة، مع زر تقييم لكل طفل

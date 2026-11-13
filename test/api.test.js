@@ -2041,3 +2041,53 @@ test('no clashes: a teacher never has two sessions at once, a level never has tw
   assert.strictEqual((await per([s({ teacher_id: ta.id }), s({ level: '9', teacher_id: tb.id })])).status, 200);
   await admin('PUT', '/api/periods', base);
 });
+
+test('voice evaluation on a note, and one person with two accounts (admin ↔ teacher) switching roles', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const sid = meta.subjects.find((x) => !x.levels || x.levels.includes('7')).id;
+  const pa = (await admin('POST', '/api/users', { role: 'parent', username: 'vn-p', full_name: 'ولي التقييم', password: 'secret1' })).body.user;
+  await admin('POST', '/api/users', { role: 'parent', username: 'vn-q', full_name: 'ولي آخر', password: 'secret1' });
+  const st = (await admin('POST', '/api/students', { full_name: 'تلميذ التقييم الصوتي', level: '7', parent_id: pa.id, subject_ids: [sid] })).body.student;
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'vn-t', full_name: 'علاء المعلّم', password: 'secret1', subject_ids: [sid] })).body.user;
+  // المشرف العام يربط حسابه بحسابه كمعلّم
+  const teacherSelf = await login('vn-t', 'secret1');
+  assert.strictEqual((await teacherSelf('PUT', '/api/me/switch-link', { user_id: 1 })).status, 403);
+  assert.strictEqual((await admin('PUT', '/api/me/switch-link', { user_id: pa.id })).status, 400);
+  assert.strictEqual((await admin('PUT', '/api/me/switch-link', { user_id: t.id })).body.switch_to.id, t.id);
+  assert.strictEqual((await admin('GET', '/api/me')).body.user.switch_to.role, 'teacher');
+  assert.strictEqual((await teacherSelf('GET', '/api/me')).body.user.switch_to.role, 'admin');
+  // التبديل: نفس الجلسة تصبح جلسة المعلّم
+  const res = await call('POST', '/api/login', { username: 'admin', password: 'admin123' });
+  let cookie = res.headers.get('set-cookie').split(';')[0];
+  const sw = await handle(new Request('http://localhost/api/me/switch', { method: 'POST', headers: { cookie } }));
+  assert.strictEqual(sw.status, 200);
+  const old = cookie;
+  cookie = sw.headers.get('set-cookie').split(';')[0];
+  assert.notStrictEqual(cookie, old);
+  assert.strictEqual((await call('GET', '/api/me', null, old)).status, 401);
+  const asTeacher = (m, u, b) => call(m, u, b, cookie);
+  assert.strictEqual((await asTeacher('GET', '/api/me')).body.user.id, t.id);
+  // تقييم صوتي من المعلّم (دون نص)
+  const audio = 'data:audio/webm;base64,' + Buffer.from('voice-eval').toString('base64');
+  const clip = (await asTeacher('POST', '/api/voice-clips', { data: audio, seconds: 8 })).body;
+  assert.strictEqual((await asTeacher('POST', `/api/students/${st.id}/notes`, { subject_id: sid, category: 'level' })).status, 400);
+  assert.strictEqual((await asTeacher('POST', `/api/students/${st.id}/notes`, { subject_id: sid, category: 'level', audio_id: clip.id })).status, 201);
+  const file = (await admin('GET', `/api/students/${st.id}`)).body;
+  const note = file.notes.find((n) => n.audio_id === clip.id);
+  assert.deepStrictEqual([note.author_name, note.author_role, note.audio_seconds], ['علاء المعلّم', 'teacher', 8]);
+  // الولي يسمعه، ولي آخر لا
+  const parent = await login('vn-p', 'secret1');
+  const other = await login('vn-q', 'secret1');
+  assert.strictEqual((await other('GET', `/api/voice-clips/${clip.id}`)).status, 403);
+  const pc = (await call('POST', '/api/login', { username: 'vn-p', password: 'secret1' })).headers.get('set-cookie').split(';')[0];
+  const listen = await handle(new Request(`http://localhost/api/voice-clips/${clip.id}`, { headers: { cookie: pc } }));
+  assert.strictEqual(listen.status, 200);
+  assert.ok((await parent('GET', `/api/students/${st.id}`)).body.notes.some((n) => n.audio_id === clip.id));
+  // الرجوع إلى حساب الإدارة ثم إلغاء الربط
+  const back = await handle(new Request('http://localhost/api/me/switch', { method: 'POST', headers: { cookie } }));
+  assert.strictEqual((await back.json()).user.id, 1);
+  await admin('PUT', '/api/me/switch-link', { user_id: null });
+  assert.strictEqual((await admin('GET', '/api/me')).body.user.switch_to, null);
+  assert.strictEqual((await teacherSelf('POST', '/api/me/switch')).status, 404);
+});

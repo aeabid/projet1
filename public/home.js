@@ -54,7 +54,7 @@ async function viewTeacherHome(el) {
                 (n) => `<li class="note"><div class="note-head">${noteBadges(n)}
                   ${n.visible_to_parent ? '<span class="muted small" title="يراها الولي">👁 يراها الولي</span>' : '<span class="badge general">🔒 داخلية</span>'}
                   <span class="muted small">${fmtDate(n.date)} · <a href="#/students/${n.student_id}">${esc(n.student_name)}</a> · ${esc(n.subject_name || '')}</span></div>
-                  ${n.content ? `<p>${esc(n.content)}</p>` : ''}</li>`
+                  ${n.audio_id ? voicePlayer(n.audio_id, n.audio_seconds) : ''}${n.content ? `<p>${esc(n.content)}</p>` : ''}</li>`
               )
               .join('')}</ul>`
           : '<p class="muted">لم تكتب أي ملاحظة بعد. افتح ملف تلميذ أو «إدخال بطاقات القسم».</p>'
@@ -114,7 +114,7 @@ async function viewParentHome(el) {
               .map(
                 (n) => `<li class="note"><div class="note-head">${noteBadges(n)}
                   <span class="muted small">${fmtDate(n.date)} · <a href="${n.link}">${esc(n.child)}</a> · ${esc(n.from)}</span></div>
-                  ${n.content ? `<p>${esc(n.content)}</p>` : ''}</li>`
+                  ${n.audio_id ? voicePlayer(n.audio_id, n.audio_seconds) : ''}${n.content ? `<p>${esc(n.content)}</p>` : ''}</li>`
               )
               .join('')}</ul>`
           : '<p class="muted">لا توجد ملاحظات بعد.</p>'

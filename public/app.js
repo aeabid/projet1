@@ -957,6 +957,13 @@ function renderTopbar() {
   });
   $('#vmenu').querySelectorAll('a').forEach((a) => a.addEventListener('click', closeVmenu));
   $('#mail').hidden = state.user.role === 'admin' && !can('school');
+  // 🔁 نفس الشخص بحسابين (مدير ↔ معلّم): التبديل بضغطة
+  const sw = state.user.switch_to && !state.user.impersonated_by ? state.user.switch_to : null;
+  $('#switch-btn').hidden = !sw;
+  if (sw) {
+    $('#switch-btn').textContent = `🔁 ${sw.role === 'teacher' ? 'المعلّم' : sw.role === 'admin' ? 'الإدارة' : ROLE_LABELS[sw.role]}`;
+    $('#switch-btn').title = `التبديل إلى حساب ${sw.full_name} (${ROLE_LABELS[sw.role]})`;
+  }
   // 🏆 ركن التحدّي: أيقونة مستقلّة (الإدارة والأولياء فقط)
   $('#arena-btn').hidden = !(state.user.role === 'admin' ? can('school') : state.user.role === 'parent' && !featureOff('parent.game'));
   $('#bell').hidden = state.user.role !== 'admin' || !can('school');
@@ -1065,6 +1072,18 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => e.key === 'Escape' && closeSubnav());
 window.addEventListener('resize', closeSubnav);
 
+$('#switch-btn').addEventListener('click', async (e) => {
+  e.currentTarget.disabled = true;
+  try {
+    const { user } = await api('POST', '/api/me/switch');
+    toast(`أنت الآن بحساب ${user.role === 'teacher' ? 'المعلّم' : 'الإدارة'} — ${user.full_name}`);
+    location.hash = '#/';
+    setTimeout(() => location.reload(), 300);
+  } catch (err) {
+    toast(err.message, true);
+    e.currentTarget.disabled = false;
+  }
+});
 $('#logout').addEventListener('click', async () => {
   await api('POST', '/api/logout').catch(() => {});
   state.user = null;
@@ -2007,7 +2026,7 @@ async function viewStudent(el, id) {
         <span class="muted small">${fmtDate(n.date)} · ${esc(n.author_name || '')}</span>
         ${role !== 'parent' && canDelete(n.author_id) ? `<button class="link danger" data-del-note="${n.id}">حذف</button>` : ''}
       </div>
-      ${n.content ? `<p>${esc(n.content)}</p>` : ''}
+      ${n.audio_id ? voicePlayer(n.audio_id, n.audio_seconds) : ''}${n.content ? `<p>${esc(n.content)}</p>` : ''}
     </li>`;
 
   const secTimetable = `    <section class="card">
@@ -2309,14 +2328,17 @@ ${secTimetable}${secTasks}${secNotes}${secAbsences}`
            ${Object.entries(BEHAVIOR_WORDS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
          </select></label>
        </div>
-       <label>الملاحظة<textarea name="content" rows="4" placeholder="اختياري إن حدّدت المستوى أو السلوك"></textarea></label>
+       <label>الملاحظة<textarea name="content" rows="4" placeholder="اختياري إن حدّدت المستوى أو السلوك أو سجّلت تقييمًا صوتيًا"></textarea></label>
+       <div class="note-voice"><p class="small muted">🎙️ تقييم صوتي للتلميذ (اختياري) — يسمعه الولي مع الملاحظة</p><div id="note-voice"></div></div>
        <label class="check"><input type="checkbox" name="visible_to_parent" checked> يراها الولي (وتظهر في بطاقة التقييم)</label>`,
       async (data) => {
+        data.audio_id = await noteVoice.take();
         await api('POST', `/api/students/${id}/notes`, data);
         toast('تمت إضافة الملاحظة');
         reload();
       }
     );
+    const noteVoice = voiceRecorder($('#note-voice'));
   });
 
   $('#add-absence')?.addEventListener('click', () => {
@@ -5240,6 +5262,9 @@ function viewAccount(el) {
           : `<p class="muted small">اربط حسابك بحساب Google باش تدخل من بعد بضغطة واحدة، دون كلمة سر.</p>
              <div id="g-link-btn"></div><p class="muted small" id="g-link-off" hidden>الدخول بـ Google غير مفعّل حاليًا.</p>`}
       </section>
+      ${u.super_admin ? `<section class="g-link" id="sw-link"><h3>🔁 حسابي كمعلّم</h3>
+        <p class="muted small">إن كنت تدرّس أيضًا: اربط حسابك بحساب المعلّم الخاص بك، ثمّ بدّل بينهما بزرّ 🔁 في الأعلى. ملاحظاتك وتقييماتك كمعلّم تُكتب باسم المعلّم لا باسم الإدارة.</p>
+        <div class="row"><select id="sw-teacher"><option value="">— دون ربط —</option></select><button type="button" class="btn small" id="sw-save">حفظ</button></div></section>` : ''}
       <h3>تغيير كلمة السر</h3>
       <form id="pw-form">
         <label>كلمة السر الحالية<input name="current" type="password" dir="ltr" required></label>
@@ -5247,6 +5272,21 @@ function viewAccount(el) {
         <button class="btn">تغيير</button>
       </form>
     </div>`;
+  if ($('#sw-teacher')) {
+    api('GET', '/api/users?role=teacher').then(({ users }) => {
+      $('#sw-teacher').insertAdjacentHTML('beforeend', users.map((t) => `<option value="${t.id}" ${t.id === u.switch_to?.id ? 'selected' : ''}>${esc(t.full_name)}</option>`).join(''));
+    }).catch(() => {});
+    $('#sw-save').addEventListener('click', async () => {
+      try {
+        const r = await api('PUT', '/api/me/switch-link', { user_id: Number($('#sw-teacher').value) || null });
+        state.user.switch_to = r.switch_to;
+        renderTopbar();
+        toast(r.switch_to ? `تمّ الربط بحساب ${r.switch_to.full_name} — استعمل زرّ 🔁 في الأعلى` : 'تمّ إلغاء الربط');
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  }
   $('#g-unlink')?.addEventListener('click', async () => {
     if (!confirmAction('فكّ ربط حساب Google؟ تبقى تدخل باسم المستخدم وكلمة السر.')) return;
     await api('DELETE', '/api/me/google');
