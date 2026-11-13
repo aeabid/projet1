@@ -582,6 +582,8 @@ const routes = [
   [/^#\/report-class$/, (el) => viewClassReports(el)],
   [/^#\/messages$/, (el) => viewMessages(el)],
   [/^#\/arena$/, (el) => viewArena(el)],
+  [/^#\/polls$/, (el) => viewPolls(el)],
+  [/^#\/polls\/(\d+)$/, (el, id) => viewPollLive(el, id)],
   [/^#\/arena\/play\/(\d+)$/, (el, id) => viewArenaPlay(el, id)],
   [/^#\/messages\/(\d+)$/, (el, id) => viewThread(el, Number(id))],
   [/^#\/evaluations$/, (el) => viewEvaluations(el)],
@@ -600,6 +602,18 @@ function homeFor(user) {
 let navCount = 0;
 async function router() {
   const hash = location.hash || '#/';
+  // 🗳️ تصويت الأولياء: صفحة عامة دون حساب ودون قوائم
+  const vote = hash.match(/^#\/vote\/(\d+)$/);
+  document.body.classList.toggle('vote-mode', !!vote);
+  if (vote) {
+    if ($('#modal').open) $('#modal').close();
+    $('#topbar').hidden = true;
+    $('#tabbar').hidden = true;
+    $('#vmenu').hidden = true;
+    document.body.classList.remove('shell');
+    await viewVote($('#view'), vote[1]);
+    return;
+  }
   const isPublic = ['#/login', '#/register', '#/register-program', '#/register-teacher', '#/google-link'].includes(hash);
   if (!state.user && !isPublic) {
     try {
@@ -657,7 +671,7 @@ const HASH_PERM = {
   '#/board': 'stats', '#/finance': 'stats', '#/general': 'stats', '#/dashboard': 'school', '#/program/board': 'school',
   '#/payroll': 'salaries', '#/program/pay': 'salaries', '#/salaries': 'salaries', '#/staff': 'salaries',
   '#/fees': 'fees', '#/accounting': 'accounting', '#/cash': 'cash', '#/ledger': 'expenses',
-  '#/arena': 'school', '#/partners': 'partners', '#/permissions': 'super', '#/admins': 'super', '#/center-debts': 'expenses',
+  '#/arena': 'school', '#/polls': 'school', '#/partners': 'partners', '#/permissions': 'super', '#/admins': 'super', '#/center-debts': 'expenses',
   '#/people': 'school', '#/parents': 'school', '#/parent-requests': 'school', '#/students': 'school', '#/program': 'school',
   '#/attendance': 'school', '#/messages': 'school', '#/broadcast': 'school', '#/whatsapp': 'school', '#/courses': 'school',
   '#/support/teachers': 'accounts', '#/program/staff': 'accounts', '#/debts': 'expenses',
@@ -763,6 +777,7 @@ const NAV = {
       items: [
         ['#/messages', 'رسائل الأولياء'],
         ['#/broadcast', 'رسالة جماعية للأولياء'],
+        ['#/polls', '🗳️ تصويت مباشر للأولياء'],
         ['#/broadcast/teachers', 'رسالة جماعية للمعلمين'],
         ['#/broadcast/staff', 'رسالة جماعية للمؤطّرين'],
         ['#/whatsapp', 'مجموعات واتساب'],
