@@ -1983,3 +1983,21 @@ test('game corner: admin-only question bank, server-side scoring, streaks, stars
   assert.strictEqual((await parent('GET', '/api/game/hub')).status, 403);
   await admin('PUT', '/api/role-features', { values: {} });
 });
+
+test('a session saved twice (old + new version overlapping) is counted once in teacher pay', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const sid = meta.subjects[0].id;
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'dup-t', full_name: 'معلم مكرّر', password: 'secret1', hourly_rate: 10, subject_ids: [sid] })).body.user;
+  const month = new Date().toISOString().slice(0, 7);
+  // نسختان من نفس الحصة كل أربعاء: واحدة من أول الشهر (حالية) وأخرى قديمة مغلقة بعد أسبوع
+  await pool.query(
+    `INSERT INTO timetable (level, day, start_time, end_time, subject_id, teacher_id, valid_from, valid_to) VALUES
+     ('9', 3, '05:00', '07:00', $1, $2, $3, NULL), ('9', 3, '05:00', '07:00', $1, $2, $3, ($3::date + 27))`,
+    [sid, t.id, `${month}-01`]
+  );
+  const pay = (await admin('GET', `/api/payroll/${t.id}?month=${month}`)).body;
+  const days = pay.sessions.filter((x) => x.start_time === '05:00').map((x) => x.date);
+  assert.strictEqual(new Set(days).size, days.length);
+  assert.ok(days.length >= 4);
+});
