@@ -1775,7 +1775,7 @@ test('substitute a session: hours move to the substitute, who can take attendanc
   const q = `/api/attendance?subject_id=${fr}&level=9&date=${day}`;
   assert.strictEqual((await tb('GET', q)).status, 403);
   // التعويض
-  assert.strictEqual((await admin('POST', '/api/substitutions', { timetable_id: slot.id, date: '2000-01-01', substitute_id: b.id })).status, 400);
+  assert.strictEqual((await admin('POST', '/api/substitutions', { timetable_id: slot.id, date: dow === 6 ? '2000-01-02' : '2000-01-01', substitute_id: b.id })).status, 400);
   const sub = (await admin('POST', '/api/substitutions', { timetable_id: slot.id, date: day, substitute_id: b.id, note: 'غياب' })).body.substitution;
   assert.strictEqual(sub.substitute_name, 'وصفي المعوّض');
   const month = day.slice(0, 7);
