@@ -2,8 +2,8 @@
 // الإدارة: #/polls (إنشاء) و #/polls/:id (شاشة العرض: QR + نتائج حيّة)
 // الأولياء: #/vote/:code — دون حساب، مجهول الهوية
 
-const POLL_COLORS = { excellent: '#0f9d58', very_good: '#5cb85c', good: '#a3c93a', average: '#f4b400', below: '#f57c00', weak: '#db4437' };
-const POLL_EMOJI = { excellent: '🤩', very_good: '😀', good: '🙂', average: '😐', below: '🙁', weak: '😞' };
+const POLL_COLORS = { excellent: '#0f9d58', very_good: '#7cb342', average: '#f4b400', below: '#f57c00', weak: '#db4437' };
+const POLL_EMOJI = { excellent: '🤩', very_good: '🙂', average: '😐', below: '🙁', weak: '😞' };
 const voteUrl = (code) => `${location.origin}${location.pathname}#/vote/${code}`;
 const qrSvg = (textValue, cell = 8) => {
   const q = qrcode(0, 'M');
@@ -35,7 +35,7 @@ async function viewPolls(el) {
       '🗳️ تصويت جديد',
       `<label>العنوان<input name="title" required maxlength="150" value="اجتماع أولياء الإعدادي — تقييم فيد"></label>
        <label>محاور التقييم (محور في كل سطر)<textarea name="criteria" rows="10" required>${esc(defaults.join('\n'))}</textarea></label>
-       <p class="muted small">سلّم التقييم: ممتاز · جيد · حسن · متوسط · دون المتوسط · ضعيف. التصويت مجهول الهوية تمامًا.</p>
+       <p class="muted small">سلّم التقييم من 1 إلى 5: 5 ممتاز · 4 جيد · 3 متوسط · 2 دون المتوسط · 1 ضعيف. التصويت مجهول الهوية تمامًا.</p>
        <label class="check"><input type="checkbox" name="allow_comment" checked> السماح بملاحظة مكتوبة (اختيارية)</label>`,
       async (d) => {
         const { poll } = await api('POST', '/api/polls', { title: d.title, criteria: d.criteria, allow_comment: !!d.allow_comment });
@@ -70,7 +70,7 @@ async function viewPollLive(el, id) {
           <p class="muted small">🔒 مجهول الهوية · تحديث مباشر</p>
         </aside>
         <section class="pl-results card">
-          <div class="pl-legend">${data.scale.map((s) => `<span><i style="background:${POLL_COLORS[s.key]}"></i>${s.label}</span>`).join('')}</div>
+          <div class="pl-legend">${data.scale.map((s) => `<span><i style="background:${POLL_COLORS[s.key]}"></i>${s.score} ${s.label}</span>`).join('')}</div>
           <div id="pl-rows"></div>
           <div id="pl-comments"></div>
         </section>
@@ -80,7 +80,7 @@ async function viewPollLive(el, id) {
     $('#pl-n').textContent = data.votes;
     $('#pl-toggle').textContent = data.poll.active ? '⏹ إغلاق التصويت' : '▶ إعادة فتح التصويت';
     $('#pl-overall').innerHTML = data.overall
-      ? `<span>المعدّل العام</span><b>${data.overall.toFixed(2)}<small>/6</small></b>`
+      ? `<span>المعدّل العام</span><b>${data.overall.toFixed(2)}<small>/5</small></b>`
       : '';
     $('#pl-rows').innerHTML = data.criteria
       .map((c) => {
@@ -94,7 +94,7 @@ async function viewPollLive(el, id) {
               .join('')
           : '<em>بانتظار الأصوات…</em>';
         return `<div class="pl-row"><div class="pl-row-head"><b>${esc(c.name)}</b>
-            ${c.n ? `<span class="pl-sat" style="--c:${c.satisfied >= 70 ? '#0f9d58' : c.satisfied >= 50 ? '#f4b400' : '#db4437'}">${c.satisfied}% راضون</span><span class="muted small">${c.avg.toFixed(1)}/6 · ${c.n}</span>` : ''}</div>
+            ${c.n ? `<span class="pl-sat" style="--c:${c.satisfied >= 70 ? '#0f9d58' : c.satisfied >= 50 ? '#f4b400' : '#db4437'}">${c.satisfied}% راضون</span><span class="muted small">${c.avg.toFixed(1)}/5 · ${c.n} صوت</span>` : ''}</div>
           <div class="pl-bar">${bars}</div></div>`;
       })
       .join('');
@@ -185,13 +185,13 @@ async function viewVote(el, code) {
     el.innerHTML = `
       <div class="vote-page">
         <header class="vote-head"><img src="feed-logo-white.png" alt="فيد"><h1>${esc(poll.title)}</h1>
-          <p>قيّم كل محور بضغطة · 🔒 مجهول الهوية</p>
+          <p>قيّم كل محور من 1 إلى 5 · 🔒 مجهول الهوية</p>
           <div class="vote-progress"><i id="v-prog"></i></div><small id="v-count"></small></header>
         <div class="vote-list">${poll.criteria
           .map(
             (c, i) => `<section class="vote-card vote-q" data-i="${i}"><h3><span>${i + 1}</span>${esc(c)}</h3>
               <div class="vote-scale">${scale
-                .map((s) => `<button type="button" data-k="${s.key}" style="--c:${POLL_COLORS[s.key]}" class="${answers[i] === s.key ? 'on' : ''}"><em>${POLL_EMOJI[s.key]}</em>${s.label}</button>`)
+                .map((s) => `<button type="button" data-k="${s.key}" style="--c:${POLL_COLORS[s.key]}" class="${answers[i] === s.key ? 'on' : ''}"><b>${s.score}</b><em>${POLL_EMOJI[s.key]}</em><small>${s.label}</small></button>`)
                 .join('')}</div></section>`
           )
           .join('')}

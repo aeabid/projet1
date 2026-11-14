@@ -2096,7 +2096,7 @@ test('live parents poll: admin creates it, parents vote anonymously without an a
   const admin = await login('admin', 'admin123');
   const list0 = (await admin('GET', '/api/polls')).body;
   assert.strictEqual(list0.defaults.length, 9);
-  assert.deepStrictEqual(list0.scale.map((s) => s.label), ['ممتاز', 'جيد', 'حسن', 'متوسط', 'دون المتوسط', 'ضعيف']);
+  assert.deepStrictEqual(list0.scale.map((s) => s.label), ['ممتاز', 'جيد', 'متوسط', 'دون المتوسط', 'ضعيف']);
   await admin('POST', '/api/users', { role: 'teacher', username: 'poll-t', full_name: 'م', password: 'secret1' });
   assert.strictEqual((await (await login('poll-t', 'secret1'))('POST', '/api/polls', { title: 'x', criteria: ['a'] })).status, 403);
   const { poll } = (await admin('POST', '/api/polls', { title: 'اجتماع الإعدادي', criteria: 'الفرنسية\nالعربية\nمركز فيد إجمالًا' })).body;
@@ -2108,14 +2108,14 @@ test('live parents poll: admin creates it, parents vote anonymously without an a
   assert.strictEqual((await call('POST', `/api/public/polls/${poll.code}/vote`, { device: 'x', answers: { 0: 'excellent' } })).status, 400);
   assert.strictEqual((await call('POST', `/api/public/polls/${poll.code}/vote`, { device: dev(1), answers: { 0: 'super' } })).status, 400);
   assert.strictEqual((await call('POST', `/api/public/polls/${poll.code}/vote`, { device: dev(1), answers: {} })).status, 400);
-  assert.strictEqual((await call('POST', `/api/public/polls/${poll.code}/vote`, { device: dev(1), answers: { 0: 'excellent', 1: 'good', 2: 'very_good' }, comment: 'شكرًا' })).status, 201);
+  assert.strictEqual((await call('POST', `/api/public/polls/${poll.code}/vote`, { device: dev(1), answers: { 0: 'excellent', 1: 'very_good', 2: 'very_good' }, comment: 'شكرًا' })).status, 201);
   assert.strictEqual((await call('POST', `/api/public/polls/${poll.code}/vote`, { device: dev(2), answers: { 0: 'weak', 2: 'excellent' } })).status, 201);
   // نفس الجهاز يعدّل تقييمه (لا صوت ثانٍ)
   const again = await call('POST', `/api/public/polls/${poll.code}/vote`, { device: dev(2), answers: { 0: 'average', 2: 'excellent' } });
   assert.deepStrictEqual([again.status, again.body.updated], [200, true]);
   const r = (await admin('GET', `/api/polls/${poll.id}/results`)).body;
   assert.strictEqual(r.votes, 2);
-  assert.deepStrictEqual([r.criteria[0].n, r.criteria[0].avg, r.criteria[0].counts.average, r.criteria[0].satisfied], [2, 4.5, 1, 50]);
+  assert.deepStrictEqual([r.criteria[0].n, r.criteria[0].avg, r.criteria[0].counts.average, r.criteria[0].satisfied], [2, 4, 1, 50]);
   assert.deepStrictEqual([r.criteria[1].n, r.criteria[1].satisfied], [1, 100]);
   assert.strictEqual(r.comments[0].text, 'شكرًا');
   assert.ok(!JSON.stringify(r).includes(dev(1)));
@@ -2123,6 +2123,6 @@ test('live parents poll: admin creates it, parents vote anonymously without an a
   assert.strictEqual((await call('GET', `/api/polls/${poll.id}/results`)).status, 401);
   // إغلاق التصويت
   await admin('PATCH', `/api/polls/${poll.id}`, { active: false });
-  assert.strictEqual((await call('POST', `/api/public/polls/${poll.code}/vote`, { device: dev(3), answers: { 0: 'good' } })).status, 409);
+  assert.strictEqual((await call('POST', `/api/public/polls/${poll.code}/vote`, { device: dev(3), answers: { 0: 'very_good' } })).status, 409);
   assert.strictEqual((await call('GET', '/api/public/polls/999999')).status, 404);
 });

@@ -2500,9 +2500,11 @@ body.vote-mode #view { padding: 0; max-width: none; }
 .vote-card h3 { display: flex; align-items: center; gap: 8px; font-size: 1.05rem; margin: 0 0 10px; color: var(--text); }
 .vote-card h3 span { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--soft); color: var(--feed-purple); font-size: .85rem; flex: none; }
 .vote-q.answered h3 span { background: #0f9d58; color: #fff; }
-.vote-scale { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
-.vote-scale button { border: 2px solid var(--border); background: #fff; border-radius: 14px; padding: 8px 4px; font: inherit; font-weight: 700; font-size: .85rem; cursor: pointer; display: grid; gap: 2px; color: var(--text); transition: transform .1s; }
-.vote-scale button em { font-style: normal; font-size: 1.5rem; }
+.vote-scale { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.vote-scale button { border: 2px solid var(--border); background: #fff; border-radius: 14px; padding: 7px 2px; font: inherit; font-weight: 700; font-size: .85rem; cursor: pointer; display: grid; gap: 1px; justify-items: center; color: var(--text); transition: transform .1s; }
+.vote-scale button b { font-size: 1.35rem; line-height: 1.1; color: var(--c); }
+.vote-scale button em { font-style: normal; font-size: 1.3rem; }
+.vote-scale button small { font-size: .68rem; line-height: 1.2; min-height: 2.4em; display: grid; place-items: center; }
 .vote-scale button:active { transform: scale(.96); }
 .vote-scale button.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 14%, #fff); color: var(--c); box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 30%, transparent); }
 .vote-card textarea { width: 100%; }
