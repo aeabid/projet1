@@ -1,3 +1,14 @@
 [build]
   publish = "public"
   functions = "netlify/functions"
+
+# روابط قصيرة للعموم: education.feed.tn/exam/123456 و education.feed.tn/vote/123456
+[[redirects]]
+  from = "/exam/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/vote/*"
+  to = "/index.html"
+  status = 200

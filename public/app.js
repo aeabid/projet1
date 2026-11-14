@@ -604,9 +604,11 @@ let navCount = 0;
 async function router() {
   const hash = location.hash || '#/';
   // 🗳️ تصويت الأولياء: صفحة عامة دون حساب ودون قوائم
-  const vote = hash.match(/^#\/vote\/(\d+)$/);
+  // رابط قصير: education.feed.tn/vote/123456 أو /exam/123456 (والروابط القديمة #/vote/… تبقى تعمل)
+  const short = location.pathname.match(/^\/(vote|exam)\/(\d+)\/?$/);
+  const vote = short?.[1] === 'vote' ? [null, short[2]] : hash.match(/^#\/vote\/(\d+)$/);
   // 📝 امتحان للعموم: نفس الشيء (صفحة عامة دون حساب)
-  const pubExam = hash.match(/^#\/exam\/(\d+)$/);
+  const pubExam = short?.[1] === 'exam' ? [null, short[2]] : hash.match(/^#\/exam\/(\d+)$/);
   document.body.classList.toggle('vote-mode', !!(vote || pubExam));
   if (vote || pubExam) {
     if ($('#modal').open) $('#modal').close();

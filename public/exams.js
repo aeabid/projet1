@@ -2,7 +2,7 @@
 // الإدارة: #/exams — صفحة واحدة: الامتحانات، الرابط وQR، التعديل، وفي الأسفل محاولات المترشّحين
 // العموم: #/exam/:code — دون حساب: الاسم واللقب والعمر ثمّ الأسئلة
 
-const examUrl = (code) => `${location.origin}${location.pathname}#/exam/${code}`;
+const examUrl = (code) => `${location.origin}/exam/${code}`;
 const examState = { id: null, editing: null, open: null };
 
 async function viewExams(el) {

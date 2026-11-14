@@ -41,7 +41,9 @@ const server = http.createServer(async (req, res) => {
     res.end(Buffer.from(await response.arrayBuffer()));
     return;
   }
-  const file = path.join(PUBLIC, path.normalize(url.pathname === '/' ? '/index.html' : url.pathname));
+  // الروابط القصيرة للعموم (/exam/123456، /vote/123456) تفتح التطبيقة نفسها
+  const page = url.pathname === '/' || /^\/(exam|vote)\/\d+\/?$/.test(url.pathname) ? '/index.html' : url.pathname;
+  const file = path.join(PUBLIC, path.normalize(page));
   try {
     if (!file.startsWith(PUBLIC)) throw new Error('outside');
     const content = await fs.readFile(file);
