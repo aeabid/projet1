@@ -583,6 +583,7 @@ const routes = [
   [/^#\/messages$/, (el) => viewMessages(el)],
   [/^#\/arena$/, (el) => viewArena(el)],
   [/^#\/polls$/, (el) => viewPolls(el)],
+  [/^#\/exams$/, (el) => viewExams(el)],
   [/^#\/polls\/(\d+)$/, (el, id) => viewPollLive(el, id)],
   [/^#\/arena\/play\/(\d+)$/, (el, id) => viewArenaPlay(el, id)],
   [/^#\/messages\/(\d+)$/, (el, id) => viewThread(el, Number(id))],
@@ -604,14 +605,17 @@ async function router() {
   const hash = location.hash || '#/';
   // 🗳️ تصويت الأولياء: صفحة عامة دون حساب ودون قوائم
   const vote = hash.match(/^#\/vote\/(\d+)$/);
-  document.body.classList.toggle('vote-mode', !!vote);
-  if (vote) {
+  // 📝 امتحان للعموم: نفس الشيء (صفحة عامة دون حساب)
+  const pubExam = hash.match(/^#\/exam\/(\d+)$/);
+  document.body.classList.toggle('vote-mode', !!(vote || pubExam));
+  if (vote || pubExam) {
     if ($('#modal').open) $('#modal').close();
     $('#topbar').hidden = true;
     $('#tabbar').hidden = true;
     $('#vmenu').hidden = true;
     document.body.classList.remove('shell');
-    await viewVote($('#view'), vote[1]);
+    if (vote) await viewVote($('#view'), vote[1]);
+    else await viewPublicExam($('#view'), pubExam[1]);
     return;
   }
   const isPublic = ['#/login', '#/register', '#/register-program', '#/register-teacher', '#/google-link'].includes(hash);
@@ -671,7 +675,7 @@ const HASH_PERM = {
   '#/board': 'stats', '#/finance': 'stats', '#/general': 'stats', '#/dashboard': 'school', '#/program/board': 'school',
   '#/payroll': 'salaries', '#/program/pay': 'salaries', '#/salaries': 'salaries', '#/staff': 'salaries',
   '#/fees': 'fees', '#/accounting': 'accounting', '#/cash': 'cash', '#/ledger': 'expenses',
-  '#/arena': 'school', '#/polls': 'school', '#/partners': 'partners', '#/permissions': 'super', '#/admins': 'super', '#/center-debts': 'expenses',
+  '#/arena': 'school', '#/polls': 'school', '#/exams': 'school', '#/partners': 'partners', '#/permissions': 'super', '#/admins': 'super', '#/center-debts': 'expenses',
   '#/people': 'school', '#/parents': 'school', '#/parent-requests': 'school', '#/students': 'school', '#/program': 'school',
   '#/attendance': 'school', '#/messages': 'school', '#/broadcast': 'school', '#/whatsapp': 'school', '#/courses': 'school',
   '#/support/teachers': 'accounts', '#/program/staff': 'accounts', '#/debts': 'expenses',
@@ -778,6 +782,7 @@ const NAV = {
         ['#/messages', 'رسائل الأولياء'],
         ['#/broadcast', 'رسالة جماعية للأولياء'],
         ['#/polls', '🗳️ تصويت مباشر للأولياء'],
+        ['#/exams', '📝 امتحانات للعموم'],
         ['#/broadcast/teachers', 'رسالة جماعية للمعلمين'],
         ['#/broadcast/staff', 'رسالة جماعية للمؤطّرين'],
         ['#/whatsapp', 'مجموعات واتساب'],

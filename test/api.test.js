@@ -2126,3 +2126,47 @@ test('live parents poll: admin creates it, parents vote anonymously without an a
   assert.strictEqual((await call('POST', `/api/public/polls/${poll.code}/vote`, { device: dev(3), answers: { 0: 'very_good' } })).status, 409);
   assert.strictEqual((await call('GET', '/api/public/polls/999999')).status, 404);
 });
+
+test('public exams: admin builds an exam, anyone takes it by link with name/surname/age, scored on the server, attempts listed for the admin', async () => {
+  const admin = await login('admin', 'admin123');
+  await admin('POST', '/api/users', { role: 'teacher', username: 'exam-t', full_name: 'م', password: 'secret1' });
+  const teacher = await login('exam-t', 'secret1');
+  const body = {
+    title: 'امتحان تجريبي', intro: 'سؤالان', show_feedback: false,
+    sections: [{ title: 'الاسم والفعل', advice: 'راجع علامات الاسم' }, { title: 'القراءة', passage: 'ذهب سامي إلى الحديقة.' }],
+    questions: [
+      { sec: 0, prompt: 'ما نوع هذه الكلمة؟', word: 'الشَّمْسُ', options: ['اسم', 'فعل', 'حرف'], answer: 0, why: 'تقبل ال' },
+      { sec: 0, prompt: 'ما نوع هذه الكلمة؟', word: 'يَرْكُضُ', options: ['اسم', 'فعل', 'حرف'], answer: 1 },
+      { sec: 1, prompt: 'إلى أين ذهب سامي؟', options: ['المدرسة', 'الحديقة'], answer: 1 },
+    ],
+  };
+  assert.strictEqual((await teacher('POST', '/api/exams', body)).status, 403);
+  assert.strictEqual((await admin('POST', '/api/exams', { ...body, questions: [{ sec: 5, prompt: 'x', options: ['a', 'b'], answer: 0 }] })).status, 400);
+  assert.strictEqual((await admin('POST', '/api/exams', { ...body, questions: [{ sec: 0, prompt: 'x', options: ['a', 'a'], answer: 0 }] })).status, 400);
+  const { exam } = (await admin('POST', '/api/exams', body)).body;
+  assert.match(exam.code, /^\d{6}$/);
+  // العموم: دون حساب، ودون الأجوبة إذا كان التصحيح الفوريّ مغلقًا
+  const pub = (await call('GET', `/api/public/exams/${exam.code}`)).body.exam;
+  assert.strictEqual(pub.questions.length, 3);
+  assert.ok(!('answer' in pub.questions[0]));
+  assert.strictEqual((await call('POST', `/api/public/exams/${exam.code}/submit`, { first_name: 'سامي', last_name: '', age: 9, answers: {} })).status, 400);
+  assert.strictEqual((await call('POST', `/api/public/exams/${exam.code}/submit`, { first_name: 'سامي', last_name: 'بن علي', age: 'x', answers: {} })).status, 400);
+  const r = await call('POST', `/api/public/exams/${exam.code}/submit`, { first_name: 'سامي', last_name: 'بن علي', age: 9, answers: { 0: 0, 1: 2, 2: 1 } });
+  assert.strictEqual(r.status, 201);
+  assert.deepStrictEqual([r.body.total, r.body.correct, r.body.count, r.body.grade], [67, 2, 3, 'جيّد']);
+  assert.deepStrictEqual(r.body.skills.map((s) => [s.t, s.pct]), [['الاسم والفعل', 50], ['القراءة', 100]]);
+  // الإدارة ترى المحاولة بتفاصيلها
+  const { attempts } = (await admin('GET', `/api/exams/${exam.id}/attempts`)).body;
+  assert.strictEqual(attempts.length, 1);
+  assert.deepStrictEqual([attempts[0].first_name, attempts[0].age, attempts[0].answers[1].ok, attempts[0].answers[1].c, attempts[0].answers[1].a], ['سامي', 9, false, 'حرف', 'فعل']);
+  assert.strictEqual((await call('GET', `/api/exams/${exam.id}/attempts`)).status, 401);
+  assert.strictEqual((await admin('GET', '/api/exams')).body.exams.find((x) => x.id === exam.id).attempts, 1);
+  // التصحيح الفوريّ: الأجوبة تُرسل للعرض فقط
+  await admin('PUT', `/api/exams/${exam.id}`, { ...body, show_feedback: true });
+  assert.strictEqual((await call('GET', `/api/public/exams/${exam.code}`)).body.exam.questions[0].answer, 0);
+  // إغلاق الامتحان
+  await admin('PATCH', `/api/exams/${exam.id}`, { active: false });
+  assert.strictEqual((await call('GET', `/api/public/exams/${exam.code}`)).body.exam.active, false);
+  assert.strictEqual((await call('POST', `/api/public/exams/${exam.code}/submit`, { first_name: 'أ', last_name: 'ب', age: 10, answers: {} })).status, 409);
+  assert.strictEqual((await admin('DELETE', `/api/exam-attempts/${attempts[0].id}`)).status, 200);
+});
