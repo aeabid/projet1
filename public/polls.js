@@ -4,7 +4,7 @@
 
 const POLL_COLORS = { excellent: '#0f9d58', very_good: '#7cb342', average: '#f4b400', below: '#f57c00', weak: '#db4437' };
 const POLL_EMOJI = { excellent: '🤩', very_good: '🙂', average: '😐', below: '🙁', weak: '😞' };
-const voteUrl = (code) => `${location.origin}/vote/${code}`;
+const voteUrl = (code) => `${publicBase()}/vote/${code}`;
 const qrSvg = (textValue, cell = 8) => {
   const q = qrcode(0, 'M');
   q.addData(textValue);

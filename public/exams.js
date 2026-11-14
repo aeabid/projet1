@@ -2,7 +2,7 @@
 // الإدارة: #/exams — صفحة واحدة: الامتحانات، الرابط وQR، التعديل، وفي الأسفل محاولات المترشّحين
 // العموم: #/exam/:code — دون حساب: الاسم واللقب والعمر ثمّ الأسئلة
 
-const examUrl = (code) => `${location.origin}/exam/${code}`;
+const examUrl = (code) => `${publicBase()}/exam/${code}`;
 const examState = { id: null, editing: null, open: null };
 
 async function viewExams(el) {
@@ -60,7 +60,7 @@ async function viewExams(el) {
       <div class="ex-share-info">
         <h3>${esc(ex.title)} ${ex.active ? '<span class="badge excellent">🟢 مفتوح</span>' : '<span class="badge general">⏹ مغلق</span>'}</h3>
         <p class="muted small">${ex.questions.length} سؤالًا · ${ex.sections.length} محاور · ${ex.show_feedback ? 'تصحيح فوريّ بعد كلّ سؤال' : 'دون تصحيح فوريّ'}</p>
-        <div class="ex-link"><input readonly dir="ltr" value="${esc(url)}" id="ex-url"><button class="btn small" id="ex-copy">📋 نسخ الرابط</button></div>
+        <div class="ex-link"><input readonly dir="ltr" value="${esc(url.replace(/^https?:\/\//, ''))}" id="ex-url"><button class="btn small" id="ex-copy">📋 نسخ الرابط</button></div>
         <div class="ex-actions">
           <a class="btn small ghost" href="${esc(url)}" target="_blank" rel="noopener">👁 فتح الامتحان</a>
           <a class="btn small ghost" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`📝 ${ex.title}\n${url}`)}">واتساب</a>
