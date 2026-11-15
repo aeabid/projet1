@@ -1591,6 +1591,7 @@ async function viewFixed(el) {
               .join('')}</div>`
           : '<p class="muted">لا أحد مسجّل. زيد الإطار الإداري والعاملين من «الأجور ← الموارد البشرية الأخرى».</p>'}
       </section>
+      <section class="card fx-sec fx-arrears" id="fx-arrears" hidden></section>
       <section class="card fx-sec" id="fx-sal"><div class="section-head"><h3>👩‍🏫 أجور المدرّسين والمؤطّرين المتوقّعة إلى آخر الشهر</h3>
         <a class="btn ghost small" href="#/salaries">الأجور ←</a></div><p class="muted">جاري الحساب…</p></section>
       ${data.items.length ? '' : `<section class="card"><h3>⚡ إضافة سريعة</h3><p class="muted small">اضغط على المصروف وكمّل المبلغ:</p>
@@ -1619,6 +1620,7 @@ async function viewFixed(el) {
         if (kp) kp.insertAdjacentHTML('afterend', `<p class="fx-grand">🧾 كل ما يُدفع هذا الشهر (قارّ + كل الأجور): <b>${fmtMoney(data.grand.total + sal.expected)}</b> · الباقي <b class="out">${fmtMoney(data.grand.left + sal.left)}</b></p>`);
       })
       .catch(() => $('#fx-sal') && ($('#fx-sal').hidden = true));
+    loadArrears();
     const find = (id) => data.items.find((x) => x.id === Number(id));
     el.querySelectorAll('[data-pay]').forEach((b) => b.addEventListener('click', () => pay(find(b.dataset.pay))));
     el.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => form(find(b.dataset.edit))));
@@ -1633,8 +1635,90 @@ async function viewFixed(el) {
       })
     );
   };
+  // مستحقات المدرّسين المتخلّدة بذمّة الإدارة (أشهر سابقة لم تُخلَّص)
+  const loadArrears = () =>
+    api('GET', '/api/teacher-arrears')
+      .then((ar) => {
+        const box = $('#fx-arrears');
+        if (!box) return;
+        box.hidden = false;
+        box.innerHTML = `<div class="section-head"><div><h3>🧾 مستحقات المدرّسين المتخلّدة بذمّة الإدارة</h3>
+            <p class="muted small">أشهر سابقة لم تُخلَّص كاملًا (مثلًا سبتمبر وأكتوبر قبل استعمال التطبيقة). تُطرح من الربح المتوقّع حتى تُدفع.</p></div>
+            <div><b class="fx-sal-left">${ar.total ? `المجموع ${fmtMoney(ar.total)}` : '✓ لا شيء'}</b> <button class="btn small" id="ar-add">+ مستحق سابق</button></div></div>
+          ${ar.items.length
+            ? `<div class="fx-list">${ar.items
+                .map((x, i) => `<article class="fx-item late"><div class="fx-main"><b>${esc(x.teacher_name)}</b>
+                    <small>${esc(monthLabel(x.month))} · المستحق ${fmtMoney(x.due)}${x.paid ? ` · دُفع ${fmtMoney(x.paid)}` : ''}</small></div>
+                  <div class="fx-amt"><b>${fmtMoney(x.remaining)}</b><span class="fx-st late">متخلّد</span></div>
+                  <div class="fx-acts"><button class="btn small" data-ar-pay="${i}">💸 خلاص</button><a class="btn ghost small" href="#/payroll/${x.teacher_id}" data-ar-open="${x.month}">التفاصيل</a></div></article>`)
+                .join('')}</div>`
+            : '<p class="muted">لا توجد مستحقات سابقة غير مدفوعة.</p>'}`;
+        $('#ar-add').addEventListener('click', () => pastDueForm(null, loadArrears));
+        box.querySelectorAll('[data-ar-open]').forEach((a) => a.addEventListener('click', () => sessionStorage.setItem('payMonth', a.dataset.arOpen)));
+        box.querySelectorAll('[data-ar-pay]').forEach((b) =>
+          b.addEventListener('click', () => {
+            const x = ar.items[Number(b.dataset.arPay)];
+            openModal(
+              `💸 خلاص ${x.teacher_name} — ${monthLabel(x.month)}`,
+              `<p class="muted">الباقي <b>${fmtMoney(x.remaining)}</b></p>
+               <div class="row"><label>المبلغ (د.ت)<input name="amount" inputmode="decimal" value="${esc(x.remaining)}"></label>
+                 <label>تاريخ الدفع<input type="date" name="paid_on" value="${today()}"></label></div>
+               <label>ملاحظة<input name="note" placeholder="اختياري"></label>`,
+              async (d) => {
+                const amount = Number(String(d.amount).replace(',', '.'));
+                await api('POST', `/api/payroll/${x.teacher_id}/payments`, { month: x.month, amount: d.amount, paid_on: d.paid_on, note: d.note, kind: amount + 0.0005 >= x.remaining ? 'full' : 'advance' });
+                toast('تم تسجيل الخلاص');
+                load();
+              }
+            );
+          })
+        );
+      })
+      .catch(() => {});
   $('#fx-add').addEventListener('click', () => form(null));
   $('#fx-cats').addEventListener('click', () => data && cats());
   bindMonth('fx-month', load);
   load();
+}
+
+
+// ---------- مستحق سابق لمدرّس (أشهر قبل استعمال التطبيقة) ----------
+// teacher: {id, full_name} أو null (يُختار من القائمة)
+async function pastDueForm(teacher, done, presetMonth) {
+  const teachers = teacher ? [teacher] : (await api('GET', '/api/users?role=teacher')).users.filter((t) => !t.program_staff);
+  const cur = today().slice(0, 7);
+  const prev = (() => { const [y, m] = cur.split('-').map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`; })();
+  openModal(
+    '🧾 مستحق سابق لمدرّس',
+    `<p class="muted small">للأشهر اللي التطبيقة ما حسبتش فيها الساعات (سبتمبر، أكتوبر…). يتزاد لمستحق ذاك الشهر، ويبقى متخلّد بذمّة الإدارة حتى يتخلّص.</p>
+     <div class="row">
+       <label>المدرّس<select name="teacher_id" id="pd-t" ${teacher ? 'disabled' : ''}>${teachers.map((t) => `<option value="${t.id}">${esc(t.full_name)}</option>`).join('')}</select></label>
+       <label>الشهر<input type="month" name="month" id="pd-m" max="${cur}" value="${presetMonth || prev}" required></label>
+     </div>
+     <div class="row">
+       <label>المبلغ (د.ت)<input name="amount" inputmode="decimal" placeholder="مثال: 240"></label>
+       <label>أو عدد الساعات<input name="hours" inputmode="decimal" placeholder="× معلوم الساعة"></label>
+     </div>
+     <label>ملاحظة<input name="note" placeholder="مثال: ساعات سبتمبر قبل التطبيقة"></label>
+     <p class="pd-info muted small" id="pd-info"></p>`,
+    async (d) => {
+      const tid = teacher ? teacher.id : Number(d.teacher_id);
+      await api('POST', `/api/payroll/${tid}/past-dues`, { month: d.month, amount: d.amount, hours: d.hours, note: d.note });
+      toast('تمّت إضافة المستحق ✓');
+      done?.();
+    }
+  );
+  // ما سُجّل لهذا الشهر: المستحق الحالي والمدفوع (المبلغ الجديد يُضاف للمستحق)
+  const info = async () => {
+    const tid = teacher ? teacher.id : Number($('#pd-t').value);
+    const m = $('#pd-m').value;
+    if (!tid || !m) return;
+    try {
+      const r = await api('GET', `/api/payroll/${tid}?month=${m}`);
+      $('#pd-info').innerHTML = `مسجّل حاليًا لـ${esc(monthLabel(m))}: المستحق <b>${fmtMoney(r.due)}</b> · المدفوع <b>${fmtMoney(r.paid)}</b>${r.hourly_rate ? ` · معلوم الساعة ${fmtMoney(r.hourly_rate)}` : ''}.<br>المبلغ اللي تكتبو <b>يتزاد</b> على المستحق المسجّل، والدفعات تتنقص من المجموع.`;
+    } catch {}
+  };
+  $('#pd-t')?.addEventListener('change', info);
+  $('#pd-m').addEventListener('change', info);
+  info();
 }

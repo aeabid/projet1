@@ -191,6 +191,8 @@ function forecastCard(f) {
         <i>${f.salaries.filter((g) => g.left).map((g) => `${esc(g.label)}: ${fmtMoney(g.left)}`).join('<br>') || 'كلها مدفوعة ✓'}</i></div>
       <div class="fcb-step"><small>− المصاريف القارّة الباقية</small><b class="out">${fmtMoney(f.fixed_left)}</b>
         <i>${f.fixed_items.map((x) => `${esc(x.name)}: ${fmtMoney(x.left)}`).join('<br>') || 'كلها مدفوعة ✓'}</i></div>
+      ${f.arrears_left ? `<div class="fcb-step"><small>− مستحقات مدرّسين متخلّدة</small><b class="out">${fmtMoney(f.arrears_left)}</b>
+        <i>${f.arrears_items.map((x) => `${esc(x.teacher_name)} (${esc(monthLabel(x.month))}): ${fmtMoney(x.remaining)}`).join('<br>')}</i></div>` : ''}
       <span class="fcb-op">=</span>
       <div class="fcb-step goal"><small>الربح الصافي المتوقّع</small><b class="${neg(f.net_expected)}">${fmtMoney(f.net_expected)}</b></div>
     </div>
@@ -279,7 +281,7 @@ async function boardMonth(el) {
         <div class="fb-kpi out"><span>المصاريف المدفوعة</span><b>${fmtMoney(t.expense)}</b><small>حسب تاريخ الدفع</small></div>
         <div class="fb-kpi net ${t.net < 0 ? 'neg' : ''}"><span>${t.net >= 0 ? 'ربح الشهر' : 'خسارة الشهر'}</span><b>${fmtMoney(Math.abs(t.net))}</b><small>المداخيل − المصاريف</small></div>
       </div>
-      ${fc && (fc.salaries_left || fc.fixed_left) ? forecastCard(fc) : ''}
+      ${fc && (fc.salaries_left || fc.fixed_left || fc.arrears_left) ? forecastCard(fc) : ''}
       <section class="card"><div class="section-head"><h3>📆 أسبوعًا بأسبوع</h3><span class="legend"><span><i style="background:#16a34a"></i>مداخيل</span><span><i style="background:#db2777"></i>مصاريف</span></span></div>
         <div class="wk-chart">${w.weeks
           .map(
@@ -2110,6 +2112,7 @@ async function viewPartners(el) {
               <div><small>الربح الحالي</small><b class="${d.forecast.net_now < 0 ? 'neg' : ''}">${fmtMoney(d.forecast.net_now)}</b><i>المداخيل − المصاريف المدفوعة إلى اليوم</i></div>
               <div class="minus"><small>− الأجور المتبقّية إلى آخر الشهر</small><b>${fmtMoney(d.forecast.salaries_left)}</b><i>كل الحصص المبرمجة، دون غيابات</i></div>
               <div class="minus"><small>− المصاريف القارّة الباقية</small><b>${fmtMoney(d.forecast.fixed_left || 0)}</b><i>الكراء، المحاسبة، الفواتير…</i></div>
+              ${d.forecast.arrears_left ? `<div class="minus"><small>− مستحقات مدرّسين متخلّدة</small><b>${fmtMoney(d.forecast.arrears_left)}</b><i>أشهر سابقة لم تُخلَّص</i></div>` : ''}
               <div class="eq"><small>= الربح الصافي المتوقّع</small><b class="${d.forecast.net_expected < 0 ? 'neg' : ''}">${fmtMoney(d.forecast.net_expected)}</b>
                 <i>${Object.entries(d.forecast.shares).map(([n, v]) => `${esc(n)}: ${fmtMoney(v)}`).join(' · ')}</i></div>
             </div></section>`

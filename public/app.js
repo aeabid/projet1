@@ -4928,6 +4928,16 @@ async function viewTeacherPay(el, teacherId) {
       ${m.hourly_rate == null ? `<p class="error">لم يُحدَّد معلوم الساعة${isAdmin ? ' — حدّده من «الحسابات ← المعلمون ← تعديل»' : ''}.</p>` : ''}
       ${isAdmin ? `<label class="round-opt"><input type="checkbox" id="tp-round" ${m.teacher.round_hours ? 'checked' : ''}>
         <span><b>⏱ حصة 1:45 تُحتسب ساعتين</b><small>بعد تأكيد الإدارة: كل حصة 1:45 في جدول هذا المدرّس تُحتسب ساعتين كاملتين. تنجم تطفيها وقت ما تحب.</small></span></label>` : ''}
+      ${
+        m.past_dues?.length || isAdmin
+          ? `<section class="card"><div class="section-head"><h3>🧾 مستحقات سابقة مُدخلة يدويًا</h3>
+              ${isAdmin ? '<button class="btn small ghost" id="tp-past">+ مستحق سابق</button>' : ''}</div>
+              ${m.past_dues?.length
+                ? `<ul class="levels">${m.past_dues.map((d) => `<li><span>${d.hours ? `${fmtHours(d.hours)} · ` : ''}${esc(d.note || 'مستحق سابق')}</span>
+                    <span><b>${fmtMoney(d.amount)}</b>${isAdmin ? ` <button class="link danger" data-del-past="${d.id}">حذف</button>` : ''}</span></li>`).join('')}</ul>`
+                : '<p class="muted small">للأشهر اللي التطبيقة ما حسبتش فيها الساعات (سبتمبر، أكتوبر…): المبلغ يتزاد لمستحق هذا الشهر ويبقى متخلّد بذمّة الإدارة حتى يتخلّص.</p>'}</section>`
+          : ''
+      }
       <section class="card">
         <div class="section-head">
           <h3>💵 الدفعات</h3>
@@ -4987,6 +4997,14 @@ async function viewTeacherPay(el, teacherId) {
 
     if (!isAdmin) return;
     const reload = () => Promise.all([load(), loadYear()]);
+    $('#tp-past')?.addEventListener('click', () => pastDueForm({ id: Number(teacherId), full_name: m.teacher.full_name }, reload, month));
+    el.querySelectorAll('[data-del-past]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirmAction('حذف هذا المستحق؟')) return;
+        await api('DELETE', `/api/payroll/past-dues/${b.dataset.delPast}`);
+        reload();
+      })
+    );
     const adjust = (body) =>
       api('POST', `/api/payroll/${teacherId}/adjustments`, body)
         .then(() => {

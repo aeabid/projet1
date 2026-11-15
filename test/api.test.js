@@ -2170,3 +2170,42 @@ test('public exams: admin builds an exam, anyone takes it by link with name/surn
   assert.strictEqual((await call('POST', `/api/public/exams/${exam.code}/submit`, { first_name: 'أ', last_name: 'ب', age: 10, answers: {} })).status, 409);
   assert.strictEqual((await admin('DELETE', `/api/exam-attempts/${attempts[0].id}`)).status, 200);
 });
+
+test('past dues for teachers (months before the app): added by hours or amount, owed by the center until paid, shown with fixed expenses and in the forecast', async () => {
+  const admin = await login('admin', 'admin123');
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'past-t', full_name: 'مدرّس سبتمبر', password: 'secret1', hourly_rate: 12 })).body.user;
+  const now = new Date().toISOString().slice(0, 7);
+  const [y, m] = now.split('-').map(Number);
+  const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+  const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  const teacher = await login('past-t', 'secret1');
+  assert.strictEqual((await teacher('POST', `/api/payroll/${t.id}/past-dues`, { month: prev, amount: 50 })).status, 403);
+  assert.strictEqual((await admin('POST', `/api/payroll/${t.id}/past-dues`, { month: next, amount: 50 })).status, 400);
+  assert.strictEqual((await admin('POST', `/api/payroll/${t.id}/past-dues`, { month: prev })).status, 400);
+  // 20 ساعة × 12 = 240، ثمّ 60 بالمبلغ
+  assert.strictEqual((await admin('POST', `/api/payroll/${t.id}/past-dues`, { month: prev, hours: 20, note: 'ساعات قبل التطبيقة' })).body.past_due.amount, 240);
+  const extra = (await admin('POST', `/api/payroll/${t.id}/past-dues`, { month: prev, amount: '60' })).body.past_due;
+  const pm = (await admin('GET', `/api/payroll/${t.id}?month=${prev}`)).body;
+  assert.deepStrictEqual([pm.due, pm.past_total, pm.past_dues.length, pm.remaining], [300, 300, 2, 300]);
+  // المتخلّد بذمّة الإدارة + الربح المتوقّع + التنبيهات
+  let ar = (await admin('GET', '/api/teacher-arrears')).body;
+  const mine = ar.items.find((x) => x.teacher_id === t.id);
+  assert.deepStrictEqual([mine.month, mine.remaining], [prev, 300]);
+  const fc = (await admin('GET', '/api/board/forecast')).body;
+  assert.ok(fc.arrears_left >= 300);
+  assert.ok(fc.arrears_items.some((x) => x.teacher_id === t.id));
+  const al = (await admin('GET', '/api/alerts')).body;
+  assert.ok(JSON.stringify(al).includes('مستحقات مدرّسين متخلّدة'));
+  // خلاص جزئي ثمّ كامل
+  await admin('POST', `/api/payroll/${t.id}/payments`, { month: prev, amount: 100, kind: 'advance' });
+  ar = (await admin('GET', '/api/teacher-arrears')).body;
+  assert.strictEqual(ar.items.find((x) => x.teacher_id === t.id).remaining, 200);
+  await admin('DELETE', `/api/payroll/past-dues/${extra.id}`);
+  await admin('POST', `/api/payroll/${t.id}/payments`, { month: prev, amount: 140, kind: 'full' });
+  ar = (await admin('GET', '/api/teacher-arrears')).body;
+  assert.ok(!ar.items.some((x) => x.teacher_id === t.id));
+  // المدرّس يرى المستحق في سنته
+  const yr = (await teacher('GET', `/api/payroll/${t.id}/year`)).body;
+  const row = yr.months.find((x) => x.month === prev);
+  if (row) assert.deepStrictEqual([row.due, row.paid, row.remaining], [240, 240, 0]);
+});
