@@ -692,7 +692,7 @@ const FEATURE_HASH = {
   '#/tasks': ['teacher.tasks'], '#/group-message': ['teacher.group_message'], '#/messages': ['teacher.messages', 'parent.messages'],
   '#/my-pay': ['teacher.my_pay'],
   '#/program/attendance': ['program_staff.attendance'], '#/program/posts': ['program_staff.posts'], '#/program/pay': ['program_staff.my_pay'],
-  '#/my-receipts': ['parent.receipts'], '#/timetable': ['parent.timetable'], '#/arena': ['parent.game'],
+  '#/my-receipts': ['parent.receipts'], '#/timetable': ['parent.timetable'], '#/arena': ['parent.game', 'teacher.game'],
 };
 const featureOff = (key) => state.user?.features?.[key] === false;
 const navAllowed = (h) => {
@@ -989,7 +989,9 @@ function renderTopbar() {
     $('#switch-btn').title = `التبديل إلى حساب ${sw.full_name} (${ROLE_LABELS[sw.role]})`;
   }
   // 🏆 ركن التحدّي: أيقونة مستقلّة (الإدارة والأولياء فقط)
-  $('#arena-btn').hidden = !(state.user.role === 'admin' ? can('school') : state.user.role === 'parent' && !featureOff('parent.game'));
+  $('#arena-btn').hidden = !(state.user.role === 'admin' ? can('school')
+    : state.user.role === 'parent' ? !featureOff('parent.game')
+    : state.user.role === 'teacher' && (state.user.subjects || []).length > 0 && !featureOff('teacher.game'));
   $('#bell').hidden = state.user.role !== 'admin' || !can('school');
   if (state.user.role === 'admin' && can('school')) refreshBell();
   refreshMail();

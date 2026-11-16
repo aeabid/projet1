@@ -1900,8 +1900,8 @@ test('game corner: admin-only question bank, server-side scoring, streaks, stars
   const rival = await login('game-q', 'secret1');
 
   const mk = (b) => admin('POST', '/api/game/questions', { level: '6', subject_id: math, ...b });
-  // المعلم والولي لا يدخلان الأسئلة
-  assert.strictEqual((await teacher('POST', '/api/game/questions', { kind: 'truefalse', prompt: 'x', data: { answer: true } })).status, 403);
+  // الولي لا يدخل الأسئلة؛ المعلّم في موادّه فقط (له اختبار خاص)
+  assert.strictEqual((await parent('POST', '/api/game/questions', { level: '6', kind: 'truefalse', prompt: 'x', data: { answer: true } })).status, 403);
   assert.strictEqual((await parent('GET', '/api/game/questions')).status, 403);
   assert.strictEqual((await mk({ kind: 'mcq', prompt: '2+2', data: { options: ['3', '4'], answer: 5 } })).status, 400);
   // كل سنة لوحدها: القسم إجباري
@@ -1916,7 +1916,8 @@ test('game corner: admin-only question bank, server-side scoring, streaks, stars
 
   // الولي يلعب لابنه فقط
   assert.strictEqual((await parent('POST', '/api/game/sessions', { student_id: s2.id })).status, 404);
-  assert.strictEqual((await teacher('POST', '/api/game/sessions', { level: '6' })).status, 403);
+  // المعلّم يجرّب جولة في قسمه (لا تُحتسب في الترتيب)
+  assert.strictEqual((await teacher('POST', '/api/game/sessions', { level: '6' })).body.preview, true);
   const hub0 = (await parent('GET', '/api/game/hub')).body;
   assert.strictEqual(hub0.student.id, s1.id);
   assert.strictEqual(hub0.total_questions, 4);
@@ -2208,4 +2209,39 @@ test('past dues for teachers (months before the app): added by hours or amount, 
   const yr = (await teacher('GET', `/api/payroll/${t.id}/year`)).body;
   const row = yr.months.find((x) => x.month === prev);
   if (row) assert.deepStrictEqual([row.due, row.paid, row.remaining], [240, 240, 0]);
+});
+
+test('every teacher can add game questions for their own subjects and levels, and edit only their own', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const fit = meta.subjects.filter((x) => !x.levels || x.levels.includes('9'));
+  const [s1, s2] = fit;
+  await admin('POST', '/api/users', { role: 'teacher', username: 'gq-a', full_name: 'أستاذة أ', password: 'secret1', subject_ids: [s1.id] });
+  await admin('POST', '/api/users', { role: 'teacher', username: 'gq-b', full_name: 'أستاذ ب', password: 'secret1', subject_ids: [s1.id, s2.id] });
+  const ta = await login('gq-a', 'secret1');
+  const tb = await login('gq-b', 'secret1');
+  const q = (b) => ({ level: '9', kind: 'truefalse', prompt: 'سؤال', data: { answer: true }, ...b });
+  // مادة ليست له، أو دون مادة
+  assert.strictEqual((await ta('POST', '/api/game/questions', q({ subject_id: s2.id }))).status, 403);
+  assert.strictEqual((await ta('POST', '/api/game/questions', q({}))).status, 400);
+  const mine = (await ta('POST', '/api/game/questions', q({ subject_id: s1.id, prompt: 'سؤال الأستاذة أ' }))).body.question;
+  assert.strictEqual(mine.mine, true);
+  // زميله يراه (نفس المادة) لكن لا يعدّله ولا يحذفه
+  const seen = (await tb('GET', '/api/game/questions?level=9')).body.questions.find((x) => x.id === mine.id);
+  assert.deepStrictEqual([!!seen, seen.mine, seen.author_name], [true, false, 'أستاذة أ']);
+  assert.strictEqual((await tb('PUT', `/api/game/questions/${mine.id}`, q({ subject_id: s1.id }))).status, 403);
+  assert.strictEqual((await tb('DELETE', `/api/game/questions/${mine.id}`)).status, 403);
+  // صاحبه يعدّله؛ الإدارة تعدّل الكل
+  assert.strictEqual((await ta('PUT', `/api/game/questions/${mine.id}`, q({ subject_id: s1.id, prompt: 'معدّل' }))).body.question.prompt, 'معدّل');
+  assert.strictEqual((await admin('PUT', `/api/game/questions/${mine.id}`, q({ subject_id: s1.id, prompt: 'من الإدارة' }))).status, 200);
+  // لوحة المعلّم: أقسامه فقط، وتجربة جولة في قسمه
+  const hub = (await ta('GET', '/api/game/hub')).body;
+  assert.strictEqual(hub.teacher, true);
+  assert.ok(hub.levels.some((l) => l.code === '9'));
+  assert.strictEqual((await ta('POST', '/api/game/sessions', { level: '9' })).status, 201);
+  // المدير يوقف الخاصية للمعلّمين
+  await admin('PUT', '/api/role-features', { values: { teacher: { game: false } } });
+  assert.strictEqual((await ta('GET', '/api/game/questions')).status, 403);
+  await admin('PUT', '/api/role-features', { values: {} });
+  assert.strictEqual((await ta('DELETE', `/api/game/questions/${mine.id}`)).status, 200);
 });

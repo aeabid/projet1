@@ -64,7 +64,7 @@ function boardList(rows, empty = 'لا أحد بعد — كن الأوّل! 🚀
 
 async function viewArena(el) {
   const kid = gameState.kid ? `?student_id=${gameState.kid}` : '';
-  const isAdmin = state.user.role === 'admin';
+  const isAdmin = state.user.role === 'admin' || state.user.role === 'teacher';
   const hub = await api('GET', '/api/game/hub' + (isAdmin ? `?level=${encodeURIComponent(gameState.level || '')}` : kid));
   if (isAdmin) return arenaAdmin(el, hub);
   if (!hub.kids.length) {
@@ -315,7 +315,7 @@ async function viewArenaPlay(el, id) {
       </div>`;
     $('#g-again').addEventListener('click', async () => {
       try {
-        const body = state.user.role === 'admin' ? { level: gameState.level } : { student_id: gameState.kid };
+        const body = state.user.role === 'parent' ? { student_id: gameState.kid } : { level: gameState.level };
         const r = await api('POST', '/api/game/sessions', body);
         location.hash = `#/arena/play/${r.id}`;
       } catch (err) {
@@ -440,12 +440,20 @@ function matcher(area, changed) {
 // ---------- الإدارة: نظرة عامة، الترتيب، بنك الأسئلة ----------
 async function arenaAdmin(el, hub) {
   gameState.level ||= hub.level;
-  const tabs = [['overview', '📊 نظرة عامة'], ['board', '🏆 الترتيب'], ['bank', '📚 بنك الأسئلة']];
+  // المعلّم: أقسامه وموادّه فقط
+  const isTeacher = !!hub.teacher;
+  const myLevels = state.meta.levels.filter((l) => hub.levels.some((x) => x.code === l.code));
+  const mySubjects = isTeacher ? state.user.subjects || [] : state.meta.subjects;
+  if (!myLevels.length) {
+    el.innerHTML = '<div class="arena"><div class="g-hero"><h2>🏆 ركن التحدّي</h2><p>لا توجد أقسام مسندة إليك بعد.</p></div></div>';
+    return;
+  }
+  const tabs = [['overview', '📊 نظرة عامة'], ['board', '🏆 الترتيب'], ['bank', isTeacher ? '📚 أسئلتي' : '📚 بنك الأسئلة']];
   el.innerHTML = `
     <div class="arena">
       <div class="g-hero">
-        <div class="g-hero-top"><div><small>🏆 ركن التحدّي</small><h2>لوحة الإدارة</h2>
-          <span class="g-level">بنك الأسئلة تدخله الإدارة فقط · ${hub.rounds_week} جولة هذا الأسبوع</span></div>
+        <div class="g-hero-top"><div><small>🏆 ركن التحدّي</small><h2>${isTeacher ? 'أسئلة أقسامي' : 'لوحة الإدارة'}</h2>
+          <span class="g-level">${isTeacher ? 'أضف أسئلة موادّك لتلاميذ أقسامك' : 'الإدارة والمعلّمون يدخلون الأسئلة'} · ${hub.rounds_week} جولة هذا الأسبوع</span></div>
           <button class="g-icon-btn" id="g-mute">${gameSound.muted() ? '🔇' : '🔊'}</button></div>
       </div>
       <div class="g-tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${gameState.adminTab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
@@ -455,7 +463,7 @@ async function arenaAdmin(el, hub) {
   el.querySelectorAll('.g-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => ((gameState.adminTab = b.dataset.tab), arenaAdmin(el, hub))));
   const p = $('#g-panel');
   const levelSelect = (id, val, all) =>
-    `<select id="${id}">${all ? '<option value="">— كل الأقسام —</option>' : ''}${state.meta.levels.map((l) => `<option value="${esc(l.code)}" ${l.code === val ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}</select>`;
+    `<select id="${id}">${all ? '<option value="">— كل الأقسام —</option>' : ''}${myLevels.map((l) => `<option value="${esc(l.code)}" ${l.code === val ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}</select>`;
   const tryRound = async (level) => {
     try {
       gameState.level = level;
@@ -492,7 +500,7 @@ async function arenaAdmin(el, hub) {
   } else {
     const qs = new URLSearchParams();
     // كل سنة لوحدها: بنك أسئلة مستقلّ لكل قسم
-    if (!state.meta.levels.some((l) => l.code === gameState.qLevel)) gameState.qLevel = gameState.level || state.meta.levels[0]?.code || '';
+    if (!myLevels.some((l) => l.code === gameState.qLevel)) gameState.qLevel = myLevels.some((l) => l.code === gameState.level) ? gameState.level : myLevels[0]?.code || '';
     qs.set('level', gameState.qLevel);
     if (gameState.qSubject) qs.set('subject_id', gameState.qSubject);
     if (gameState.qKind) qs.set('kind', gameState.qKind);
@@ -505,11 +513,11 @@ async function arenaAdmin(el, hub) {
       : q.data.pairs.map((x) => `${esc(x[0])} ↔ ${esc(x[1])}`).join(' · ');
     p.innerHTML = `
       <div class="g-bank-head">
-        <div class="g-years">${state.meta.levels
+        <div class="g-years">${myLevels
           .map((l) => `<button class="g-year ${l.code === gameState.qLevel ? 'on' : ''}" data-year="${esc(l.code)}">${esc(l.label)}<small>${hub.levels.find((x) => x.code === l.code)?.questions ?? 0}</small></button>`)
           .join('')}</div>
         <div class="filters">
-          <select id="g-qs"><option value="">— كل المواد —</option>${state.meta.subjects.map((x) => `<option value="${x.id}" ${String(x.id) === gameState.qSubject ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
+          <select id="g-qs"><option value="">— كل المواد —</option>${mySubjects.map((x) => `<option value="${x.id}" ${String(x.id) === gameState.qSubject ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
           <select id="g-qk"><option value="">— كل الأنواع —</option>${Object.entries(GAME_KIND_LABELS).map(([k, v]) => `<option value="${k}" ${k === gameState.qKind ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
         <button class="btn" id="g-qadd">+ سؤال جديد</button>
       </div>
@@ -523,9 +531,10 @@ async function arenaAdmin(el, hub) {
                     ${q.attempts ? `<span title="نسبة النجاح">🎯 ${Math.round((q.correct / q.attempts) * 100)}% من ${q.attempts}</span>` : ''}${q.active ? '' : '<span class="off-tag">موقوف</span>'}</div>
                   <p class="g-q-prompt">${esc(q.prompt)}</p>
                   <p class="g-q-ans small">${answerOf(q)}</p>
-                  <div class="g-q-actions"><button class="btn small ghost" data-edit="${q.id}">✏️ تعديل</button>
+                  ${q.author_name ? `<p class="muted small">✍️ ${esc(q.author_name)}</p>` : ''}
+                  ${q.mine ? `<div class="g-q-actions"><button class="btn small ghost" data-edit="${q.id}">✏️ تعديل</button>
                     <button class="btn small ghost" data-toggle="${q.id}">${q.active ? '⏸ إيقاف' : '▶ تفعيل'}</button>
-                    <button class="btn small ghost danger" data-del="${q.id}">🗑</button></div>
+                    <button class="btn small ghost danger" data-del="${q.id}">🗑</button></div>` : ''}
                 </div>`
               )
               .join('')}</div>`
@@ -583,8 +592,8 @@ function questionForm(q, done) {
   openModal(
     editing ? '✏️ تعديل سؤال' : '+ سؤال جديد — ركن التحدّي',
     `<div class="row">
-       <label>القسم (السنة)<select name="level" required>${state.meta.levels.map((l) => `<option value="${esc(l.code)}" ${l.code === (q?.level || gameState.qLevel) ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}</select></label>
-       <label>المادة<select name="subject_id"><option value="">—</option>${state.meta.subjects.map((x) => `<option value="${x.id}" ${String(x.id) === String(q?.subject_id || '') ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+       <label>القسم (السنة)<select name="level" required>${gameFormLevels().map((l) => `<option value="${esc(l.code)}" ${l.code === (q?.level || gameState.qLevel) ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}</select></label>
+       <label>المادة<select name="subject_id" ${state.user.role === 'teacher' ? 'required' : ''}>${state.user.role === 'teacher' ? '' : '<option value="">—</option>'}${(state.user.role === 'teacher' ? state.user.subjects || [] : state.meta.subjects).map((x) => `<option value="${x.id}" ${String(x.id) === String(q?.subject_id || '') ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
      </div>
      <label>نوع السؤال<select name="kind" id="g-fkind">${Object.entries(GAME_KIND_LABELS).map(([k, v]) => `<option value="${k}" ${k === kind ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
      <label>السؤال<textarea name="prompt" rows="2" maxlength="500" required placeholder="مثال: ما هو ناتج 7 × 8 ؟">${esc(q?.prompt || '')}</textarea></label>
@@ -634,4 +643,11 @@ function questionForm(q, done) {
     draw();
   });
   draw();
+}
+
+// أقسام استمارة السؤال: كل الأقسام للإدارة، وأقسام المعلّم فقط (من موادّه)
+function gameFormLevels() {
+  if (state.user.role !== 'teacher') return state.meta.levels;
+  const codes = new Set((state.user.subjects || []).flatMap((x) => (x.teach_levels?.length ? x.teach_levels : x.levels?.length ? x.levels : state.meta.levels.map((l) => l.code))));
+  return state.meta.levels.filter((l) => codes.has(l.code));
 }
