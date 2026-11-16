@@ -2245,3 +2245,74 @@ test('every teacher can add game questions for their own subjects and levels, an
   await admin('PUT', '/api/role-features', { values: {} });
   assert.strictEqual((await ta('DELETE', `/api/game/questions/${mine.id}`)).status, 200);
 });
+
+test('import game questions from a Word / Excel / PDF file with AI: teacher scope, background job, preview then bulk save', async () => {
+  const { zipSync, strToU8 } = await import('fflate');
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const fit = meta.subjects.filter((x) => !x.levels || x.levels.includes('8'));
+  const [s1, s2] = fit;
+  await admin('POST', '/api/users', { role: 'teacher', username: 'imp-t', full_name: 'أستاذ الاستيراد', password: 'secret1', subject_ids: [s1.id] });
+  const res = await call('POST', '/api/login', { username: 'imp-t', password: 'secret1' });
+  const cookie = res.headers.get('set-cookie').split(';')[0];
+  let seen = null;
+  const h2 = createHandler(pool, {
+    adminPassword: 'admin123', runImportsInline: true,
+    extractQuestions: async (input) => {
+      seen = input;
+      return {
+        questions: [
+          { kind: 'mcq', prompt: 'كم يساوي 3 × 4 ؟', options: ['7', '12', '34'], answer_index: 1, answer_bool: false, items: [], pairs: [], explanation: '3 × 4 = 12' },
+          { kind: 'truefalse', prompt: 'العدد 9 زوجي', options: [], answer_index: 0, answer_bool: false, items: [], pairs: [], explanation: '' },
+          { kind: 'mcq', prompt: 'سؤال دون جواب صالح', options: ['أ', 'ب'], answer_index: 7, answer_bool: false, items: [], pairs: [], explanation: '' },
+        ],
+        skipped: 1, notes: 'سؤال مفتوح لم يُحوَّل',
+      };
+    },
+  });
+  const t = async (method, url, body) => {
+    const r = await h2(new Request('http://localhost' + url, { method, headers: { cookie, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined }));
+    return { status: r.status, body: await r.json() };
+  };
+  const dataUrl = (mime, bytes) => `data:${mime};base64,${Buffer.from(bytes).toString('base64')}`;
+  const docx = zipSync({ 'word/document.xml': strToU8('<w:document><w:body><w:p><w:r><w:t>1) كم يساوي 3 × 4 ؟</w:t></w:r></w:p><w:p><w:r><w:t>أ) 7  ب) 12</w:t></w:r></w:p><w:p><w:r><w:t>الجواب: ب</w:t></w:r></w:p></w:body></w:document>') });
+  // خارج مادّته / قسمه
+  assert.strictEqual((await t('POST', '/api/game/import', { level: '8', subject_id: s2.id, filename: 'q.docx', data: dataUrl('application/zip', docx) })).status, 403);
+  assert.strictEqual((await t('POST', '/api/game/import', { level: '8', filename: 'q.docx', data: dataUrl('application/zip', docx) })).status, 400);
+  assert.strictEqual((await t('POST', '/api/game/import', { level: '8', subject_id: s1.id, filename: 'q.doc', data: dataUrl('application/msword', 'xx') })).status, 400);
+  // دون مفتاح الذكاء الاصطناعي
+  assert.strictEqual((await call('POST', '/api/game/import', { level: '8', subject_id: s1.id, filename: 'q.docx', data: dataUrl('application/zip', docx) }, cookie)).status, 503);
+  // Word
+  const job = (await t('POST', '/api/game/import', { level: '8', subject_id: s1.id, filename: 'q.docx', data: dataUrl('application/zip', docx) })).body;
+  assert.strictEqual(job.inline, true);
+  let st;
+  for (let k = 0; k < 50; k++) {
+    st = (await t('GET', `/api/game/import/${job.id}`)).body.job;
+    if (st.status === 'done') break;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.strictEqual(st.status, 'done');
+  assert.match(seen.text, /كم يساوي 3 × 4/);
+  assert.match(seen.text, /الجواب: ب/);
+  assert.deepStrictEqual(st.questions.map((q) => [q.kind, q.data.answer]), [['mcq', 1], ['truefalse', false]]);
+  assert.strictEqual(st.skipped, 2);
+  // Excel و PDF
+  const xlsx = zipSync({
+    'xl/sharedStrings.xml': strToU8('<sst><si><t>السؤال</t></si><si><t>الجواب</t></si><si><t>عاصمة تونس؟</t></si><si><t>تونس</t></si></sst>'),
+    'xl/worksheets/sheet1.xml': strToU8('<worksheet><sheetData><row><c t="s"><v>0</v></c><c t="s"><v>1</v></c></row><row><c t="s"><v>2</v></c><c t="s"><v>3</v></c></row></sheetData></worksheet>'),
+  });
+  const j2 = (await t('POST', '/api/game/import', { level: '8', subject_id: s1.id, filename: 'q.xlsx', data: dataUrl('application/zip', xlsx) })).body;
+  for (let k = 0; k < 50 && (await t('GET', `/api/game/import/${j2.id}`)).body.job.status !== 'done'; k++) await new Promise((r) => setTimeout(r, 50));
+  assert.match(seen.text, /عاصمة تونس؟ \| تونس/);
+  const j3 = (await t('POST', '/api/game/import', { level: '8', subject_id: s1.id, filename: 'q.pdf', data: dataUrl('application/pdf', '%PDF-1.4 fake') })).body;
+  for (let k = 0; k < 50 && (await t('GET', `/api/game/import/${j3.id}`)).body.job.status !== 'done'; k++) await new Promise((r) => setTimeout(r, 50));
+  assert.ok(seen.pdf && !seen.text);
+  // شخص آخر لا يرى الطلب
+  assert.strictEqual((await (await login('admin', 'admin123'))('GET', `/api/game/import/${job.id}`)).status, 200);
+  // الحفظ بعد المعاينة: في مادّته وقسمه فقط
+  assert.strictEqual((await t('POST', '/api/game/questions/bulk', { level: '8', subject_id: s2.id, questions: st.questions })).status, 403);
+  const saved = await t('POST', '/api/game/questions/bulk', { level: '8', subject_id: s1.id, questions: st.questions });
+  assert.deepStrictEqual([saved.status, saved.body.saved], [201, 2]);
+  const bank = (await t('GET', '/api/game/questions?level=8')).body.questions.filter((q) => q.prompt === 'كم يساوي 3 × 4 ؟');
+  assert.deepStrictEqual([bank.length, bank[0].mine, bank[0].subject_id], [1, true, s1.id]);
+});

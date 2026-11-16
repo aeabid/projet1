@@ -2633,3 +2633,15 @@ body.vote-mode #view { padding: 0; max-width: none; }
 .xm-sent-ok { color: #2E9B5F; font-weight: 800; margin-top: 1rem; }
 body.vote-mode:has(.xm) { background: #F3EEFB; }
 @media print { body.vote-mode .xm-big, body.vote-mode .xm-ghost { display: none; } }
+/* 📥 استيراد أسئلة من ملف */
+.g-bank-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.gi-wait { text-align: center; padding: 10px 0; }
+.gi-spin { font-size: 2.6rem; animation: g-breathe 1.2s infinite; }
+.gi-list { display: grid; gap: 6px; max-height: 50vh; overflow-y: auto; margin: 6px 0; padding: 2px; }
+.gi-q { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px; background: #fff; cursor: pointer; }
+.gi-q input { margin-top: 4px; width: 18px; height: 18px; flex: none; accent-color: var(--feed-purple); }
+.gi-q > span { display: grid; gap: 3px; }
+.gi-q .g-kind { justify-self: start; background: #f1e6fa; color: var(--feed-purple); border-radius: 999px; padding: 0 8px; font-size: .75rem; font-weight: 700; }
+.gi-q small { color: var(--muted); }
+.gi-q small .ok { color: var(--good); }
+.gi-q:has(input:not(:checked)) { opacity: .5; }
