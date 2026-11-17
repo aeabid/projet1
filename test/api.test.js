@@ -1947,29 +1947,64 @@ test('game corner: admin-only question bank, server-side scoring, streaks, stars
   assert.deepStrictEqual([last.summary.correct, last.summary.total, last.summary.stars, last.summary.rank_week], [4, 4, 3, 1]);
   assert.deepStrictEqual(last.summary.new_badges.map((b) => b.key).sort(), ['champion', 'first_round', 'perfect'].sort());
 
-  // جولة ثانية: إجابات خاطئة، إعادة الأسئلة الصحيحة بربع النقاط، ترتيب جزئي
-  const sess2 = (await parent('POST', '/api/game/sessions', { student_id: s1.id })).body;
-  let wrong = 0;
-  for (let i = 0; i < sess2.total; i++) {
-    const n = (await parent('GET', `/api/game/sessions/${sess2.id}/next`)).body;
-    const ans = n.question.kind === 'order' ? [0, 1, 3, 2] : n.question.kind === 'mcq' ? 0 : n.question.kind === 'truefalse' ? false : [2, 1, 0];
-    const r = (await parent('POST', `/api/game/sessions/${sess2.id}/answer`, { answer: ans })).body;
+  // السؤال المُجاب عنه صحيحًا لا يعود: لا أسئلة متبقّية في المادّة
+  assert.strictEqual((await parent('POST', '/api/game/sessions', { student_id: s1.id, subject_id: math })).status, 400);
+  // كل مادّة لوحدها: المادّة إجباريّة ومن موادّ التلميذ
+  assert.strictEqual((await parent('POST', '/api/game/sessions', { student_id: s1.id })).status, 400);
+  assert.notStrictEqual((await parent('POST', '/api/game/sessions', { student_id: s1.id, subject_id: meta.subjects[1].id })).status, 201);
+
+  // أسئلة جديدة: الخطأ يعيد السؤال في جولة لاحقة بنصف النقاط، ثم دون نقاط
+  ids.push((await mk({ kind: 'mcq', prompt: '3+3=?', data: { options: ['6', '7'], answer: 0 }, points: 10 })).body.question.id);
+  ids.push((await mk({ kind: 'order', prompt: 'رتّب الحروف', data: { items: ['أ', 'ب', 'ج', 'د'] }, points: 10 })).body.question.id);
+  const play = async (answerOf) => {
+    const ss = (await parent('POST', '/api/game/sessions', { student_id: s1.id, subject_id: math })).body;
+    const out = [];
+    for (let i = 0; i < ss.total; i++) {
+      const n = (await parent('GET', `/api/game/sessions/${ss.id}/next`)).body;
+      const r = (await parent('POST', `/api/game/sessions/${ss.id}/answer`, { answer: answerOf(n.question) })).body;
+      out.push({ kind: n.question.kind, ...r });
+    }
+    return out;
+  };
+  const wrongAns = (q) => (q.kind === 'order' ? [0, 1, 3, 2] : 1);
+  const r2 = await play(wrongAns);
+  assert.strictEqual(r2.length, 2);
+  for (const r of r2) {
     assert.strictEqual(r.correct, false);
-    assert.strictEqual(r.streak, 0);
-    if (n.question.kind === 'order') assert.strictEqual(r.partial, 0.5);
-    if (n.question.kind === 'mcq') assert.strictEqual(r.reveal.answer, 1);
-    wrong++;
-    if (r.done) assert.strictEqual(r.summary.stars, 0);
+    assert.strictEqual(r.points, 0);
+    assert.strictEqual(r.bonus.retry, null);
+    if (r.kind === 'order') assert.strictEqual(r.partial, 0.5);
+    if (r.kind === 'mcq') assert.strictEqual(r.reveal.answer, 0);
   }
-  assert.strictEqual(wrong, 4);
+  // محاولة ثانية: الصحيح = نصف النقاط دون مكافأة، الخطأ = يعود مرّة أخرى
+  const r3 = await play((q) => (q.kind === 'mcq' ? 0 : [1, 0, 2, 3]));
+  assert.strictEqual(r3.length, 2);
+  const m3 = r3.find((r) => r.kind === 'mcq');
+  assert.deepStrictEqual([m3.correct, m3.points, m3.bonus.retry, m3.bonus.speed], [true, 5, 'half', 0]);
+  const o3 = r3.find((r) => r.kind === 'order');
+  assert.deepStrictEqual([o3.correct, o3.points, o3.bonus.retry], [false, 0, 'half']);
+  // محاولة ثالثة: صحيح لكن دون نقاط
+  const r4 = await play(() => [0, 1, 2, 3]);
+  assert.deepStrictEqual(r4.map((r) => [r.kind, r.correct, r.points, r.bonus.retry]), [['order', true, 0, 'none']]);
 
   // الترتيب في القسم + جولة تجريبية للإدارة لا تُحتسب
-  const sr = (await rival('POST', '/api/game/sessions', { student_id: s2.id })).body;
+  const sr = (await rival('POST', '/api/game/sessions', { student_id: s2.id, subject_id: math })).body;
   const n1 = (await rival('GET', `/api/game/sessions/${sr.id}/next`)).body;
   await rival('POST', `/api/game/sessions/${sr.id}/answer`, { answer: right(n1.question) });
   const hub = (await parent('GET', '/api/game/hub')).body;
   assert.deepStrictEqual(hub.leaderboard.week.map((r) => [r.name, r.me]), [['Yassine G.', true], ['Amira R.', false]]);
-  assert.strictEqual(hub.stats.rounds, 2);
+  // ترتيب لكل مادّة + ترتيب عامّ
+  assert.deepStrictEqual(hub.leaderboard.by_subject[math].all.map((r) => r.name), ['Yassine G.', 'Amira R.']);
+  assert.deepStrictEqual(hub.subjects.map((x) => [x.id, x.total, x.done, x.remaining]), [[math, 6, 6, 0]]);
+  assert.strictEqual(hub.stats.rounds, 4);
+  // إحصائيات: الإدارة كاملة، المعلّم في موادّه وأقسامه
+  const st = (await admin('GET', '/api/game/stats?level=6')).body;
+  const ys = st.students.find((x) => x.id === s1.id);
+  assert.deepStrictEqual([st.total, ys.done, ys.pending_wrong, ys.rounds], [6, 6, 0, 4]);
+  assert.strictEqual(st.students.find((x) => x.id === s2.id).done, 1);
+  assert.strictEqual((await teacher('GET', `/api/game/stats?level=6&subject_id=${math}`)).status, 200);
+  assert.strictEqual((await teacher('GET', `/api/game/stats?level=6&subject_id=${meta.subjects[1].id}`)).status, 403);
+  assert.strictEqual((await parent('GET', '/api/game/stats?level=6')).status, 403);
   assert.ok(hub.badges.find((b) => b.key === 'perfect').earned);
   const prev = (await admin('POST', '/api/game/sessions', { level: '6' })).body;
   assert.strictEqual(prev.preview, true);

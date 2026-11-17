@@ -3,7 +3,7 @@
 
 const GAME_KIND_LABELS = { mcq: '🔘 اختيار من متعدّد', truefalse: '✅ صحيح أم خطأ', order: '↕️ ترتيب', match: '🔗 ربط (سحب وإفلات)' };
 const GAME_COLORS = ['#7c3aed', '#ef207a', '#0ea5e9', '#f59e0b', '#10b981', '#6366f1'];
-const gameState = { kid: null, board: 'week', tab: 'board', adminTab: 'overview', level: null, qLevel: '', qSubject: '', qKind: '' };
+const gameState = { kid: null, board: 'week', tab: 'board', bSubj: '', subj: '', adminTab: 'overview', level: null, qLevel: '', qSubject: '', qKind: '' };
 
 // أصوات خفيفة (يمكن إيقافها)
 const gameSound = (() => {
@@ -51,6 +51,16 @@ const gameSound = (() => {
 const medal = (rank) => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`);
 const starRow = (n, max = 3) => `<span class="g-stars">${'★'.repeat(n)}<i>${'★'.repeat(Math.max(0, max - n))}</i></span>`;
 
+// اختيار ترتيب: عامّ (كل المواد) أو حسب المادّة
+const pickBoard = (lb) => (gameState.bSubj && lb?.by_subject?.[gameState.bSubj]) || lb;
+function boardSubjects(subjects, lb) {
+  if (!subjects?.length) return '';
+  if (gameState.bSubj && !lb?.by_subject?.[gameState.bSubj]) gameState.bSubj = '';
+  return `<div class="g-subjects g-bsubj"><button class="g-subj ${!gameState.bSubj ? 'on' : ''}" data-bs="">🌐 الترتيب العام</button>${subjects
+    .map((x) => `<button class="g-subj ${String(x.id) === gameState.bSubj ? 'on' : ''}" data-bs="${x.id}">${esc(x.name)}</button>`)
+    .join('')}</div>`;
+}
+
 function boardList(rows, empty = 'لا أحد بعد — كن الأوّل! 🚀') {
   if (!rows?.length) return `<p class="muted g-empty">${empty}</p>`;
   return `<ol class="g-board">${rows
@@ -74,6 +84,8 @@ async function viewArena(el) {
   const s = hub.stats;
   gameState.kid = hub.student.id;
   const earned = hub.badges.filter((b) => b.earned).length;
+  // المادّة المختارة: آخر اختيار إن بقيت فيه أسئلة، وإلا أوّل مادّة فيها أسئلة متبقّية
+  let subj = hub.subjects.some((x) => String(x.id) === gameState.subj && x.total) ? gameState.subj : String(hub.subjects.find((x) => x.remaining)?.id ?? hub.subjects.find((x) => x.total)?.id ?? '');
   el.innerHTML = `
     <div class="arena">
       <div class="g-hero">
@@ -92,11 +104,12 @@ async function viewArena(el) {
       <div class="g-play-card">
         ${
           hub.total_questions
-            ? `<p class="g-play-title">جاهز للتحدّي؟ ${Math.min(10, hub.total_questions)} أسئلة، أسرع = نقاط أكثر ⚡</p>
-               <div class="g-subjects"><button class="g-subj on" data-subj="">🎲 كل المواد</button>${hub.subjects
-                 .map((x) => `<button class="g-subj" data-subj="${x.id}">${esc(x.name)} <small>${x.count}</small></button>`)
+            ? `<p class="g-play-title">اختر المادّة: 10 أسئلة عشوائيّة، أسرع = نقاط أكثر ⚡</p>
+               <div class="g-subjects">${hub.subjects
+                 .map((x) => `<button class="g-subj ${String(x.id) === subj ? 'on' : ''} ${x.total && !x.remaining ? 'done' : ''}" data-subj="${x.id}" ${x.total ? '' : 'disabled'}>${esc(x.name)} <small dir="ltr">${x.done}/${x.total}</small>${x.total && !x.remaining ? ' ✅' : ''}</button>`)
                  .join('')}</div>
-               <button class="g-play-btn" id="g-start">▶ ابدأ الجولة</button>`
+               <p class="muted small g-rules">✔️ الإجابة الصحيحة من أوّل مرّة: كل النقاط + مكافأة السرعة والسلسلة، ولا يعود السؤال. ✘ الخاطئة (أو انتهاء الوقت): يعود السؤال في جولة لاحقة بنصف النقاط، ثم دون نقاط.</p>
+               <button class="g-play-btn" id="g-start" ${hub.subjects.find((x) => String(x.id) === subj)?.remaining ? '' : 'disabled'}>▶ ابدأ الجولة</button>`
             : '<p class="g-play-title">⏳ الأسئلة في الطريق… الإدارة تحضّر تحدّيات قسمك قريبًا.</p>'
         }
       </div>
@@ -110,10 +123,11 @@ async function viewArena(el) {
   const panel = () => {
     const p = $('#g-panel');
     if (gameState.tab === 'board') {
-      p.innerHTML = `<div class="g-seg"><button data-b="week" class="${gameState.board === 'week' ? 'on' : ''}">هذا الأسبوع</button><button data-b="all" class="${gameState.board === 'all' ? 'on' : ''}">منذ البداية</button></div>
-        ${boardList(hub.leaderboard[gameState.board])}
-        <p class="muted small">ترتيب ${esc(hub.level_label)} · يتجدّد ترتيب الأسبوع كل اثنين.</p>`;
+      p.innerHTML = `${boardSubjects(hub.subjects, hub.leaderboard)}<div class="g-seg"><button data-b="week" class="${gameState.board === 'week' ? 'on' : ''}">هذا الأسبوع</button><button data-b="all" class="${gameState.board === 'all' ? 'on' : ''}">منذ البداية</button></div>
+        ${boardList(pickBoard(hub.leaderboard)?.[gameState.board])}
+        <p class="muted small">ترتيب ${esc(hub.level_label)}${gameState.bSubj ? ' في ' + esc(hub.subjects.find((x) => String(x.id) === gameState.bSubj)?.name || '') : ' (كل المواد)'} · يتجدّد ترتيب الأسبوع كل اثنين.</p>`;
       p.querySelectorAll('[data-b]').forEach((b) => b.addEventListener('click', () => ((gameState.board = b.dataset.b), panel())));
+      p.querySelectorAll('[data-bs]').forEach((b) => b.addEventListener('click', () => ((gameState.bSubj = b.dataset.bs), panel())));
     } else if (gameState.tab === 'badges') {
       p.innerHTML = `<div class="g-badges">${hub.badges
         .map((b) => `<div class="g-badge ${b.earned ? 'on' : ''}"><span>${b.earned ? b.icon : '🔒'}</span><b>${esc(b.label)}</b><small>${esc(b.desc)}</small></div>`)
@@ -135,18 +149,21 @@ async function viewArena(el) {
     })
   );
   el.querySelectorAll('[data-kid]').forEach((b) => b.addEventListener('click', () => ((gameState.kid = Number(b.dataset.kid)), viewArena(el))));
-  let subj = '';
   el.querySelectorAll('[data-subj]').forEach((b) =>
     b.addEventListener('click', () => {
       subj = b.dataset.subj;
+      gameState.subj = subj;
       el.querySelectorAll('[data-subj]').forEach((x) => x.classList.toggle('on', x === b));
+      const sx = hub.subjects.find((x) => String(x.id) === subj);
+      const st = $('#g-start');
+      if (st) st.disabled = !sx?.remaining;
     })
   );
   $('#g-mute').addEventListener('click', (e) => (e.currentTarget.textContent = gameSound.toggle() ? '🔇' : '🔊'));
   $('#g-start')?.addEventListener('click', async (e) => {
     e.currentTarget.disabled = true;
     try {
-      const r = await api('POST', '/api/game/sessions', { student_id: hub.student.id, subject_id: subj || null });
+      const r = await api('POST', '/api/game/sessions', { student_id: hub.student.id, subject_id: Number(subj) });
       location.hash = `#/arena/play/${r.id}`;
     } catch (err) {
       toast(err.message, true);
@@ -276,8 +293,10 @@ async function viewArenaPlay(el, id) {
     const tags = [
       r.bonus?.speed ? `<span>⚡ سرعة +${r.bonus.speed}</span>` : '',
       r.bonus?.streak ? `<span>🔥 سلسلة +${r.bonus.streak}</span>` : '',
-      r.bonus?.repeat ? '<span>🔁 أجبت عنه سابقًا: ربع النقاط</span>' : '',
-      r.partial ? `<span>✳️ ${Math.round(r.partial * 100)}% صحيح</span>` : '',
+      r.bonus?.retry === 'half' ? `<span>🔁 محاولة ثانية: ${r.correct ? 'نصف النقاط' : 'سيعود دون نقاط'}</span>` : '',
+      r.bonus?.retry === 'none' ? '<span>🔁 محاولة إضافيّة: دون نقاط</span>' : '',
+      !r.correct && !r.bonus?.retry ? '<span>🔁 سيعود في جولة قادمة بنصف النقاط</span>' : '',
+      r.partial && !r.correct ? `<span>✳️ ${Math.round(r.partial * 100)}% صحيح</span>` : '',
     ].join('');
     const box = document.createElement('div');
     box.className = `g-feedback ${r.correct ? 'ok' : 'ko'}`;
@@ -448,7 +467,7 @@ async function arenaAdmin(el, hub) {
     el.innerHTML = '<div class="arena"><div class="g-hero"><h2>🏆 ركن التحدّي</h2><p>لا توجد أقسام مسندة إليك بعد.</p></div></div>';
     return;
   }
-  const tabs = [['overview', '📊 نظرة عامة'], ['board', '🏆 الترتيب'], ['bank', isTeacher ? '📚 أسئلتي' : '📚 بنك الأسئلة']];
+  const tabs = [['overview', '📊 نظرة عامة'], ['board', '🏆 الترتيب'], ['stats', '📈 الإحصائيات'], ['bank', isTeacher ? '📚 أسئلتي' : '📚 بنك الأسئلة']];
   el.innerHTML = `
     <div class="arena">
       <div class="g-hero">
@@ -487,16 +506,52 @@ async function arenaAdmin(el, hub) {
       <div class="card g-help"><h4>كيف يعمل؟</h4><ul>
         <li>تدخل الإدارة الأسئلة لكل قسم (أو لكل الأقسام): اختيار من متعدّد، صحيح/خطأ، ترتيب بالسحب، ربط بالسحب والإفلات.</li>
         <li>التلميذ يدخل من حساب وليّه عبر أيقونة 🏆: جولات من 10 أسئلة، عدّاد وقت، نقاط أكثر للأسرع، مكافأة للإجابات الصحيحة المتتالية 🔥.</li>
-        <li>نجوم لكل جولة، شارات، وترتيب أسبوعي وعام داخل القسم. سؤال سبق حلّه يعطي ربع النقاط فقط (لا تضخيم بالإعادة).</li>
+        <li>كل مادّة لوحدها: يختار التلميذ المادّة، 10 أسئلة عشوائيّة. الصحيحة من أوّل مرّة = كل النقاط + المكافآت ولا تعود؛ الخاطئة تعود لاحقًا بنصف النقاط ثم دون نقاط.</li>
+        <li>نجوم لكل جولة، شارات، وترتيب أسبوعي وعام لكل مادّة وترتيب جامع لكل المواد، وإحصائيات لكل تلميذ.</li>
         <li>التصحيح والتوقيت يتمّان في الخادم: لا يمكن الغشّ. تفعيل/إيقاف الركن للأولياء من «الصلاحيات».</li></ul></div>`;
     p.querySelectorAll('[data-try]').forEach((b) => b.addEventListener('click', () => tryRound(b.dataset.try)));
     p.querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', () => questionForm({ level: b.dataset.add }, () => arenaAdmin(el, hub))));
   } else if (gameState.adminTab === 'board') {
     p.innerHTML = `<div class="filters">${levelSelect('g-blevel', gameState.level)}</div>
+      ${boardSubjects(hub.subjects, hub.leaderboard)}
       <div class="g-seg"><button data-b="week" class="${gameState.board === 'week' ? 'on' : ''}">هذا الأسبوع</button><button data-b="all" class="${gameState.board === 'all' ? 'on' : ''}">منذ البداية</button></div>
-      ${boardList(hub.leaderboard?.[gameState.board], 'لا لاعبين بعد في هذا القسم')}`;
+      ${boardList(pickBoard(hub.leaderboard)?.[gameState.board], 'لا لاعبين بعد في هذا القسم')}`;
     $('#g-blevel').addEventListener('change', (e) => ((gameState.level = e.target.value), viewArena(el)));
     p.querySelectorAll('[data-b]').forEach((b) => b.addEventListener('click', () => ((gameState.board = b.dataset.b), arenaAdmin(el, hub))));
+    p.querySelectorAll('[data-bs]').forEach((b) => b.addEventListener('click', () => ((gameState.bSubj = b.dataset.bs), arenaAdmin(el, hub))));
+  } else if (gameState.adminTab === 'stats') {
+    // إحصائيات التلاميذ: المعلّم لأقسامه وموادّه، الإدارة كاملة
+    if (!myLevels.some((l) => l.code === gameState.level)) gameState.level = myLevels[0].code;
+    const qs = new URLSearchParams({ level: gameState.level });
+    if (gameState.sSubject) qs.set('subject_id', gameState.sSubject);
+    p.innerHTML = '<p class="muted">…</p>';
+    let st;
+    try {
+      st = await api('GET', '/api/game/stats?' + qs);
+    } catch (err) {
+      p.innerHTML = `<p class="muted">${esc(err.message)}</p>`;
+      return;
+    }
+    const subjOpts = (isTeacher ? mySubjects : st.subjects).map((x) => `<option value="${x.id}" ${String(x.id) === String(gameState.sSubject || '') ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+    const pct = (n) => (n == null ? '—' : `${Math.round(n * 100)}%`);
+    const players = st.students.filter((x) => x.attempts);
+    p.innerHTML = `<div class="filters">${levelSelect('g-slevel', gameState.level)}
+        <select id="g-ssubj"><option value="">— كل ${isTeacher ? 'موادّي' : 'المواد'} —</option>${subjOpts}</select></div>
+      <div class="g-tiles g-stat-tiles">
+        <div class="g-tile"><b>${st.total}</b><span>❓ سؤال</span></div>
+        <div class="g-tile"><b>${players.length}/${st.students.length}</b><span>🎮 تلميذ لعب</span></div>
+        <div class="g-tile"><b>${st.students.reduce((t, x) => t + x.rounds, 0)}</b><span>🔁 جولة</span></div>
+        <div class="g-tile"><b>${pct(players.length ? players.reduce((t, x) => t + x.correct_attempts, 0) / Math.max(1, players.reduce((t, x) => t + x.attempts, 0)) : null)}</b><span>🎯 نسبة الصواب</span></div>
+      </div>
+      ${st.students.length ? `<div class="table-wrap"><table class="g-stats"><thead><tr><th>التلميذ</th><th>النقاط</th><th>أُنجز</th><th>أخطاء تنتظر</th><th>الصواب</th><th>متوسّط الوقت</th><th>جولات</th><th>آخر لعب</th></tr></thead><tbody>${st.students
+        .map((x) => `<tr class="${x.attempts ? '' : 'muted'}"><td>${esc(x.full_name)}</td><td><b>${x.points}</b></td>
+          <td><div class="g-prog" title="${x.done}/${st.total}"><i style="width:${st.total ? Math.round((100 * x.done) / st.total) : 0}%"></i></div><small dir="ltr">${x.done}/${st.total}</small></td>
+          <td>${x.pending_wrong || '—'}</td><td>${x.accuracy == null ? '—' : x.accuracy + '%'}</td><td>${!x.attempts || x.avg_seconds == null ? '—' : x.avg_seconds + ' ث'}</td><td>${x.rounds}</td>
+          <td><small>${x.last_played ? fmtTime(x.last_played) : 'لم يلعب'}</small></td></tr>`)
+        .join('')}</tbody></table></div>` : '<p class="muted g-empty">لا تلاميذ في هذا القسم.</p>'}
+      <p class="muted small">«أُنجز» = أسئلة أجاب عنها صحيحًا · «أخطاء تنتظر» = أسئلة أخطأ فيها ولم يصحّحها بعد (تعود في جولاته القادمة).</p>`;
+    $('#g-slevel').addEventListener('change', (e) => ((gameState.level = e.target.value), arenaAdmin(el, hub)));
+    $('#g-ssubj').addEventListener('change', (e) => ((gameState.sSubject = e.target.value), arenaAdmin(el, hub)));
   } else {
     const qs = new URLSearchParams();
     // كل سنة لوحدها: بنك أسئلة مستقلّ لكل قسم
