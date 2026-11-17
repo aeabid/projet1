@@ -609,17 +609,20 @@ async function router() {
   // 🗳️ تصويت الأولياء: صفحة عامة دون حساب ودون قوائم
   // رابط قصير: education.feed.tn/vote/123456 أو /exam/123456 (والروابط القديمة #/vote/… تبقى تعمل)
   const short = location.pathname.match(/^\/(vote|exam)\/(\d+)\/?$/);
+  // 🏨 حجز الغرف لشخص من خارج فيد: education.feed.tn/rooms
+  const pubRooms = /^\/rooms\/?$/.test(location.pathname);
   const vote = short?.[1] === 'vote' ? [null, short[2]] : hash.match(/^#\/vote\/(\d+)$/);
   // 📝 امتحان للعموم: نفس الشيء (صفحة عامة دون حساب)
   const pubExam = short?.[1] === 'exam' ? [null, short[2]] : hash.match(/^#\/exam\/(\d+)$/);
-  document.body.classList.toggle('vote-mode', !!(vote || pubExam));
-  if (vote || pubExam) {
+  document.body.classList.toggle('vote-mode', !!(vote || pubExam || pubRooms));
+  if (vote || pubExam || pubRooms) {
     if ($('#modal').open) $('#modal').close();
     $('#topbar').hidden = true;
     $('#tabbar').hidden = true;
     $('#vmenu').hidden = true;
     document.body.classList.remove('shell');
-    if (vote) await viewVote($('#view'), vote[1]);
+    if (pubRooms) await viewPublicStay($('#view'));
+    else if (vote) await viewVote($('#view'), vote[1]);
     else await viewPublicExam($('#view'), pubExam[1]);
     return;
   }
@@ -818,6 +821,7 @@ const NAV = {
     ['#/overview', 'نظرة القسم'],
     ['#/messages', 'الرسائل'],
     ['#/my-pay', 'ساعاتي وخلاصي'],
+    ['#/stay', '🏨 حجز الغرف'],
     ['#/program', 'البرنامج التربوي'],
     ['#/program/posts', 'أنشطة ورسائل قسمي'],
     ['#/account', 'حسابي'],
@@ -830,6 +834,7 @@ const NAV = {
     ['#/program/attendance', 'الغيابات'],
     ['#/program/timetable', 'جدول الأوقات'],
     ['#/program/pay', 'أجرتي'],
+    ['#/stay', '🏨 حجز الغرف'],
     ['#/account', 'حسابي'],
   ],
   parent: [
@@ -933,7 +938,7 @@ function renderTopbar() {
   const nav = NAV[navKey]
     .filter((e) => !(navKey === 'teacher' && String(e[0]).startsWith('#/program') && !state.user.program_classes))
     // صفحة الحجز: لا يراها الوليّ إلا بعد تفعيلها من المدير
-    .filter((e) => !(navKey === 'parent' && e[0] === '#/stay' && !state.user.stay_enabled))
+    .filter((e) => !(e[0] === '#/stay' && navKey !== 'admin' && !state.user.stay_enabled))
     .map((e) => (Array.isArray(e) ? e : { ...e, items: tidyItems(e.items.filter(([h]) => !h || navAllowed(h))) }))
     .filter((e) => (Array.isArray(e) ? navAllowed(e[0]) && !(e[0] === '#/courses' && !can('school')) : e.items.length && !(GROUP_PERM[e.label] && !can(GROUP_PERM[e.label]))));
   $('#nav').innerHTML = nav

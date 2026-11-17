@@ -12,3 +12,9 @@
   from = "/vote/*"
   to = "/index.html"
   status = 200
+
+# حجز الغرف لشخص من خارج فيد: education.feed.tn/rooms
+[[redirects]]
+  from = "/rooms"
+  to = "/index.html"
+  status = 200

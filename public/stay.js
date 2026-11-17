@@ -51,7 +51,7 @@ function stayWire(root) {
 
 async function viewStay(el) {
   const data = await api('GET', '/api/stay');
-  return state.user.role === 'parent' ? stayParent(el, data) : stayAdmin(el, data);
+  return state.user.role === 'admin' ? stayAdmin(el, data) : stayParent(el, data);
 }
 
 function stayKindTabs(rooms) {
@@ -62,7 +62,7 @@ function stayKindTabs(rooms) {
 }
 
 // ---------- الولي ----------
-function stayParent(el, { settings, rooms, bookings }) {
+function stayParent(el, { settings, rooms, bookings = [] }, guest = false) {
   const live = bookings.filter((b) => b.status !== 'cancelled');
   const shown = rooms.filter((r) => !stayState.kind || r.kind === stayState.kind);
   const free = rooms.filter((r) => r.status === 'free').length;
@@ -106,7 +106,7 @@ function stayParent(el, { settings, rooms, bookings }) {
       )
       .join('')}</div>`;
   stayWire(el);
-  el.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => ((stayState.kind = b.dataset.kind), stayParent(el, { settings, rooms, bookings }))));
+  el.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => ((stayState.kind = b.dataset.kind), stayParent(el, { settings, rooms, bookings }, guest))));
   el.querySelectorAll('[data-cancel]').forEach((b) =>
     b.addEventListener('click', async () => {
       if (!confirm('إلغاء هذا الحجز؟')) return;
@@ -127,12 +127,19 @@ function stayParent(el, { settings, rooms, bookings }) {
         `حجز ${r.name}`,
         `<p class="muted">${esc(r.label || '')} · ${esc(r.floor_label)} · ${stayPrice(r, settings.unit)}</p>
          <p class="small">طاقة الغرفة: ${r.adults} كبار${r.children ? ` و${r.children} ${r.children > 1 ? 'أطفال' : 'طفل'}` : ''}.</p>
+         ${guest ? '<label>الاسم واللقب<input name="name" required maxlength="120" autocomplete="name"></label><label>رقم الهاتف<input name="phone" required inputmode="tel" dir="ltr" maxlength="16" autocomplete="tel" placeholder="2X XXX XXX"></label>' : ''}
          <label>عدد الكبار<select name="adults">${opts(1, r.adults, Math.min(2, r.adults))}</select></label>
          <label>عدد الأطفال<select name="children">${opts(0, r.adults + r.children - 1, 0)}</select></label>
          <label>ملاحظة (اختياري)<textarea name="note" rows="2" maxlength="500" placeholder="مثلًا: أعمار الأطفال، طلب خاص…"></textarea></label>
          <p class="muted small">الحجز يبقى «في انتظار التأكيد» حتى تؤكّده الإدارة.</p>`,
         async (f) => {
-          await api('POST', '/api/stay/bookings', { room_id: r.id, adults: Number(f.adults), children: Number(f.children), note: f.note });
+          const body = { room_id: r.id, adults: Number(f.adults), children: Number(f.children), note: f.note };
+          if (guest) {
+            await api('POST', '/api/public/stay/bookings', { ...body, name: f.name, phone: f.phone });
+            alert('✅ تمّ تسجيل حجزك. ستتّصل بك إدارة فيد لتأكيده.');
+            return viewPublicStay(el);
+          }
+          await api('POST', '/api/stay/bookings', body);
           toast('✅ تمّ إرسال الحجز، في انتظار تأكيد الإدارة');
           viewStay(el);
         }
@@ -155,8 +162,8 @@ function stayAdmin(el, data) {
   el.innerHTML = `
     <section class="st-hero">
       <div><small>🏨 حجز الغرف · دار أوغوز</small><h2>${esc(settings.title)}</h2>
-        <span class="st-hero-n ${settings.enabled ? 'on' : ''}">${settings.enabled ? '🟢 الصفحة ظاهرة للأولياء' : '🔒 الصفحة مخفيّة: لا يراها أي وليّ'}</span></div>
-      ${isSuper ? `<button class="btn ${settings.enabled ? 'ghost' : ''}" id="st-toggle">${settings.enabled ? 'إخفاء الصفحة' : '🚀 تفعيل الصفحة للأولياء'}</button>` : ''}
+        <span class="st-hero-n ${settings.enabled ? 'on' : ''}">${settings.enabled ? `🟢 الصفحة ظاهرة: ${esc(settings.audience.map((a) => ({ support: 'أولياء الدعم', program: 'أولياء التربوي', teachers: 'المدرّسون', public: 'الرابط العمومي' })[a]).join('، '))}` : '🔒 الصفحة مخفيّة: لا يراها أحد'}</span></div>
+      ${isSuper ? `<button class="btn ${settings.enabled ? 'ghost' : ''}" id="st-toggle">${settings.enabled ? 'إخفاء الصفحة' : '🚀 تفعيل الصفحة'}</button>` : ''}
     </section>
     <div class="st-kpis">
       <div><b>${live.length}/${rooms.length}</b><span>غرفة محجوزة</span></div>
@@ -165,7 +172,15 @@ function stayAdmin(el, data) {
       <div><b>${priced}/${rooms.length}</b><span>غرفة بسعر</span></div>
       <div><b>${stayNum(confirmed.reduce((t, b) => t + (b.price || 0), 0))}</b><span>${esc(settings.unit)} (المؤكَّد)</span></div>
     </div>
-    ${isSuper ? `<details class="card st-settings"><summary>⚙️ نصّ الصفحة ووحدة السعر</summary>
+    ${isSuper ? `<div class="card st-aud"><h3>👥 من يرى الصفحة ويحجز؟</h3>
+      <div class="st-aud-list">${Object.entries(data.audiences)
+        .map(([k, l]) => `<label class="st-aud-item ${settings.audience.includes(k) ? 'on' : ''}"><input type="checkbox" value="${k}" ${settings.audience.includes(k) ? 'checked' : ''}><span>${{ support: '📚', program: '🎨', teachers: '👩‍🏫', public: '🌐' }[k]} ${esc(l)}</span></label>`)
+        .join('')}</div>
+      <div class="st-aud-actions"><button class="btn small ghost" id="st-all-feed">✨ كل فيد</button><button class="btn small" id="st-aud-save">حفظ الاختيار</button></div>
+      ${settings.audience.includes('public') ? `<div class="st-link"><span>🔗 رابط الحجز لشخص من خارج فيد:</span><b dir="ltr">${esc(location.origin)}/rooms</b><button class="btn small ghost" id="st-copy">نسخ</button></div>
+        ${settings.enabled ? '' : '<p class="muted small">الرابط يعمل بعد تفعيل الصفحة.</p>'}` : ''}
+    </div>
+    <details class="card st-settings"><summary>⚙️ نصّ الصفحة ووحدة السعر</summary>
       <div class="form-grid"><label>العنوان<input id="st-title" value="${esc(settings.title)}" maxlength="120"></label>
         <label>وحدة السعر<input id="st-unit" value="${esc(settings.unit)}" maxlength="40" placeholder="د.ت / الليلة"></label></div>
       <label>معلومات للأولياء (التواريخ، ما يشمله السعر، طريقة الخلاص…)<textarea id="st-info" rows="3" maxlength="1500">${esc(settings.info || '')}</textarea></label>
@@ -178,7 +193,7 @@ function stayAdmin(el, data) {
         return `<article class="st-card ${r.active ? '' : 'hidden-room'}">
           ${stayPhotos(r)}
           <div class="st-body">
-            <div class="st-head"><h3>${esc(r.name)}</h3><a class="small" href="${esc(r.source_url || '#')}" target="_blank" rel="noopener">الموقع ↗</a></div>
+            <div class="st-head"><h3>${esc(r.name)}</h3></div>
             <p class="st-label">${esc(r.label || '')} · ${esc(r.floor_label)}</p>
             ${stayCap(r)}
             <ul class="st-feat">${(r.features || []).map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
@@ -186,12 +201,11 @@ function stayAdmin(el, data) {
               <label>السعر (${esc(settings.unit)})<input type="number" min="0" step="0.5" inputmode="decimal" data-price="${r.id}" value="${r.price ?? ''}" placeholder="أدخل السعر"></label>
               <button class="btn small" data-save-price="${r.id}">حفظ</button>
             </div>
-            ${r.site_price ? `<p class="muted small">سعر موقع دار أوغوز: ${stayNum(r.site_price)} د.ت / الليلة</p>` : ''}
             <label class="st-active"><input type="checkbox" data-active="${r.id}" ${r.active ? 'checked' : ''}> ظاهرة في الحجز</label>
             ${
               b
                 ? `<div class="st-booking ${b.status}"><span class="st-badge ${STAY_STATUS[b.status][1]}">${STAY_STATUS[b.status][0]}</span>
-                    <b>${esc(b.parent_name)}</b>${b.parent_phone ? ` · <a href="tel:${esc(b.parent_phone)}" dir="ltr">${esc(b.parent_phone)}</a>` : ''}
+                    <b>${esc(b.parent_name)}</b> <small class="st-who">${{ guest: '🌐 من خارج فيد', teacher: '👩‍🏫 مدرّس', parent: '👪 وليّ' }[b.booker] || ''}</small>${b.parent_phone ? ` · <a href="tel:${esc(b.parent_phone)}" dir="ltr">${esc(b.parent_phone)}</a>` : ''}
                     <small>${b.adults} كبار${b.children ? ` · ${b.children} أطفال` : ''}${b.kids ? ` · التلاميذ: ${esc(b.kids)}` : ''}</small>
                     ${b.note ? `<small>📝 ${esc(b.note)}</small>` : ''}
                     <div class="st-actions">${b.status === 'pending' ? `<button class="btn small" data-status="confirmed" data-b="${b.id}">تأكيد</button>` : ''}
@@ -226,9 +240,19 @@ function stayAdmin(el, data) {
   };
   el.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => ((stayState.kind = b.dataset.kind), stayAdmin(el, data))));
   $('#st-toggle')?.addEventListener('click', () => {
-    if (!settings.enabled && !confirm('تفعيل صفحة الحجز؟ سيراها كل الأولياء ويمكنهم الحجز.')) return;
-    act(() => api('PUT', '/api/stay/settings', { enabled: !settings.enabled }), settings.enabled ? 'أُخفيت الصفحة' : '🚀 الصفحة مفعّلة للأولياء');
+    if (!settings.enabled && !confirm('تفعيل صفحة الحجز؟ يراها ويحجز منها من اخترتهم في «من يرى الصفحة».')) return;
+    act(() => api('PUT', '/api/stay/settings', { enabled: !settings.enabled }), settings.enabled ? 'أُخفيت الصفحة' : '🚀 الصفحة مفعّلة');
   });
+  const audBoxes = () => [...el.querySelectorAll('.st-aud-item input')];
+  audBoxes().forEach((c) => c.addEventListener('change', () => c.closest('label').classList.toggle('on', c.checked)));
+  $('#st-all-feed')?.addEventListener('click', () =>
+    audBoxes().forEach((c) => {
+      c.checked = c.value !== 'public' || c.checked;
+      c.closest('label').classList.toggle('on', c.checked);
+    })
+  );
+  $('#st-aud-save')?.addEventListener('click', () => act(() => api('PUT', '/api/stay/settings', { audience: audBoxes().filter((c) => c.checked).map((c) => c.value) }), 'حُفظ الاختيار'));
+  $('#st-copy')?.addEventListener('click', () => navigator.clipboard?.writeText(`${location.origin}/rooms`).then(() => toast('نُسخ الرابط')));
   $('#st-save')?.addEventListener('click', () =>
     act(() => api('PUT', '/api/stay/settings', { title: $('#st-title').value, unit: $('#st-unit').value, info: $('#st-info').value }), 'حُفظ')
   );
@@ -246,4 +270,17 @@ function stayAdmin(el, data) {
       act(() => api('PUT', `/api/stay/bookings/${b.dataset.b}`, { status: b.dataset.status }), b.dataset.status === 'confirmed' ? '✅ أُكّد الحجز' : 'أُلغي الحجز');
     })
   );
+}
+
+// ---------- 🌐 الرابط العمومي education.feed.tn/rooms: شخص من خارج فيد يحجز دون حساب ----------
+async function viewPublicStay(el) {
+  let data;
+  try {
+    data = await api('GET', '/api/public/stay');
+  } catch (err) {
+    el.innerHTML = `<div class="st-public"><img class="st-logo" src="feed-logo.png" alt="فيد"><section class="st-hero"><div><small>🏨 حجز الغرف</small><h2>الحجز غير متاح حاليًا</h2><p>${esc(err.message)}</p></div></section></div>`;
+    return;
+  }
+  el.innerHTML = '<div class="st-public"><img class="st-logo" src="feed-logo.png" alt="فيد"><div id="st-pub"></div></div>';
+  stayParent($('#st-pub'), data, true);
 }

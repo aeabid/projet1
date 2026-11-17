@@ -29,7 +29,7 @@ async function call(method, url, body, cookie) {
       body: body ? JSON.stringify(body) : undefined,
     })
   );
-  return { status: res.status, body: await res.json(), headers: res.headers };
+  return { status: res.status, body: (res.headers.get('content-type') || '').startsWith('image/') ? null : await res.json(), headers: res.headers };
 }
 
 async function login(username, password) {
@@ -788,7 +788,7 @@ test('google login only for linked accounts: link from my account, then direct l
       method, headers: { ...(cookie ? { cookie } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     }));
-    return { status: res.status, body: await res.json(), headers: res.headers };
+    return { status: res.status, body: (res.headers.get('content-type') || '').startsWith('image/') ? null : await res.json(), headers: res.headers };
   };
   const admin = await login('admin', 'admin123');
   assert.strictEqual((await gcall('GET', '/api/auth/config')).body.google_client_id, 'cid');
@@ -2354,10 +2354,17 @@ test('import game questions from a Word / Excel / PDF file with AI: teacher scop
 
 test('room booking at Dar Oguz: hidden until the director enables it, prices per room, one live booking per room', async () => {
   const admin = await login('admin', 'admin123');
-  await admin('POST', '/api/users', { role: 'parent', username: 'stay-p', full_name: 'ولي الحجز', password: 'secret1' });
-  await admin('POST', '/api/users', { role: 'parent', username: 'stay-q', full_name: 'ولي ثان', password: 'secret1' });
+  const { body: meta } = await admin('GET', '/api/meta');
+  const pu = (await admin('POST', '/api/users', { role: 'parent', username: 'stay-p', full_name: 'ولي الحجز', password: 'secret1' })).body.user;
+  const qu = (await admin('POST', '/api/users', { role: 'parent', username: 'stay-q', full_name: 'ولي ثان', password: 'secret1' })).body.user;
+  await admin('POST', '/api/users', { role: 'parent', username: 'stay-r', full_name: 'ولي دون تلميذ', password: 'secret1' });
+  for (const [n, pid] of [['Stay Kid', pu.id], ['Stay Kid2', qu.id]]) await admin('POST', '/api/students', { full_name: n, level: '7', parent_id: pid, subject_ids: [meta.subjects[0].id] });
+  await admin('POST', '/api/users', { role: 'teacher', username: 'stay-t', full_name: 'مدرّس الحجز', password: 'secret1', subject_ids: [meta.subjects[0].id] });
   const p = await login('stay-p', 'secret1');
   const q = await login('stay-q', 'secret1');
+  const r0 = await login('stay-r', 'secret1');
+  const t = await login('stay-t', 'secret1');
+  const anon = (m, path, b) => call(m, path, b);
 
   // 17 غرفة وجناح من ملف التوزيع، بالصور
   const a0 = (await admin('GET', '/api/stay')).body;
@@ -2374,6 +2381,15 @@ test('room booking at Dar Oguz: hidden until the director enables it, prices per
   assert.strictEqual((await p('PUT', '/api/stay/settings', { enabled: true })).status, 403);
   assert.strictEqual((await admin('PUT', '/api/stay/settings', { enabled: true, info: 'من 1 إلى 3 أوت' })).status, 200);
   assert.strictEqual((await p('GET', '/api/me')).body.user.stay_enabled, true);
+  // حسب اختيار المدير: أولياء الدعم والتربوي افتراضيًا، لا المدرّسون ولا العموم
+  assert.strictEqual((await r0('GET', '/api/me')).body.user.stay_enabled, false);
+  assert.strictEqual((await t('GET', '/api/stay')).status, 403);
+  assert.strictEqual((await anon('GET', '/api/public/stay')).status, 403);
+  assert.strictEqual((await admin('PUT', '/api/stay/settings', { audience: [] })).status, 400);
+  assert.deepStrictEqual((await admin('PUT', '/api/stay/settings', { audience: ['support', 'teachers', 'public', 'x'] })).body.settings.audience, ['support', 'teachers', 'public']);
+  assert.strictEqual((await t('GET', '/api/me')).body.user.stay_enabled, true);
+  // أسعار موقع دار أوغوز لا تظهر
+  assert.ok(!('site_price' in (await admin('GET', '/api/stay')).body.rooms[0]));
 
   // الحجز بعد إعلان السعر فقط
   assert.strictEqual((await p('POST', '/api/stay/bookings', { room_id: rimel6.id, adults: 2, children: 1 })).status, 400);
@@ -2402,10 +2418,129 @@ test('room booking at Dar Oguz: hidden until the director enables it, prices per
   // الإلغاء يحرّر الغرفة
   await admin('PUT', `/api/stay/bookings/${b.body.booking.id}`, { status: 'cancelled' });
   assert.strictEqual((await q('POST', '/api/stay/bookings', { room_id: rimel6.id, adults: 1 })).status, 201);
+  // شخص من خارج فيد بالرابط العمومي: الاسم والهاتف
+  const pub = (await anon('GET', '/api/public/stay')).body;
+  assert.strictEqual(pub.rooms.find((r) => r.id === rimel6.id).status, 'taken');
+  assert.ok(!pub.bookings);
+  const oguz5 = a0.rooms.find((r) => r.slug === 'oguz-5');
+  await admin('PUT', `/api/stay/rooms/${oguz5.id}`, { price: 300 });
+  assert.strictEqual((await anon('POST', '/api/public/stay/bookings', { room_id: oguz5.id, adults: 2, name: 'ضيف', phone: '12' })).status, 400);
+  assert.strictEqual((await anon('POST', '/api/public/stay/bookings', { room_id: oguz5.id, adults: 2, name: 'ضيف خارجي', phone: '+216 22 333 444' })).status, 201);
+  const guestB = (await admin('GET', '/api/stay')).body.bookings.find((b) => b.room_id === oguz5.id);
+  assert.deepStrictEqual([guestB.parent_name, guestB.parent_phone, guestB.booker], ['ضيف خارجي', '+21622333444', 'guest']);
+  // المدرّس يحجز
+  const oguz6 = a0.rooms.find((r) => r.slug === 'oguz-6');
+  await admin('PUT', `/api/stay/rooms/${oguz6.id}`, { price: 280 });
+  assert.strictEqual((await t('POST', '/api/stay/bookings', { room_id: oguz6.id, adults: 1 })).status, 201);
   // غرفة مخفيّة لا تظهر للولي
   await admin('PUT', `/api/stay/rooms/${a0.rooms[0].id}`, { active: false });
   assert.strictEqual((await p('GET', '/api/stay')).body.rooms.length, 16);
   // الإخفاء من جديد
   await admin('PUT', '/api/stay/settings', { enabled: false });
   assert.strictEqual((await p('GET', '/api/stay')).status, 403);
+  assert.strictEqual((await anon('GET', '/api/public/stay')).status, 403);
+});
+
+test('game v2: branches (حساب/إيقاظ), topics and comprehensive questions, images, new kinds, wrong answers come back first, per-student stats', async () => {
+  const admin = await login('admin', 'admin123');
+  const sci = (await admin('POST', '/api/subjects', { name: 'علوم(حساب+إيقاظ)' })).body.subject;
+  const other = (await admin('GET', '/api/meta')).body.subjects[0];
+  const pu = (await admin('POST', '/api/users', { role: 'parent', username: 'g2-p', full_name: 'ولي', password: 'secret1' })).body.user;
+  const kid = (await admin('POST', '/api/students', { full_name: 'Salma Quiz', level: '5', parent_id: pu.id, subject_ids: [sci.id] })).body.student;
+  await admin('POST', '/api/users', { role: 'teacher', username: 'g2-t', full_name: 'معلّم العلوم', password: 'secret1', subject_ids: [sci.id] });
+  const t = await login('g2-t', 'secret1');
+  const p = await login('g2-p', 'secret1');
+  const base = { level: '5', subject_id: sci.id, points: 10 };
+
+  // الفرع إجباري لمادّة «علوم(حساب+إيقاظ)»
+  assert.strictEqual((await t('POST', '/api/game/questions', { ...base, kind: 'truefalse', prompt: 'x', data: { answer: true } })).status, 400);
+  assert.deepStrictEqual((await t('GET', '/api/game/topics?level=5')).body.branches[sci.id], ['حساب', 'إيقاظ']);
+  // صورة
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const img = (await t('POST', '/api/game/images', { data: png })).body;
+  assert.ok(img.id);
+  assert.strictEqual((await t('POST', '/api/game/images', { data: 'data:text/html;base64,AAAA' })).status, 400);
+  const img2 = (await t('POST', '/api/game/images', { data: png })).body;
+
+  const mk = async (b) => {
+    const r = await t('POST', '/api/game/questions', { ...base, ...b });
+    assert.strictEqual(r.status, 201, JSON.stringify(r.body));
+    return r.body.question;
+  };
+  const q1 = await mk({ branch: 'حساب', topic: 'الجمع', kind: 'type', prompt: '7 + 5 = ؟', data: { answers: ['12', 'اثنا عشر'] } });
+  const q2 = await mk({ branch: 'حساب', topic: 'الجمع', kind: 'mcq', prompt: 'اختر الصورة الصحيحة', image: img.id, data: { options: [{ img: img.id, t: 'أ' }, { img: img2.id }, 'لا شيء'], answer: 0 } });
+  const q3 = await mk({ branch: 'حساب', topic: 'الطرح', kind: 'connect', prompt: 'اربط بسهم', data: { pairs: [['9-4', '5'], ['8-2', '6'], ['7-4', '3']] } });
+  const q4 = await mk({ branch: 'حساب', kind: 'categorize', prompt: 'صنّف الأعداد', data: { groups: ['زوجي', 'فردي'], items: [{ c: '2', g: 0 }, { c: '7', g: 1 }, { c: '10', g: 0 }, { c: '3', g: 1 }] } });
+  const q5 = await mk({ branch: 'إيقاظ', topic: 'النبات', kind: 'order', prompt: 'رتّب مراحل نموّ النبتة', data: { items: [{ img: img.id, t: 'بذرة' }, 'برعم', 'نبتة'] } });
+  assert.strictEqual(q1.topic, 'الجمع');
+  assert.strictEqual(q4.topic, null);
+  // المعلّم لا يضع مادّة ليست له
+  assert.strictEqual((await t('POST', '/api/game/questions', { ...base, subject_id: other.id, kind: 'truefalse', prompt: 'x', data: { answer: true } })).status, 403);
+  assert.deepStrictEqual((await t('GET', `/api/game/topics?level=5&subject_id=${sci.id}&branch=حساب`)).body.topics.map((x) => x.topic), ['الجمع', 'الطرح']);
+  assert.strictEqual((await t('GET', `/api/game/questions?level=5&topic=*`)).body.questions.length, 1);
+
+  // التلميذ: مسارا حساب وإيقاظ منفصلان، بالمحاور والأسئلة الشاملة
+  const hub = (await p('GET', '/api/game/hub')).body;
+  const calc = hub.subjects.find((x) => x.branch === 'حساب');
+  assert.deepStrictEqual([calc.key, calc.total, calc.topics.map((x) => x.name), calc.comprehensive.total], [`${sci.id}:حساب`, 4, ['الجمع', 'الطرح'], 1]);
+  assert.strictEqual(hub.subjects.find((x) => x.branch === 'إيقاظ').total, 1);
+  assert.ok(hub.leaderboard.by_subject[`${sci.id}:حساب`]);
+
+  // جولة محور «الجمع»: سؤالان فقط، صور وإجابة مكتوبة
+  const play = async (topic, answer) => {
+    const ss = (await p('POST', '/api/game/sessions', { student_id: kid.id, subject_id: sci.id, branch: 'حساب', topic })).body;
+    const out = [];
+    for (let i = 0; i < ss.total; i++) {
+      const n = (await p('GET', `/api/game/sessions/${ss.id}/next`)).body;
+      const r = (await p('POST', `/api/game/sessions/${ss.id}/answer`, { answer: answer(n.question) })).body;
+      out.push({ q: n.question, r });
+    }
+    return out;
+  };
+  const r1 = await play('الجمع', (q) => (q.kind === 'type' ? ' ١٢ ' : 2));
+  assert.strictEqual(r1.length, 2);
+  const typed = r1.find((x) => x.q.kind === 'type');
+  assert.deepStrictEqual([typed.r.correct, typed.r.points > 10], [true, true]);
+  const pic = r1.find((x) => x.q.kind === 'mcq');
+  assert.ok(pic.q.image.startsWith('/api/game/images/'));
+  assert.ok(pic.q.options.some((o) => o.img && o.text === 'أ'));
+  assert.strictEqual(pic.r.correct, false);
+  assert.strictEqual((await p('GET', pic.q.image)).status, 200);
+  // الأسئلة الشاملة فقط
+  const r2 = await play('*', (q) => q.items.map((x) => (['2', '10'].includes(x.text) ? 0 : 1)).reduce((acc, g, k) => ((acc[q.items[k].i] = g), acc), []));
+  assert.deepStrictEqual(r2.map((x) => [x.q.kind, x.r.correct]), [['categorize', true]]);
+  // كل المسار: السؤال الخاطئ يعود أوّلًا (السلسلة الموالية)، بإجابات مخلوطة، ثمّ بنصف النقاط
+  const ss = (await p('POST', '/api/game/sessions', { student_id: kid.id, subject_id: sci.id, branch: 'حساب' })).body;
+  assert.strictEqual(ss.total, 2);
+  for (let k = 0; k < 2; k++) {
+    const n = (await p('GET', `/api/game/sessions/${ss.id}/next`)).body.question;
+    if (n.kind === 'mcq') {
+      assert.deepStrictEqual([n.id, n.retry], [q2.id, 1]);
+      const half = (await p('POST', `/api/game/sessions/${ss.id}/answer`, { answer: 0 })).body;
+      assert.deepStrictEqual([half.correct, half.points, half.bonus.retry], [true, 5, 'half']);
+    } else {
+      assert.deepStrictEqual([n.kind, n.left.length], ['connect', 3]);
+      const conn = (await p('POST', `/api/game/sessions/${ss.id}/answer`, { answer: [0, 1, 2] })).body;
+      assert.strictEqual(conn.correct, true);
+      assert.strictEqual(conn.reveal.pairs[0][0].text, '9-4');
+    }
+  }
+
+  // ترتيب حسب المسار
+  const hub2 = (await p('GET', '/api/game/hub')).body;
+  assert.strictEqual(hub2.leaderboard.by_subject[`${sci.id}:حساب`].all[0].name, 'Salma Q.');
+  assert.strictEqual(hub2.leaderboard.by_subject[`${sci.id}:إيقاظ`].all.length, 0);
+
+  // إحصائيات المعلّم: من أوّل مرّة / ثانية / تنتظر، وتفاصيل كل سؤال
+  const st = (await t('GET', `/api/game/stats?level=5&subject_id=${sci.id}&branch=حساب`)).body;
+  const me = st.students.find((x) => x.id === kid.id);
+  assert.deepStrictEqual([me.first_try, me.second_try, me.later, me.pending_wrong, me.done, st.total], [3, 1, 0, 0, 4, 4]);
+  const det = (await t('GET', `/api/game/stats/students/${kid.id}?subject_id=${sci.id}&branch=حساب`)).body;
+  assert.strictEqual(det.questions.find((x) => x.id === q2.id).result, 'second');
+  assert.strictEqual(det.questions.find((x) => x.id === q1.id).result, 'first');
+  assert.deepStrictEqual(det.topics.map((x) => [x.topic, x.total]), [['الجمع', 2], ['الطرح', 1], [null, 1]]);
+  const det2 = (await t('GET', `/api/game/stats/students/${kid.id}?subject_id=${sci.id}&topic=النبات`)).body;
+  assert.strictEqual(det2.questions[0].result, 'unseen');
+  assert.strictEqual((await t('GET', `/api/game/stats/students/${kid.id}?subject_id=${other.id}`)).status, 403);
+  assert.strictEqual((await p('GET', `/api/game/stats/students/${kid.id}`)).status, 403);
 });
