@@ -1925,7 +1925,7 @@ test('game corner: admin-only question bank, server-side scoring, streaks, stars
   assert.strictEqual(sess.total, 4);
   assert.strictEqual((await rival('GET', `/api/game/sessions/${sess.id}/next`)).status, 404);
   const right = (q) =>
-    q.kind === 'mcq' ? 1 : q.kind === 'truefalse' ? true : q.kind === 'order' ? [0, 1, 2, 3] : [0, 1, 2];
+    q.kind === 'mcq' ? (q.prompt === '3+3=?' ? 0 : 1) : q.kind === 'truefalse' ? true : q.kind === 'order' ? [0, 1, 2, 3] : [0, 1, 2];
   let last;
   for (let i = 0; i < 4; i++) {
     const n = (await parent('GET', `/api/game/sessions/${sess.id}/next`)).body;
@@ -2350,4 +2350,62 @@ test('import game questions from a Word / Excel / PDF file with AI: teacher scop
   assert.deepStrictEqual([saved.status, saved.body.saved], [201, 2]);
   const bank = (await t('GET', '/api/game/questions?level=8')).body.questions.filter((q) => q.prompt === 'كم يساوي 3 × 4 ؟');
   assert.deepStrictEqual([bank.length, bank[0].mine, bank[0].subject_id], [1, true, s1.id]);
+});
+
+test('room booking at Dar Oguz: hidden until the director enables it, prices per room, one live booking per room', async () => {
+  const admin = await login('admin', 'admin123');
+  await admin('POST', '/api/users', { role: 'parent', username: 'stay-p', full_name: 'ولي الحجز', password: 'secret1' });
+  await admin('POST', '/api/users', { role: 'parent', username: 'stay-q', full_name: 'ولي ثان', password: 'secret1' });
+  const p = await login('stay-p', 'secret1');
+  const q = await login('stay-q', 'secret1');
+
+  // 17 غرفة وجناح من ملف التوزيع، بالصور
+  const a0 = (await admin('GET', '/api/stay')).body;
+  assert.strictEqual(a0.rooms.length, 17);
+  assert.strictEqual(a0.rooms.filter((r) => r.kind === 'suite').length, 5);
+  assert.strictEqual(a0.settings.enabled, false);
+  assert.ok(a0.rooms.every((r) => r.photos.length >= 3));
+  const rimel6 = a0.rooms.find((r) => r.slug === 'rimel-6');
+  assert.deepStrictEqual([rimel6.adults, rimel6.children, rimel6.floor], [2, 2, '1']);
+
+  // مخفيّة عن الأولياء حتى التفعيل
+  assert.strictEqual((await p('GET', '/api/stay')).status, 403);
+  assert.strictEqual((await p('GET', '/api/me')).body.user.stay_enabled, false);
+  assert.strictEqual((await p('PUT', '/api/stay/settings', { enabled: true })).status, 403);
+  assert.strictEqual((await admin('PUT', '/api/stay/settings', { enabled: true, info: 'من 1 إلى 3 أوت' })).status, 200);
+  assert.strictEqual((await p('GET', '/api/me')).body.user.stay_enabled, true);
+
+  // الحجز بعد إعلان السعر فقط
+  assert.strictEqual((await p('POST', '/api/stay/bookings', { room_id: rimel6.id, adults: 2, children: 1 })).status, 400);
+  assert.strictEqual((await p('PUT', `/api/stay/rooms/${rimel6.id}`, { price: 300 })).status, 403);
+  assert.strictEqual((await admin('PUT', `/api/stay/rooms/${rimel6.id}`, { price: 320 })).body.room.price, 320);
+  // الطاقة: 2 كبار + 2 أطفال
+  assert.strictEqual((await p('POST', '/api/stay/bookings', { room_id: rimel6.id, adults: 3, children: 0 })).status, 400);
+  assert.strictEqual((await p('POST', '/api/stay/bookings', { room_id: rimel6.id, adults: 2, children: 3 })).status, 400);
+  const b = (await p('POST', '/api/stay/bookings', { room_id: rimel6.id, adults: 2, children: 2, note: 'طفلان 5 و8 سنوات' }));
+  assert.strictEqual(b.status, 201);
+  assert.strictEqual(b.body.booking.price, 320);
+  // غرفة واحدة = حجز واحد
+  assert.strictEqual((await q('POST', '/api/stay/bookings', { room_id: rimel6.id, adults: 1 })).status, 409);
+  const qv = (await q('GET', '/api/stay')).body;
+  assert.strictEqual(qv.rooms.find((r) => r.id === rimel6.id).status, 'taken');
+  assert.strictEqual(qv.bookings.length, 0);
+  assert.strictEqual((await p('GET', '/api/stay')).body.rooms.find((r) => r.id === rimel6.id).status, 'mine');
+  // الولي لا يؤكّد ولا يلمس حجز غيره
+  assert.strictEqual((await p('PUT', `/api/stay/bookings/${b.body.booking.id}`, { status: 'confirmed' })).status, 403);
+  assert.strictEqual((await q('PUT', `/api/stay/bookings/${b.body.booking.id}`, { status: 'cancelled' })).status, 404);
+  // الإدارة تؤكّد: الولي لا يلغي بعدها
+  assert.strictEqual((await admin('PUT', `/api/stay/bookings/${b.body.booking.id}`, { status: 'confirmed' })).body.booking.status, 'confirmed');
+  assert.strictEqual((await p('PUT', `/api/stay/bookings/${b.body.booking.id}`, { status: 'cancelled' })).status, 400);
+  const ab = (await admin('GET', '/api/stay')).body;
+  assert.strictEqual(ab.bookings[0].parent_name, 'ولي الحجز');
+  // الإلغاء يحرّر الغرفة
+  await admin('PUT', `/api/stay/bookings/${b.body.booking.id}`, { status: 'cancelled' });
+  assert.strictEqual((await q('POST', '/api/stay/bookings', { room_id: rimel6.id, adults: 1 })).status, 201);
+  // غرفة مخفيّة لا تظهر للولي
+  await admin('PUT', `/api/stay/rooms/${a0.rooms[0].id}`, { active: false });
+  assert.strictEqual((await p('GET', '/api/stay')).body.rooms.length, 16);
+  // الإخفاء من جديد
+  await admin('PUT', '/api/stay/settings', { enabled: false });
+  assert.strictEqual((await p('GET', '/api/stay')).status, 403);
 });

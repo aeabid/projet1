@@ -586,6 +586,7 @@ const routes = [
   [/^#\/arena$/, (el) => viewArena(el)],
   [/^#\/polls$/, (el) => viewPolls(el)],
   [/^#\/exams$/, (el) => viewExams(el)],
+  [/^#\/stay$/, (el) => viewStay(el)],
   [/^#\/polls\/(\d+)$/, (el, id) => viewPollLive(el, id)],
   [/^#\/arena\/play\/(\d+)$/, (el, id) => viewArenaPlay(el, id)],
   [/^#\/messages\/(\d+)$/, (el, id) => viewThread(el, Number(id))],
@@ -679,7 +680,7 @@ const HASH_PERM = {
   '#/board': 'stats', '#/finance': 'stats', '#/general': 'stats', '#/dashboard': 'school', '#/program/board': 'school',
   '#/payroll': 'salaries', '#/program/pay': 'salaries', '#/salaries': 'salaries', '#/staff': 'salaries',
   '#/fees': 'fees', '#/accounting': 'accounting', '#/cash': 'cash', '#/ledger': 'expenses',
-  '#/arena': 'school', '#/polls': 'school', '#/exams': 'school', '#/partners': 'partners', '#/permissions': 'super', '#/admins': 'super', '#/center-debts': 'expenses',
+  '#/arena': 'school', '#/polls': 'school', '#/exams': 'school', '#/stay': 'school', '#/partners': 'partners', '#/permissions': 'super', '#/admins': 'super', '#/center-debts': 'expenses',
   '#/people': 'school', '#/parents': 'school', '#/parent-requests': 'school', '#/students': 'school', '#/program': 'school',
   '#/attendance': 'school', '#/messages': 'school', '#/broadcast': 'school', '#/whatsapp': 'school', '#/courses': 'school',
   '#/support/teachers': 'accounts', '#/program/staff': 'accounts', '#/debts': 'expenses',
@@ -787,6 +788,7 @@ const NAV = {
         ['#/broadcast', 'رسالة جماعية للأولياء'],
         ['#/polls', '🗳️ تصويت مباشر للأولياء'],
         ['#/exams', '📝 امتحانات للعموم'],
+        ['#/stay', '🏨 حجز الغرف (دار أوغوز)'],
         ['#/broadcast/teachers', 'رسالة جماعية للمعلمين'],
         ['#/broadcast/staff', 'رسالة جماعية للمؤطّرين'],
         ['#/whatsapp', 'مجموعات واتساب'],
@@ -836,6 +838,7 @@ const NAV = {
     ['#/my-receipts', 'وصولاتي'],
     ['#/timetable', 'جدول الأوقات'],
     ['#/messages', 'الرسائل'],
+    ['#/stay', '🏨 حجز الغرف'],
     ['#/account', 'حسابي'],
   ],
 };
@@ -881,7 +884,7 @@ const LINK_ICONS = {
   '#/home': 'home', '#/courses': 'flag', '#/students': 'users', '#/timetable': 'calendar', '#/program/timetable': 'calendar',
   '#/attendance': 'check', '#/program/attendance': 'check', '#/program/classes': 'grid', '#/messages': 'chat', '#/my-pay': 'wallet', '#/program/pay': 'wallet',
   '#/account': 'user', '#/tasks': 'clipboard', '#/evaluations': 'clipboard', '#/overview': 'chart', '#/program/posts': 'star',
-  '#/todo': 'clipboard', '#/program': 'spark', '#/group-message': 'chat', '#/board': 'chart',
+  '#/todo': 'clipboard', '#/program': 'spark', '#/group-message': 'chat', '#/board': 'chart', '#/stay': 'star',
 };
 // شريط التنقل السفلي في الهاتف: 4 وجهات حسب الدور + «المزيد»
 const TABS = {
@@ -929,6 +932,8 @@ function renderTopbar() {
   // «البرنامج التربوي» للمعلم فقط إن كان منشّطًا لقسم
   const nav = NAV[navKey]
     .filter((e) => !(navKey === 'teacher' && String(e[0]).startsWith('#/program') && !state.user.program_classes))
+    // صفحة الحجز: لا يراها الوليّ إلا بعد تفعيلها من المدير
+    .filter((e) => !(navKey === 'parent' && e[0] === '#/stay' && !state.user.stay_enabled))
     .map((e) => (Array.isArray(e) ? e : { ...e, items: tidyItems(e.items.filter(([h]) => !h || navAllowed(h))) }))
     .filter((e) => (Array.isArray(e) ? navAllowed(e[0]) && !(e[0] === '#/courses' && !can('school')) : e.items.length && !(GROUP_PERM[e.label] && !can(GROUP_PERM[e.label]))));
   $('#nav').innerHTML = nav

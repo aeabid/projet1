@@ -7,7 +7,7 @@ import { createHandler } from './lib/app.js';
 
 const root = path.dirname(new URL(import.meta.url).pathname);
 const PUBLIC = path.join(root, 'public');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml' };
 
 let connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
