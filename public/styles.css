@@ -2997,3 +2997,31 @@ body.st-tour-open { overflow: hidden; }
 .st-tour-scenes button.on { background: #fff; color: #0c4a6e; }
 .st-tour-hint { text-align: center; opacity: .7; font-size: .85rem; margin: 0 0 12px; }
 .st-tour .pnlm-title-box { display: none !important; }
+
+/* حجز الغرف: لوحة الإدارة داخل البطاقة */
+.st-admin { margin-top: 6px; border: 1px solid var(--border); border-radius: 16px; background: linear-gradient(180deg, #fafaff, #fff); padding: 4px 12px; }
+.st-arow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; }
+.st-arow + .st-arow { border-top: 1px dashed var(--border); }
+.st-albl { font-weight: 700; font-size: .9rem; color: var(--text); white-space: nowrap; }
+.st-pricebox { display: flex; align-items: stretch; height: 42px; border: 1.5px solid var(--border); border-radius: 12px; overflow: hidden; background: #fff; transition: border-color .15s, box-shadow .15s; }
+.st-pricebox:focus-within { border-color: #0ea5e9; box-shadow: 0 0 0 3px rgba(14,165,233,.15); }
+.st-pricebox input { width: 84px; border: 0; outline: none; padding: 0 10px; font: inherit; font-size: 1.15rem; font-weight: 900; text-align: center; color: #0c4a6e; background: transparent; -moz-appearance: textfield; }
+.st-pricebox input::-webkit-outer-spin-button, .st-pricebox input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.st-unit { display: grid; place-items: center; padding: 0 8px; color: var(--muted); font-weight: 700; font-size: .85rem; background: var(--soft); }
+.st-save { border: 0; padding: 0 14px; font: inherit; font-weight: 800; color: #fff; background: linear-gradient(135deg, #0ea5e9, #0369a1); cursor: pointer; transition: opacity .15s; }
+.st-save:disabled { background: var(--soft); color: var(--muted); cursor: default; }
+.st-switch { position: relative; width: 46px; height: 26px; flex: none; cursor: pointer; }
+.st-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.st-switch i { position: absolute; inset: 0; border-radius: 999px; background: #cbd5e1; transition: background .2s; }
+.st-switch i::after { content: ''; position: absolute; top: 3px; inset-inline-start: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); transition: transform .2s; }
+.st-switch input:checked + i { background: #10b981; }
+.st-switch input:checked + i::after { transform: translateX(-20px); }
+[dir="ltr"] .st-switch input:checked + i::after { transform: translateX(20px); }
+.st-switch input:focus-visible + i { outline: 3px solid rgba(16,185,129,.35); outline-offset: 2px; }
+.st-pill { font-size: .82rem; font-weight: 800; padding: 4px 12px; border-radius: 999px; }
+.st-pill.free { background: #ecfdf5; color: #047857; }
+.st-pill.ok { background: #e0f2fe; color: #075985; }
+.st-pill.warn { background: #fef3c7; color: #92400e; }
+.st-pricebox input[type="number"] { border: 0 !important; box-shadow: none !important; border-radius: 0 !important; margin: 0 !important; height: 100% !important; min-height: 0 !important; padding: 0 8px !important; background: transparent !important; width: 80px !important; }
+.st-switch input[type="checkbox"] { position: absolute !important; opacity: 0 !important; width: 0 !important; height: 0 !important; margin: 0 !important; }
+.st-switch { display: block !important; margin: 0 !important; padding: 0 !important; }

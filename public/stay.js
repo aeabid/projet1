@@ -210,11 +210,24 @@ function stayAdmin(el, data) {
             <p class="st-label">${esc(r.label || '')} · ${esc(r.floor_label)}</p>
             ${stayCap(r)}
             <ul class="st-feat">${(r.features || []).map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
-            <div class="st-price-edit">
-              <label>السعر (${esc(settings.unit)})<input type="number" min="0" step="0.5" inputmode="decimal" data-price="${r.id}" value="${r.price ?? ''}" placeholder="أدخل السعر"></label>
-              <button class="btn small" data-save-price="${r.id}">حفظ</button>
+            <div class="st-admin">
+              <div class="st-arow">
+                <span class="st-albl">💰 السعر لليلة</span>
+                <div class="st-pricebox">
+                  <input type="number" min="0" step="10" inputmode="numeric" data-price="${r.id}" value="${r.price ?? ''}" data-orig="${r.price ?? ''}" placeholder="—" aria-label="السعر">
+                  <span class="st-unit">د.ت</span>
+                  <button type="button" class="st-save" data-save-price="${r.id}" disabled>حفظ</button>
+                </div>
+              </div>
+              <div class="st-arow">
+                <span class="st-albl">👁️ ظاهرة في الحجز</span>
+                <label class="st-switch"><input type="checkbox" data-active="${r.id}" ${r.active ? 'checked' : ''}><i></i></label>
+              </div>
+              <div class="st-arow">
+                <span class="st-albl">📌 الحالة</span>
+                ${b ? `<span class="st-pill ${b.status === 'confirmed' ? 'ok' : 'warn'}">${b.status === 'confirmed' ? '● محجوزة' : '● في انتظار التأكيد'}</span>` : '<span class="st-pill free">● متاحة</span>'}
+              </div>
             </div>
-            <label class="st-active"><input type="checkbox" data-active="${r.id}" ${r.active ? 'checked' : ''}> ظاهرة في الحجز</label>
             ${
               b
                 ? `<div class="st-booking ${b.status}"><span class="st-badge ${STAY_STATUS[b.status][1]}">${STAY_STATUS[b.status][0]}</span>
@@ -223,7 +236,7 @@ function stayAdmin(el, data) {
                     ${b.note ? `<small>📝 ${esc(b.note)}</small>` : ''}
                     <div class="st-actions">${b.status === 'pending' ? `<button class="btn small" data-status="confirmed" data-b="${b.id}">تأكيد</button>` : ''}
                       <button class="btn small ghost" data-status="cancelled" data-b="${b.id}">إلغاء الحجز</button></div></div>`
-                : '<div class="st-state free">متاحة</div>'
+                : ''
             }
           </div></article>`;
       })
@@ -273,6 +286,12 @@ function stayAdmin(el, data) {
     b.addEventListener('click', () => {
       const v = el.querySelector(`[data-price="${b.dataset.savePrice}"]`).value;
       act(() => api('PUT', `/api/stay/rooms/${b.dataset.savePrice}`, { price: v === '' ? null : Number(v) }), 'حُفظ السعر');
+    })
+  );
+  el.querySelectorAll('[data-price]').forEach((i) =>
+    i.addEventListener('input', () => {
+      const btn = el.querySelector(`[data-save-price="${i.dataset.price}"]`);
+      btn.disabled = i.value === i.dataset.orig;
     })
   );
   el.querySelectorAll('[data-price]').forEach((i) => i.addEventListener('keydown', (e) => e.key === 'Enter' && el.querySelector(`[data-save-price="${i.dataset.price}"]`).click()));
