@@ -920,7 +920,7 @@ async function arenaAdmin(el, hub) {
           <select id="g-qs">${gameTrackOptions(mySubjects, gameState.qTrack, '— كل المواد —')}</select>
           <select id="g-qt"><option value="">— كل المحاور —</option>${topics.map((x) => `<option ${x.topic === gameState.qTopic ? 'selected' : ''}>${esc(x.topic)}</option>`).join('')}<option value="*" ${gameState.qTopic === '*' ? 'selected' : ''}>🧩 الأسئلة الشاملة</option></select>
           <select id="g-qk"><option value="">— كل الأنواع —</option>${Object.entries(GAME_KIND_LABELS).map(([k, v]) => `<option value="${k}" ${k === gameState.qKind ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-        <div class="g-bank-btns"><button class="btn ghost" id="g-qimp">📥 استيراد من ملف</button><button class="btn" id="g-qadd">+ سؤال جديد</button></div>
+        <div class="g-bank-btns"><button class="btn" id="g-qadd">+ سؤال جديد</button></div>
       </div>
       <p class="muted small">${esc(lvl(gameState.qLevel))}: ${questions.length} سؤال${questions.filter((q) => !q.active).length ? ` · ${questions.filter((q) => !q.active).length} موقوف/مؤرشف` : ''}</p>
       ${
@@ -953,7 +953,6 @@ async function arenaAdmin(el, hub) {
     $('#g-qadd').addEventListener('click', () =>
       questionForm({ level: gameState.qLevel, subject_id: t.subject_id, branch: t.branch, topic: gameState.qTopic && gameState.qTopic !== '*' ? gameState.qTopic : '' }, reload)
     );
-    $('#g-qimp').addEventListener('click', () => importQuestions(myLevels, mySubjects, reload));
     p.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => questionForm(questions.find((q) => q.id === Number(b.dataset.edit)), reload)));
     p.querySelectorAll('[data-copy]').forEach((b) =>
       b.addEventListener('click', () => {
@@ -1249,93 +1248,3 @@ const gameAnswerText = (q) => {
   if (q.kind === 'type') return `<b class="ok">✓ ${d.answers.map(esc).join(' / ')}</b>`;
   return d.pairs.map((x) => `${cellShort(x[0])} ${q.kind === 'connect' ? '→' : '↔'} ${cellShort(x[1])}`).join(' · ');
 };
-
-// ---------- 📥 استيراد أسئلة من ملف (PDF / Word / Excel) بالذكاء الاصطناعي ----------
-function importQuestions(levels, subjects, done) {
-  const teacher = state.user.role === 'teacher';
-  const off = !state.meta.ai_import;
-  openModal(
-    '📥 استيراد أسئلة من ملف',
-    `<p class="muted small">ارفع ملفًا فيه مجموعة أسئلة <b>مع الإجابات الصحيحة</b> (PDF أو Word ‎.docx أو Excel ‎.xlsx). الذكاء الاصطناعي يحوّلها إلى أسئلة تفاعلية (اختيار، صحيح/خطأ، ترتيب، ربط)، ثمّ تراجعها قبل الحفظ.</p>
-     ${off ? '<p class="error small">⚠️ الذكاء الاصطناعي غير مفعّل بعد على المنصّة (المفتاح ANTHROPIC_API_KEY في إعدادات Netlify). اطلب من الإدارة تفعيله.</p>' : ''}
-     <div class="row">
-       <label>القسم (السنة)<select name="level" required>${levels.map((l) => `<option value="${esc(l.code)}" ${l.code === gameState.qLevel ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}</select></label>
-       <label>المادّة<select name="track" ${teacher ? 'required' : ''}>${gameTrackOptions(subjects, gameState.qTrack, teacher ? '' : '—')}</select></label>
-     </div>
-     <label>المحور (اختياري: فارغ = أسئلة شاملة)<input name="topic" maxlength="80" value="${esc(gameState.qTopic && gameState.qTopic !== '*' ? gameState.qTopic : '')}"></label>
-     <label>الملف<input type="file" id="gi-file" accept=".pdf,.docx,.xlsx,.txt,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required></label>
-     <p class="muted small">حتى 4 ميغا. ملفات .doc و .xls القديمة: احفظها أوّلًا بصيغة .docx أو .xlsx أو PDF.</p>`,
-    async (d) => {
-      const file = $('#gi-file').files[0];
-      if (!file) throw new Error('اختر الملف');
-      if (file.size > 4 * 1024 * 1024) throw new Error('الملف أكبر من 4 ميغا');
-      const data = await new Promise((ok, ko) => {
-        const fr = new FileReader();
-        fr.onload = () => ok(fr.result);
-        fr.onerror = ko;
-        fr.readAsDataURL(file);
-      });
-      const t = splitTrack(d.track);
-      const r = await api('POST', '/api/game/import', { level: d.level, subject_id: t.subject_id, filename: file.name, data });
-      // على Netlify: التحويل في دالّة خلفيّة (قد يأخذ دقيقة أو أكثر)
-      if (!r.inline) fetch('/.netlify/functions/game-import-background', { method: 'POST', body: JSON.stringify({ id: r.id, token: r.token }) }).catch(() => {});
-      setTimeout(() => importProgress(r.id, { level: d.level, subject_id: t.subject_id, branch: t.branch, topic: d.topic || null, filename: file.name }, done), 0);
-    }
-  );
-  $('#modal-form button[type=submit]').textContent = '✨ تحويل الأسئلة';
-}
-
-function importProgress(id, scope, done) {
-  const started = Date.now();
-  openModal('⏳ تحويل الأسئلة بالذكاء الاصطناعي…', `<div class="gi-wait"><div class="gi-spin">✨</div><p><b>${esc(scope.filename)}</b></p>
-      <p class="muted small" id="gi-msg">جاري قراءة الملف وتحويل الأسئلة… قد يأخذ ذلك دقيقة أو أكثر حسب عدد الأسئلة.</p></div>`, async () => {});
-  $('#modal-form button[type=submit]').hidden = true;
-  const tick = async () => {
-    if (!$('#modal').open || !$('#gi-msg')) return;
-    try {
-      const { job } = await api('GET', `/api/game/import/${id}`);
-      if (job.status === 'done') return preview(job);
-      if (job.status === 'error' || job.status === 'stuck') {
-        $('#gi-msg').innerHTML = `<span class="error">${job.status === 'stuck' ? 'لم يبدأ التحويل. أعد المحاولة بعد قليل.' : `تعذّر التحويل: ${esc(job.error || '')}`}</span>`;
-        return;
-      }
-      $('#gi-msg').textContent = `جاري التحويل… ${Math.round((Date.now() - started) / 1000)} ث`;
-    } catch (err) {
-      $('#gi-msg').textContent = err.message;
-    }
-    setTimeout(tick, 3000);
-  };
-  setTimeout(tick, 1500);
-  const preview = (job) => {
-    const qs = job.questions;
-    openModal(
-      `✅ ${qs.length} سؤال جاهز — راجعها قبل الحفظ`,
-      `${job.skipped ? `<p class="muted small">⚠️ ${job.skipped} سؤال لم يُحوَّل (دون إجابة واضحة أو سؤال مفتوح).</p>` : ''}
-       ${job.notes ? `<p class="muted small">💬 ${esc(job.notes)}</p>` : ''}
-       ${qs.length
-         ? `<label class="check"><input type="checkbox" id="gi-all" checked> تحديد الكلّ</label>
-            <div class="gi-list">${qs
-              .map((q, i) => `<label class="gi-q"><input type="checkbox" data-gi="${i}" checked>
-                <span><span class="g-kind">${GAME_KIND_LABELS[q.kind]}</span><b>${esc(q.prompt)}</b><small>${gameAnswerText(q)}</small>${q.explanation ? `<small class="muted">💡 ${esc(q.explanation)}</small>` : ''}</span></label>`)
-              .join('')}</div>
-            <p class="muted small">بعد الحفظ تنجم تعدّل أيّ سؤال (النقاط، الوقت، المحور، الصور…) من بنك الأسئلة.</p>`
-         : '<p class="error">لم نجد أسئلة بإجابات صحيحة في هذا الملف.</p>'}`,
-      async () => {
-        const picked = [...document.querySelectorAll('[data-gi]:checked')].map((c) => qs[Number(c.dataset.gi)]);
-        if (!picked.length) throw new Error('اختر سؤالًا واحدًا على الأقلّ');
-        const r = await api('POST', '/api/game/questions/bulk', { level: scope.level, subject_id: scope.subject_id, branch: scope.branch, topic: scope.topic, questions: picked });
-        toast(`تمّت إضافة ${r.saved} سؤال ✓`);
-        done?.();
-      }
-    );
-    const btn = $('#modal-form button[type=submit]');
-    btn.hidden = !qs.length;
-    const label = () => (btn.textContent = `💾 حفظ ${document.querySelectorAll('[data-gi]:checked').length} سؤال`);
-    label();
-    $('#gi-all')?.addEventListener('change', (e) => {
-      document.querySelectorAll('[data-gi]').forEach((c) => (c.checked = e.target.checked));
-      label();
-    });
-    document.querySelectorAll('[data-gi]').forEach((c) => c.addEventListener('change', label));
-  };
-}

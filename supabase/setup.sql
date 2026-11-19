@@ -1218,3 +1218,11 @@ UPDATE stay_rooms SET tour = '[{"name": "الغرفة", "src": "stay/360/rimel-5
 UPDATE stay_rooms SET tour = '[{"name": "الغرفة", "src": "stay/360/rimel-6-1.jpg"}, {"name": "بيت الماء", "src": "stay/360/rimel-6-2.jpg"}]'::jsonb WHERE slug = 'rimel-6';
 UPDATE stay_rooms SET tour = '[{"name": "الغرفة", "src": "stay/360/rimel-7-1.jpg"}, {"name": "بيت الماء", "src": "stay/360/rimel-7-2.jpg"}]'::jsonb WHERE slug = 'rimel-7';
 UPDATE stay_rooms SET tour = '[{"name": "الغرفة", "src": "stay/360/rimel-8-1.jpg"}, {"name": "بيت الماء", "src": "stay/360/rimel-8-2.jpg"}]'::jsonb WHERE slug = 'rimel-8';
+
+-- ===== 20261213090000_polls_step.sql =====
+-- التصويت المباشر: «كل الأسئلة معًا» أو «سؤال بسؤال» (المدير ينتقل من سؤال إلى آخر والنتائج تظهر مباشرة)
+ALTER TABLE polls ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE polls DROP CONSTRAINT IF EXISTS polls_mode_check;
+ALTER TABLE polls ADD CONSTRAINT polls_mode_check CHECK (mode IN ('all', 'step'));
+-- السؤال المعروض حاليًا في وضع «سؤال بسؤال» (NULL = لم يبدأ بعد)
+ALTER TABLE polls ADD COLUMN IF NOT EXISTS current INTEGER;

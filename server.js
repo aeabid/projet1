@@ -19,7 +19,6 @@ if (!connectionString) {
 
 const handle = createHandler(new pg.Pool({ connectionString }), {
   adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
-  runImportsInline: true,
 });
 
 const server = http.createServer(async (req, res) => {

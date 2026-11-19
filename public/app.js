@@ -713,6 +713,7 @@ const NAV = {
   admin: [
     ['#/home', 'الرئيسية'],
     ['#/board', 'لوحة المشرف'],
+    ['#/stay', 'حجز الأوتيل · ديسمبر'],
     {
       label: 'دروس الدعم',
       items: [
@@ -791,7 +792,6 @@ const NAV = {
         ['#/broadcast', 'رسالة جماعية للأولياء'],
         ['#/polls', '🗳️ تصويت مباشر للأولياء'],
         ['#/exams', '📝 امتحانات للعموم'],
-        ['#/stay', '🏨 حجز الغرف (دار أوغوز)'],
         ['#/broadcast/teachers', 'رسالة جماعية للمعلمين'],
         ['#/broadcast/staff', 'رسالة جماعية للمؤطّرين'],
         ['#/whatsapp', 'مجموعات واتساب'],
@@ -821,7 +821,7 @@ const NAV = {
     ['#/overview', 'نظرة القسم'],
     ['#/messages', 'الرسائل'],
     ['#/my-pay', 'ساعاتي وخلاصي'],
-    ['#/stay', '🏨 حجز الغرف'],
+    ['#/stay', 'حجز الأوتيل · ديسمبر'],
     ['#/program', 'البرنامج التربوي'],
     ['#/program/posts', 'أنشطة ورسائل قسمي'],
     ['#/account', 'حسابي'],
@@ -834,7 +834,7 @@ const NAV = {
     ['#/program/attendance', 'الغيابات'],
     ['#/program/timetable', 'جدول الأوقات'],
     ['#/program/pay', 'أجرتي'],
-    ['#/stay', '🏨 حجز الغرف'],
+    ['#/stay', 'حجز الأوتيل · ديسمبر'],
     ['#/account', 'حسابي'],
   ],
   parent: [
@@ -843,7 +843,7 @@ const NAV = {
     ['#/my-receipts', 'وصولاتي'],
     ['#/timetable', 'جدول الأوقات'],
     ['#/messages', 'الرسائل'],
-    ['#/stay', '🏨 حجز الغرف'],
+    ['#/stay', 'حجز الأوتيل · ديسمبر'],
     ['#/account', 'حسابي'],
   ],
 };
@@ -865,6 +865,7 @@ function heroBanner({ sub = '', art = '🎓', actions = '' } = {}) {
 // ---------- أيقونات القائمة (خطوط بسيطة) ----------
 const ICON_PATHS = {
   home: '<path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/>',
+  bed: '<path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/><circle cx="7" cy="5.5" r="0"/>',
   book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
   spark: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/>',
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
@@ -889,7 +890,7 @@ const LINK_ICONS = {
   '#/home': 'home', '#/courses': 'flag', '#/students': 'users', '#/timetable': 'calendar', '#/program/timetable': 'calendar',
   '#/attendance': 'check', '#/program/attendance': 'check', '#/program/classes': 'grid', '#/messages': 'chat', '#/my-pay': 'wallet', '#/program/pay': 'wallet',
   '#/account': 'user', '#/tasks': 'clipboard', '#/evaluations': 'clipboard', '#/overview': 'chart', '#/program/posts': 'star',
-  '#/todo': 'clipboard', '#/program': 'spark', '#/group-message': 'chat', '#/board': 'chart', '#/stay': 'star',
+  '#/todo': 'clipboard', '#/program': 'spark', '#/group-message': 'chat', '#/board': 'chart', '#/stay': 'bed',
 };
 // شريط التنقل السفلي في الهاتف: 4 وجهات حسب الدور + «المزيد»
 const TABS = {
@@ -938,7 +939,6 @@ function renderTopbar() {
   const nav = NAV[navKey]
     .filter((e) => !(navKey === 'teacher' && String(e[0]).startsWith('#/program') && !state.user.program_classes))
     // صفحة الحجز: لا يراها الوليّ إلا بعد تفعيلها من المدير
-    .filter((e) => !(e[0] === '#/stay' && navKey !== 'admin' && !state.user.stay_enabled))
     .map((e) => (Array.isArray(e) ? e : { ...e, items: tidyItems(e.items.filter(([h]) => !h || navAllowed(h))) }))
     .filter((e) => (Array.isArray(e) ? navAllowed(e[0]) && !(e[0] === '#/courses' && !can('school')) : e.items.length && !(GROUP_PERM[e.label] && !can(GROUP_PERM[e.label]))));
   $('#nav').innerHTML = nav

@@ -63,7 +63,16 @@ function stayWire(root, rooms = []) {
 }
 
 async function viewStay(el) {
-  const data = await api('GET', '/api/stay');
+  let data;
+  try {
+    data = await api('GET', '/api/stay');
+  } catch (err) {
+    // الصفحة غير مفعّلة (أو غير موجّهة لهذا الحساب): صفحة فارغة لطيفة
+    el.innerHTML = `<section class="st-hero"><div><small>🏨 حجز الأوتيل · ديسمبر</small><h2>لا توجد حجوزات متاحة حاليًا</h2>
+      <p>عندما تفتح الإدارة الحجز، ستجد هنا الغرف بالصور والأسعار وتحجز مباشرة.</p></div></section>
+      <div class="card empty-state"><span>🛏️</span><p>لا توجد برامج إقامة إلى حدّ الآن.</p></div>`;
+    return;
+  }
   return state.user.role === 'admin' ? stayAdmin(el, data) : stayParent(el, data);
 }
 
