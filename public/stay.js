@@ -6,8 +6,11 @@ const STAY_STATUS = { pending: ['⏳ في انتظار التأكيد', 'warn'],
 const stayState = { kind: '' };
 const stayNum = (n) => Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 3 });
 
+// الطاقة + نوع الأسرّة (ملف التوزيع): الكبير = lit simple ou double، الطفل = canapé
 const stayCap = (r) =>
-  `<span class="st-cap" title="الطاقة">👤 ${r.adults} ${r.adults > 2 ? 'كبار' : 'كبيران'}${r.children ? ` · 🧒 ${r.children} ${r.children > 1 ? 'أطفال' : 'طفل'}` : ''}</span>`;
+  `<span class="st-cap" title="الطاقة">👤 ${r.adults} ${r.adults > 2 ? 'كبار' : 'كبيران'}${r.children ? ` · 🧒 ${r.children} ${r.children > 1 ? 'أطفال' : 'طفل'}` : ''}</span>
+   <span class="st-beds" dir="ltr">🛏️ ${r.adults} lit${r.adults > 1 ? 's' : ''} (simple ou double)${r.children ? ` · 🛋️ ${r.children} canapé${r.children > 1 ? 's' : ''}` : ''}</span>`;
+const stayName = (r) => (r.kind === 'suite' && !/\(suite\)/i.test(r.name) ? `${r.name} (Suite)` : r.name);
 const stayPrice = (r, unit) =>
   r.price == null ? '<span class="st-price none">السعر يُعلن قريبًا</span>' : `<span class="st-price"><b>${stayNum(r.price)}</b> ${esc(unit)}</span>`;
 
@@ -76,7 +79,7 @@ function stayParent(el, { settings, rooms, bookings = [] }, guest = false) {
       .map((b) => {
         const r = rooms.find((x) => x.id === b.room_id);
         const [label, cls] = STAY_STATUS[b.status];
-        return `<div class="st-mine-row"><img src="${esc(r?.photos?.[0] || '')}" alt=""><div><b>${esc(r?.name || '')}</b>
+        return `<div class="st-mine-row"><img src="${esc(r?.photos?.[0] || '')}" alt=""><div><b>${esc(r ? stayName(r) : '')}</b>
             <small>${b.adults} كبار${b.children ? ` · ${b.children} أطفال` : ''}${b.price != null ? ` · ${stayNum(b.price)} ${esc(settings.unit)}` : ''}</small>
             <span class="st-badge ${cls}">${label}</span></div>
             ${b.status === 'pending' ? `<button class="btn small ghost" data-cancel="${b.id}">إلغاء</button>` : ''}</div>`;
@@ -89,7 +92,7 @@ function stayParent(el, { settings, rooms, bookings = [] }, guest = false) {
         (r) => `<article class="st-card ${r.status}">
           ${stayPhotos(r)}
           <div class="st-body">
-            <div class="st-head"><h3>${esc(r.name)}</h3>${stayPrice(r, settings.unit)}</div>
+            <div class="st-head"><h3>${esc(stayName(r))}</h3>${stayPrice(r, settings.unit)}</div>
             <p class="st-label">${esc(r.label || '')} · ${esc(r.floor_label)}</p>
             ${stayCap(r)}
             <ul class="st-feat">${(r.features || []).map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
@@ -124,7 +127,7 @@ function stayParent(el, { settings, rooms, bookings = [] }, guest = false) {
       const r = rooms.find((x) => x.id === Number(b.dataset.book));
       const opts = (from, to, sel) => Array.from({ length: to - from + 1 }, (_, k) => from + k).map((n) => `<option ${n === sel ? 'selected' : ''}>${n}</option>`).join('');
       openModal(
-        `حجز ${r.name}`,
+        `حجز ${stayName(r)}`,
         `<p class="muted">${esc(r.label || '')} · ${esc(r.floor_label)} · ${stayPrice(r, settings.unit)}</p>
          <p class="small">طاقة الغرفة: ${r.adults} كبار${r.children ? ` و${r.children} ${r.children > 1 ? 'أطفال' : 'طفل'}` : ''}.</p>
          ${guest ? '<label>الاسم واللقب<input name="name" required maxlength="120" autocomplete="name"></label><label>رقم الهاتف<input name="phone" required inputmode="tel" dir="ltr" maxlength="16" autocomplete="tel" placeholder="2X XXX XXX"></label>' : ''}
@@ -193,7 +196,7 @@ function stayAdmin(el, data) {
         return `<article class="st-card ${r.active ? '' : 'hidden-room'}">
           ${stayPhotos(r)}
           <div class="st-body">
-            <div class="st-head"><h3>${esc(r.name)}</h3></div>
+            <div class="st-head"><h3>${esc(stayName(r))}</h3></div>
             <p class="st-label">${esc(r.label || '')} · ${esc(r.floor_label)}</p>
             ${stayCap(r)}
             <ul class="st-feat">${(r.features || []).map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
@@ -220,7 +223,7 @@ function stayAdmin(el, data) {
       <tbody>${rooms
         .map((r) => {
           const b = liveOf(r.id);
-          return `<tr><td><b>${esc(r.name)}</b></td><td>${r.kind === 'suite' ? 'جناح (غرفتان)' : 'غرفة'}</td><td>${esc(r.floor_label)}</td>
+          return `<tr><td><b>${esc(stayName(r))}</b></td><td>${r.kind === 'suite' ? 'Suite (غرفتان)' : 'غرفة'}</td><td>${esc(r.floor_label)}</td>
             <td>${r.adults} كبار${r.children ? ` + ${r.children}` : ''}</td><td>${b ? esc(b.parent_name) : '—'}</td>
             <td>${b ? `${b.adults}${b.children ? ` + ${b.children}` : ''}` : '—'}</td>
             <td>${b ? `<span class="st-badge ${STAY_STATUS[b.status][1]}">${STAY_STATUS[b.status][0]}</span>` : '<span class="muted">متاحة</span>'}</td>

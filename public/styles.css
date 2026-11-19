@@ -2982,3 +2982,5 @@ details.g-rules summary { cursor: pointer; font-weight: 700; text-align: center;
 @media (prefers-reduced-motion: reduce) { .g-blobs i, .g-sheet, .g-lines path, .g-streak-pop { animation: none !important; } }
 .g-opt .g-cell { background: none; padding: 0; border-radius: 0; font-size: inherit; }
 .g-options.pics .g-opt .g-cell.pic small { color: #fff; }
+
+.st-beds { align-self: flex-start; background: #fdf4ff; color: #86198f; border-radius: 999px; padding: 3px 10px; font-size: .8rem; font-weight: 700; }
