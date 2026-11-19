@@ -7,8 +7,10 @@ const stayState = { kind: '' };
 const stayNum = (n) => Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 3 });
 
 // الطاقة + نوع الأسرّة (ملف التوزيع): الكبير = lit simple ou double، الطفل = canapé
+// العائلة دائمًا والدان (كبيران) والبقيّة أطفال: ما يفرّق بين الغرف هو عدد الأسرّة ونوعها
+const stayKids = (r) => Math.max(0, r.adults + r.children - 2);
 const stayCap = (r) =>
-  `<span class="st-cap" title="الطاقة">👤 ${r.adults} ${r.adults > 2 ? 'كبار' : 'كبيران'}${r.children ? ` · 🧒 ${r.children} ${r.children > 1 ? 'أطفال' : 'طفل'}` : ''}</span>
+  `<span class="st-cap" title="الطاقة">👤 2 كبار${stayKids(r) ? ` + 🧒 ${stayKids(r)} ${stayKids(r) > 1 ? 'أطفال' : 'طفل'}` : ''}</span>
    <span class="st-beds" dir="ltr">🛏️ ${r.adults} lit${r.adults > 1 ? 's' : ''} (simple ou double)${r.children ? ` · 🛋️ ${r.children} canapé${r.children > 1 ? 's' : ''}` : ''}</span>`;
 const stayName = (r) => (r.kind === 'suite' && !/\(suite\)/i.test(r.name) ? `${r.name} (Suite)` : r.name);
 const stayPrice = (r, unit) =>
@@ -85,7 +87,7 @@ function stayParent(el, { settings, rooms, bookings = [] }, guest = false) {
             ${b.status === 'pending' ? `<button class="btn small ghost" data-cancel="${b.id}">إلغاء</button>` : ''}</div>`;
       })
       .join('')}</div>` : ''}
-    <div class="st-legend">👤 الكبير: سرير فردي أو مزدوج · 🧒 الطفل: سرير أريكة (canapé)</div>
+    <div class="st-legend">العائلة: الوالدان + الأطفال (دون 18 سنة) · 🛏️ lit simple ou double · 🛋️ canapé · السعر لليلة الواحدة</div>
     ${stayKindTabs(rooms)}
     <div class="st-grid">${shown
       .map(
@@ -129,10 +131,10 @@ function stayParent(el, { settings, rooms, bookings = [] }, guest = false) {
       openModal(
         `حجز ${stayName(r)}`,
         `<p class="muted">${esc(r.label || '')} · ${esc(r.floor_label)} · ${stayPrice(r, settings.unit)}</p>
-         <p class="small">طاقة الغرفة: ${r.adults} كبار${r.children ? ` و${r.children} ${r.children > 1 ? 'أطفال' : 'طفل'}` : ''}.</p>
+         <p class="small">طاقة الغرفة: 2 كبار${stayKids(r) ? ` + ${stayKids(r)} ${stayKids(r) > 1 ? 'أطفال' : 'طفل'}` : ''} · الأسرّة: ${r.adults} lit${r.adults > 1 ? 's' : ''} (simple ou double)${r.children ? ` + ${r.children} canapé${r.children > 1 ? 's' : ''}` : ''}.</p>
          ${guest ? '<label>الاسم واللقب<input name="name" required maxlength="120" autocomplete="name"></label><label>رقم الهاتف<input name="phone" required inputmode="tel" dir="ltr" maxlength="16" autocomplete="tel" placeholder="2X XXX XXX"></label>' : ''}
-         <label>عدد الكبار<select name="adults">${opts(1, r.adults, Math.min(2, r.adults))}</select></label>
-         <label>عدد الأطفال<select name="children">${opts(0, r.adults + r.children - 1, 0)}</select></label>
+         <label>عدد الكبار<select name="adults">${opts(1, Math.min(2, r.adults), Math.min(2, r.adults))}</select></label>
+         <label>عدد الأطفال (دون 18 سنة)<select name="children">${opts(0, r.adults + r.children - 1, Math.min(stayKids(r), 0))}</select></label>
          <label>ملاحظة (اختياري)<textarea name="note" rows="2" maxlength="500" placeholder="مثلًا: أعمار الأطفال، طلب خاص…"></textarea></label>
          <p class="muted small">الحجز يبقى «في انتظار التأكيد» حتى تؤكّده الإدارة.</p>`,
         async (f) => {
@@ -188,7 +190,7 @@ function stayAdmin(el, data) {
         <label>وحدة السعر<input id="st-unit" value="${esc(settings.unit)}" maxlength="40" placeholder="د.ت / الليلة"></label></div>
       <label>معلومات للأولياء (التواريخ، ما يشمله السعر، طريقة الخلاص…)<textarea id="st-info" rows="3" maxlength="1500">${esc(settings.info || '')}</textarea></label>
       <button class="btn" id="st-save">حفظ</button></details>` : ''}
-    <div class="st-legend">من ملف «Répartition des chambres»: 👤 الكبير: سرير فردي أو مزدوج · 🧒 الطفل: سرير أريكة (canapé)</div>
+    <div class="st-legend">العائلة: الوالدان + الأطفال (دون 18 سنة) · 🛏️ lit simple ou double للكبار · 🛋️ canapé للأطفال</div>
     ${stayKindTabs(rooms)}
     <div class="st-grid">${shown
       .map((r) => {
@@ -196,7 +198,7 @@ function stayAdmin(el, data) {
         return `<article class="st-card ${r.active ? '' : 'hidden-room'}">
           ${stayPhotos(r)}
           <div class="st-body">
-            <div class="st-head"><h3>${esc(stayName(r))}</h3></div>
+            <div class="st-head"><h3>${esc(stayName(r))}</h3>${stayPrice(r, settings.unit)}</div>
             <p class="st-label">${esc(r.label || '')} · ${esc(r.floor_label)}</p>
             ${stayCap(r)}
             <ul class="st-feat">${(r.features || []).map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
