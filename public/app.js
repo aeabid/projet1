@@ -4310,15 +4310,30 @@ async function viewTimetable(el, mode = 'level') {
     return;
   }
   if (role === 'parent') {
-    const { children } = await api('GET', '/api/timetable/children');
-    const slots = children
-      .flatMap((c) => c.slots.map((x) => ({ ...x, child_name: c.full_name })))
-      .sort((a, b) => a.day - b.day || a.start_time.localeCompare(b.start_time));
+    // دروس الدعم والبرنامج التربوي منفصلان: لا يظهر للولي إلا ما يخصّ أبناءه
+    const { children, program = [] } = await api('GET', '/api/timetable/children');
+    const merge = (list) =>
+      list.flatMap((c) => c.slots.map((x) => ({ ...x, child_name: c.full_name }))).sort((a, b) => a.day - b.day || a.start_time.localeCompare(b.start_time));
+    const support = children.length;
+    const prog = program.length;
     el.innerHTML = `<h2>جدول الأوقات</h2>
-      ${children.length > 1 ? `<p class="muted">جدول كل أبنائك معًا: ${children.map((c) => esc(c.full_name)).join('، ')}</p>` : ''}
-      <div id="tt-periods"></div>
-      <div class="card">${weekView(slots, { showTeacher: true, showChild: children.length > 1 })}</div>`;
-    mountPeriods($('#tt-periods'), { levels: [...new Set(children.map((c) => c.level).filter(Boolean))] });
+      ${
+        support
+          ? `<section class="tt-sec">${prog ? '<h3>📚 دروس الدعم</h3>' : ''}
+              ${support > 1 ? `<p class="muted">جدول كل أبنائك معًا: ${children.map((c) => esc(c.full_name)).join('، ')}</p>` : ''}
+              <div id="tt-periods"></div>
+              <div class="card">${weekView(merge(children), { showTeacher: true, showChild: support > 1 })}</div></section>`
+          : ''
+      }
+      ${
+        prog
+          ? `<section class="tt-sec">${support ? '<h3>🎨 البرنامج التربوي</h3>' : ''}
+              ${prog > 1 ? `<p class="muted">${program.map((c) => `${esc(c.full_name)}${c.class_name ? ` (${esc(c.class_name)})` : ''}`).join('، ')}</p>` : program[0].class_name ? `<p class="muted">${esc(program[0].full_name)} · ${esc(program[0].class_name)}</p>` : ''}
+              ${program.some((c) => c.slots.length) ? `<div class="card">${weekView(merge(program), { showTeacher: true, showChild: prog > 1 })}</div>` : '<div class="card empty-state"><span>🗓</span><p>جدول البرنامج التربوي لم يُضبط بعد.</p></div>'}</section>`
+          : ''
+      }
+      ${!support && !prog ? '<div class="card empty-state"><span>🗓</span><p>لا يوجد جدول أوقات بعد.</p></div>' : ''}`;
+    if (support) mountPeriods($('#tt-periods'), { levels: [...new Set(children.map((c) => c.level).filter(Boolean))] });
     return;
   }
 

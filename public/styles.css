@@ -3025,3 +3025,4 @@ body.st-tour-open { overflow: hidden; }
 .st-pricebox input[type="number"] { border: 0 !important; box-shadow: none !important; border-radius: 0 !important; margin: 0 !important; height: 100% !important; min-height: 0 !important; padding: 0 8px !important; background: transparent !important; width: 80px !important; }
 .st-switch input[type="checkbox"] { position: absolute !important; opacity: 0 !important; width: 0 !important; height: 0 !important; margin: 0 !important; }
 .st-switch { display: block !important; margin: 0 !important; padding: 0 !important; }
+.tt-sec + .tt-sec { margin-top: 22px; }

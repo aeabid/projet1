@@ -2547,3 +2547,27 @@ test('game v2: branches (حساب/إيقاظ), topics and comprehensive question
   assert.strictEqual((await t('GET', `/api/game/stats/students/${kid.id}?subject_id=${other.id}`)).status, 403);
   assert.strictEqual((await p('GET', `/api/game/stats/students/${kid.id}`)).status, 403);
 });
+
+test('parent timetable: tutoring (الدعم) and the educational program (التربوي) are kept separate', async () => {
+  const admin = await login('admin', 'admin123');
+  const { body: meta } = await admin('GET', '/api/meta');
+  const sid = meta.subjects[0].id;
+  const t = (await admin('POST', '/api/users', { role: 'teacher', username: 'tt-sep-t', full_name: 'معلم', password: 'secret1', subject_ids: [sid] })).body.user;
+  await admin('POST', '/api/timetable', { level: '8', day: 2, start_time: '09:00', end_time: '10:00', subject_id: sid, teacher_id: t.id });
+  const cls = (await admin('POST', '/api/program/classes', { name: 'قسم الفصل' })).body.class;
+  await admin('POST', '/api/program/slots', { class_id: cls.id, day: 3, start_time: '14:00', end_time: '16:00', title: 'رسم' });
+  // وليّ في التربوي فقط
+  const pp = (await admin('POST', '/api/users', { role: 'parent', username: 'tt-sep-p', full_name: 'ولي التربوي', password: 'secret1' })).body.user;
+  await admin('POST', '/api/program/children', { full_name: 'طفل التربوي', class_id: cls.id, parent_id: pp.id, monthly_fee: 80, start_date: '2026-09-01' });
+  const p = await login('tt-sep-p', 'secret1');
+  const r = (await p('GET', '/api/timetable/children')).body;
+  assert.deepStrictEqual(r.children, []);
+  assert.deepStrictEqual(r.program.map((c) => [c.full_name, c.class_name, c.slots.map((x) => [x.day, x.subject_name])]), [['طفل التربوي', 'قسم الفصل', [[3, 'رسم']]]]);
+  // وليّ في الدعم فقط: لا شيء من التربوي
+  const sp = (await admin('POST', '/api/users', { role: 'parent', username: 'tt-sep-s', full_name: 'ولي الدعم', password: 'secret1' })).body.user;
+  await admin('POST', '/api/students', { full_name: 'Support Kid', level: '8', parent_id: sp.id, subject_ids: [sid] });
+  const s = await login('tt-sep-s', 'secret1');
+  const r2 = (await s('GET', '/api/timetable/children')).body;
+  assert.deepStrictEqual([r2.children.length, r2.program.length], [1, 0]);
+  assert.ok(r2.children[0].slots.some((x) => x.day === 2));
+});
