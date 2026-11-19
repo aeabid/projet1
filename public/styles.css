@@ -2984,3 +2984,16 @@ details.g-rules summary { cursor: pointer; font-weight: 700; text-align: center;
 .g-options.pics .g-opt .g-cell.pic small { color: #fff; }
 
 .st-beds { align-self: flex-start; background: #fdf4ff; color: #86198f; border-radius: 999px; padding: 3px 10px; font-size: .8rem; font-weight: 700; }
+.st-360 { position: absolute; bottom: 30px; right: 10px; z-index: 2; border: 0; background: rgba(12,74,110,.88); color: #fff; font: inherit; font-weight: 800; font-size: .85rem; padding: 6px 12px; border-radius: 999px; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.25); backdrop-filter: blur(4px); }
+.st-360:hover { background: #0369a1; }
+body.st-tour-open { overflow: hidden; }
+.st-tour { position: fixed; inset: 0; z-index: 1000; background: #0b1120; display: flex; flex-direction: column; color: #fff; }
+.st-tour-top { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; }
+.st-tour-x { border: 0; background: rgba(255,255,255,.15); color: #fff; width: 40px; height: 40px; border-radius: 50%; font-size: 1.2rem; cursor: pointer; }
+.st-tour-view { flex: 1; min-height: 0; position: relative; }
+.st-tour-load { position: absolute; inset: 0; display: grid; place-items: center; font-size: 2rem; margin: 0; }
+.st-tour-scenes { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; padding: 10px; }
+.st-tour-scenes button { border: 1.5px solid rgba(255,255,255,.35); background: rgba(255,255,255,.08); color: #fff; font: inherit; font-weight: 700; padding: 7px 16px; border-radius: 999px; cursor: pointer; }
+.st-tour-scenes button.on { background: #fff; color: #0c4a6e; }
+.st-tour-hint { text-align: center; opacity: .7; font-size: .85rem; margin: 0 0 12px; }
+.st-tour .pnlm-title-box { display: none !important; }

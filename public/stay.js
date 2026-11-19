@@ -21,12 +21,20 @@ function stayPhotos(r) {
   return `<div class="st-photos">
       <div class="st-track" dir="ltr">${photos.map((p, i) => `<img src="${esc(p)}" alt="${esc(r.name)} ${i + 1}" loading="lazy" data-zoom="${esc(p)}">`).join('')}</div>
       ${photos.length > 1 ? `<span class="st-count">📷 ${photos.length}</span><div class="st-dots" dir="ltr">${photos.map((_, i) => `<i class="${i ? '' : 'on'}"></i>`).join('')}</div>` : ''}
+      ${r.tour?.length ? `<button type="button" class="st-360" data-tour="${r.id}" title="جولة 360°">👁️ 360°</button>` : ''}
       <span class="st-kind ${r.kind}">${r.kind === 'suite' ? `🏠 جناح · ${r.bedrooms} غرف` : '🛏️ غرفة'}</span>
     </div>`;
 }
 
 // تمرير الصور + نقاط المؤشّر + تكبير الصورة
-function stayWire(root) {
+function stayWire(root, rooms = []) {
+  root.querySelectorAll('[data-tour]').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const r = rooms.find((x) => x.id === Number(b.dataset.tour));
+      if (r) stayTour(r);
+    })
+  );
   root.querySelectorAll('.st-photos').forEach((box) => {
     const track = box.querySelector('.st-track');
     const dots = [...box.querySelectorAll('.st-dots i')];
@@ -110,7 +118,7 @@ function stayParent(el, { settings, rooms, bookings = [] }, guest = false) {
           </div></article>`
       )
       .join('')}</div>`;
-  stayWire(el);
+  stayWire(el, rooms);
   el.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', () => ((stayState.kind = b.dataset.kind), stayParent(el, { settings, rooms, bookings }, guest))));
   el.querySelectorAll('[data-cancel]').forEach((b) =>
     b.addEventListener('click', async () => {
@@ -232,7 +240,7 @@ function stayAdmin(el, data) {
             <td>${r.price == null ? '—' : `${stayNum(r.price)} ${esc(settings.unit)}`}</td></tr>`;
         })
         .join('')}</tbody></table></div></div>`;
-  stayWire(el);
+  stayWire(el, rooms);
   const reload = () => viewStay(el);
   const act = async (fn, ok) => {
     try {
@@ -288,4 +296,57 @@ async function viewPublicStay(el) {
   }
   el.innerHTML = '<div class="st-public"><img class="st-logo" src="feed-logo.png" alt="فيد"><div id="st-pub"></div></div>';
   stayParent($('#st-pub'), data, true);
+}
+
+// ---------- 👁️ جولة 360° (Pannellum، مكتبة مفتوحة المصدر، محمّلة عند الحاجة) ----------
+let pannellumReady = null;
+function loadPannellum() {
+  pannellumReady ??= new Promise((resolve, reject) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'vendor/pannellum.css';
+    document.head.appendChild(css);
+    const sc = document.createElement('script');
+    sc.src = 'vendor/pannellum.js';
+    sc.onload = () => resolve(window.pannellum);
+    sc.onerror = () => ((pannellumReady = null), reject(new Error('تعذّر تحميل الجولة 360°')));
+    document.head.appendChild(sc);
+  });
+  return pannellumReady;
+}
+async function stayTour(r) {
+  const box = document.createElement('div');
+  box.className = 'st-tour';
+  box.innerHTML = `<div class="st-tour-top"><b>👁️ ${esc(stayName(r))} · 360°</b><button class="st-tour-x" aria-label="إغلاق">✕</button></div>
+    <div class="st-tour-view" id="st-tour-view"><div class="st-tour-load">⏳</div></div>
+    ${r.tour.length > 1 ? `<div class="st-tour-scenes">${r.tour.map((x, k) => `<button data-scene="s${k}" class="${k ? '' : 'on'}">${esc(x.name)}</button>`).join('')}</div>` : ''}
+    <p class="st-tour-hint">☝️ اسحب لتدور حول الغرفة · قرّب وبعّد بإصبعين</p>`;
+  document.body.appendChild(box);
+  document.body.classList.add('st-tour-open');
+  let viewer = null;
+  const close = () => {
+    try {
+      viewer?.destroy();
+    } catch {}
+    box.remove();
+    document.body.classList.remove('st-tour-open');
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => e.key === 'Escape' && close();
+  document.addEventListener('keydown', onKey);
+  box.querySelector('.st-tour-x').addEventListener('click', close);
+  try {
+    const pannellum = await loadPannellum();
+    if (!box.isConnected) return;
+    box.querySelector('.st-tour-view').innerHTML = '';
+    const scenes = Object.fromEntries(r.tour.map((x, k) => [`s${k}`, { title: x.name, type: 'equirectangular', panorama: x.src, hfov: 105 }]));
+    viewer = pannellum.viewer('st-tour-view', {
+      default: { firstScene: 's0', sceneFadeDuration: 600, autoLoad: true, autoRotate: -3, showFullscreenCtrl: true, compass: false },
+      scenes,
+    });
+    viewer.on('scenechange', (id) => box.querySelectorAll('[data-scene]').forEach((b) => b.classList.toggle('on', b.dataset.scene === id)));
+    box.querySelectorAll('[data-scene]').forEach((b) => b.addEventListener('click', () => viewer.loadScene(b.dataset.scene)));
+  } catch (err) {
+    box.querySelector('.st-tour-view').innerHTML = `<p class="st-tour-load">${esc(err.message)}</p>`;
+  }
 }

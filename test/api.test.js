@@ -2372,6 +2372,9 @@ test('room booking at Dar Oguz: hidden until the director enables it, prices per
   assert.strictEqual(a0.rooms.filter((r) => r.kind === 'suite').length, 5);
   assert.strictEqual(a0.settings.enabled, false);
   assert.ok(a0.rooms.every((r) => r.photos.length >= 3));
+  // جولة 360° من موقع دار أوغوز (Rimel 4 دون جولة)
+  assert.deepStrictEqual(a0.rooms.find((r) => r.slug === 'oguz-2').tour.map((x) => x.name), ['الغرفة', 'الشرفة', 'بيت الماء']);
+  assert.strictEqual(a0.rooms.find((r) => r.slug === 'rimel-4').tour.length, 0);
   const rimel6 = a0.rooms.find((r) => r.slug === 'rimel-6');
   assert.deepStrictEqual([rimel6.adults, rimel6.children, rimel6.floor], [2, 2, '1']);
 
