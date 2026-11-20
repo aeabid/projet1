@@ -95,7 +95,7 @@ async function viewParentHome(el) {
       art: '👨‍👩‍👧',
       actions: '<a class="btn" href="#/messages">مراسلة المعلمين</a>',
     })}
-    ${state.user.stay_enabled ? '<a class="st-promo" href="#/stay"><span>🏨</span><div><b>حجز الغرف مفتوح</b><small>تصفّح الغرف والأجنحة بالصور واحجز غرفتك</small></div><i>←</i></a>' : ''}
+    ${state.user.stay_enabled ? '<a class="st-promo" href="#/stay"><span>🏨</span><div><b>الملتقى العائلي - ديسمبر 2026</b><small>الحجز مفتوح: تصفّح الغرف بالصور واحجز غرفتك</small></div><i>←</i></a>' : ''}
     ${(() => {
       // وصل جديد (آخر 7 أيام): يظهر في أعلى الصفحة
       const since = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);

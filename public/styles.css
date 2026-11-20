@@ -3075,3 +3075,19 @@ body.st-tour-open { overflow: hidden; }
   .pl-opt, .pl-opts.big .pl-opt { grid-template-columns: 96px 1fr 42px 22px; }
   .pl-opts.big .pl-ol { font-size: .95rem; }
 }
+/* سبر آراء */
+.pl-qb { padding: 12px; margin-bottom: 10px; display: grid; gap: 8px; }
+.pl-qb-head { display: flex; gap: 6px; }
+.pl-qq { flex: 1; font-weight: 700; }
+.pl-qopts { display: grid; gap: 6px; }
+.pl-qo-row { display: flex; align-items: center; gap: 8px; }
+.pl-qo-row span { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; font-weight: 800; background: var(--c, #94a3b8); }
+.pl-qo-row input { flex: 1; }
+.pl-mark { font-style: normal; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--c); color: #fff; font-size: .75rem; margin-inline-end: 6px; }
+.pl-opts.choice .pl-opt { grid-template-columns: minmax(120px, 38%) 1fr 46px 26px; }
+.pl-opts.choice .pl-ol { white-space: normal; display: flex; align-items: center; }
+.vote-choices { display: grid; gap: 8px; }
+.vote-choices button { display: flex; align-items: center; gap: 12px; text-align: start; border: 2px solid var(--border); background: #fff; border-radius: 16px; padding: 14px; font: inherit; font-weight: 700; font-size: 1.05rem; cursor: pointer; color: var(--text); transition: transform .1s, border-color .15s, background .15s; }
+.vote-choices button i { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--c); color: #fff; font-style: normal; font-weight: 900; }
+.vote-choices button:active { transform: scale(.98); }
+.vote-choices button.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 10%, white); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 25%, transparent); }

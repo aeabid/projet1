@@ -4,6 +4,8 @@
 
 const POLL_COLORS = { excellent: '#0f9d58', very_good: '#7cb342', average: '#f4b400', below: '#f57c00', weak: '#db4437' };
 const POLL_EMOJI = { excellent: '🤩', very_good: '🙂', average: '😐', below: '🙁', weak: '😞' };
+const CHOICE_COLORS = ['#7c3aed', '#0ea5e9', '#f59e0b', '#10b981', '#ef4444'];
+const CHOICE_MARKS = ['أ', 'ب', 'ج', 'د', 'هـ'];
 const voteUrl = (code) => `${publicBase()}/vote/${code}`;
 const qrSvg = (textValue, cell = 8) => {
   const q = qrcode(0, 'M');
@@ -23,36 +25,96 @@ async function viewPolls(el) {
         ? `<div class="pl-list">${polls
             .map(
               (p) => `<a class="card pl-item" href="#/polls/${p.id}">
-                <div><b>${esc(p.title)}</b><div class="muted small">${fmtDate(String(p.created_at).slice(0, 10))} · ${p.criteria.length} أسئلة · ${p.mode === 'step' ? '👆 سؤال بسؤال' : '📋 كل الأسئلة معًا'} · رمز ${p.code}</div></div>
+                <div><b>${esc(p.title)}</b><div class="muted small">${fmtDate(String(p.created_at).slice(0, 10))} · ${p.criteria.length} أسئلة · ${p.kind === 'choice' ? '🗳️ سبر آراء' : '⭐ تقييم'} · ${p.mode === 'step' ? '👆 سؤال بسؤال' : '📋 كل الأسئلة معًا'} · رمز ${p.code}</div></div>
                 <div class="pl-meta"><span class="pl-votes">${p.votes}<small>مشارك</small></span>
                   <span class="badge ${p.active ? 'excellent' : 'general'}">${p.active ? '🟢 مفتوح' : '⏹ مغلق'}</span></div></a>`
             )
             .join('')}</div>`
         : '<div class="card empty-state"><span>🗳️</span><p>لا يوجد تصويت بعد. أنشئ أوّل تصويت لاجتماعك!</p></div>'
     }`;
-  $('#pl-new').addEventListener('click', () =>
+  $('#pl-new').addEventListener('click', () => {
     openModal(
       '🗳️ تصويت جديد',
       `<label>العنوان<input name="title" required maxlength="150" value="اجتماع أولياء الإعدادي — تقييم فيد"></label>
-       <label>الأسئلة / محاور التقييم (سؤال في كل سطر)<textarea name="criteria" rows="9" required>${esc(defaults.join('\n'))}</textarea></label>
+       <p class="pl-mode-title">نوع التصويت</p>
+       <div class="pl-modes">
+         <label class="pl-mode"><input type="radio" name="kind" value="rating" checked><span><b>⭐ تقييم</b><small>كل سؤال يُقيَّم من 1 إلى 5 (ممتاز… ضعيف)</small></span></label>
+         <label class="pl-mode"><input type="radio" name="kind" value="choice"><span><b>🗳️ سبر آراء</b><small>أنت تضع الاختيارات لكل سؤال (حتى 5) والوليّ يختار</small></span></label>
+       </div>
+       <div id="pl-rating"><label>محاور التقييم (محور في كل سطر)<textarea name="criteria" rows="8">${esc(defaults.join('\n'))}</textarea></label>
+         <p class="muted small">سلّم التقييم من 1 إلى 5: 5 ممتاز · 4 جيد · 3 متوسط · 2 دون المتوسط · 1 ضعيف.</p></div>
+       <div id="pl-choice" hidden><div id="pl-qs"></div><button type="button" class="btn small ghost" id="pl-addq">+ سؤال</button></div>
        <p class="pl-mode-title">طريقة العرض</p>
        <div class="pl-modes">
-         <label class="pl-mode"><input type="radio" name="mode" value="all" checked><span><b>📋 كل الأسئلة معًا</b><small>يجيب الوليّ عن كل الأسئلة ثمّ نرى النتائج</small></span></label>
+         <label class="pl-mode"><input type="radio" name="mode" value="all" checked><span><b>📋 كل الأسئلة دفعة واحدة</b><small>يجيب الوليّ عن كل الأسئلة ثمّ نرى النتائج</small></span></label>
          <label class="pl-mode"><input type="radio" name="mode" value="step"><span><b>👆 سؤال بسؤال</b><small>أعرض سؤالًا، يصوّتون، نناقش النتيجة، ثمّ أنتقل إلى الموالي</small></span></label>
        </div>
-       <p class="muted small">سلّم التقييم من 1 إلى 5: 5 ممتاز · 4 جيد · 3 متوسط · 2 دون المتوسط · 1 ضعيف. مجهول الهوية تمامًا، والنتائج تُحفظ عندك.</p>
+       <p class="muted small">🔒 مجهول الهوية تمامًا، والنتائج تُحفظ عندك للإحصائيات.</p>
        <label class="check"><input type="checkbox" name="allow_comment" checked> السماح بملاحظة مكتوبة (اختيارية)</label>`,
       async (d) => {
-        const { poll } = await api('POST', '/api/polls', { title: d.title, criteria: d.criteria, allow_comment: !!d.allow_comment, mode: d.mode });
+        const body = { title: d.title, allow_comment: !!d.allow_comment, mode: d.mode, kind: d.kind };
+        if (d.kind === 'choice') {
+          body.questions = [...document.querySelectorAll('.pl-qb')].map((b) => ({
+            q: b.querySelector('.pl-qq').value.trim(),
+            options: [...b.querySelectorAll('.pl-qo')].map((i) => i.value.trim()).filter(Boolean),
+          }));
+        } else body.criteria = d.criteria;
+        const { poll } = await api('POST', '/api/polls', body);
         location.hash = `#/polls/${poll.id}`;
       }
-    )
-  );
+    );
+    // سبر آراء: سؤال + من 2 إلى 5 اختيارات
+    const qBlock = (q = '', opts = ['', '', '']) => `<div class="pl-qb card"><div class="pl-qb-head"><input class="pl-qq" maxlength="150" placeholder="السؤال (مثال: أهمّ جانب تربوي بالنسبة إليك؟)" value="${esc(q)}">
+        <button type="button" class="btn small ghost pl-qrm" title="حذف السؤال">✕</button></div>
+      <div class="pl-qopts">${opts.map((o, k) => `<div class="pl-qo-row"><span style="--c:${CHOICE_COLORS[k]}">${CHOICE_MARKS[k]}</span><input class="pl-qo" maxlength="80" placeholder="اختيار ${k + 1}" value="${esc(o)}"></div>`).join('')}</div>
+      <button type="button" class="btn small ghost pl-qadd">+ اختيار</button></div>`;
+    const qs = $('#pl-qs');
+    qs.innerHTML = qBlock('أهمّ جانب تربوي بالنسبة إليك؟', ['الصلاة', 'الأخلاق', 'المسؤولية']);
+    const renumber = (b) => b.querySelectorAll('.pl-qo-row').forEach((r, k) => {
+      r.querySelector('span').textContent = CHOICE_MARKS[k];
+      r.querySelector('span').style.setProperty('--c', CHOICE_COLORS[k]);
+    });
+    $('#pl-addq').addEventListener('click', () => qs.insertAdjacentHTML('beforeend', qBlock('', ['', ''])));
+    qs.addEventListener('click', (e) => {
+      const b = e.target.closest('.pl-qb');
+      if (e.target.closest('.pl-qrm')) {
+        if (qs.children.length > 1) b.remove();
+        return;
+      }
+      if (e.target.closest('.pl-qadd')) {
+        const n = b.querySelectorAll('.pl-qo-row').length;
+        if (n >= 5) return toast('5 اختيارات على الأقصى', true);
+        b.querySelector('.pl-qopts').insertAdjacentHTML('beforeend', `<div class="pl-qo-row"><span>${CHOICE_MARKS[n]}</span><input class="pl-qo" maxlength="80" placeholder="اختيار ${n + 1}"></div>`);
+        renumber(b);
+      }
+    });
+    document.querySelectorAll('input[name=kind]').forEach((r) =>
+      r.addEventListener('change', () => {
+        const choice = document.querySelector('input[name=kind]:checked').value === 'choice';
+        $('#pl-choice').hidden = !choice;
+        $('#pl-rating').hidden = choice;
+        const t = document.querySelector('#modal-body input[name=title]');
+        if (choice && /تقييم/.test(t.value)) t.value = 'سبر آراء الأولياء';
+      })
+    );
+  });
 }
 
 // نتائج سؤال: نسبة كل اختيار بوضوح (من الذين أجابوا فقط)
 function pollOptions(c, scale, big = false) {
   if (!c.n) return '<p class="pl-wait">⏳ بانتظار الأصوات…</p>';
+  if (c.options) {
+    const top = Math.max(...c.counts);
+    return `<div class="pl-opts choice ${big ? 'big' : ''}">${c.options
+      .map(
+        (o, k) => `<div class="pl-opt ${c.counts[k] === top && top ? 'top' : ''}" style="--c:${CHOICE_COLORS[k]}">
+          <span class="pl-ol"><i class="pl-mark">${CHOICE_MARKS[k]}</i>${esc(o)}</span>
+          <span class="pl-ob"><i style="width:${c.pct[k]}%"></i></span>
+          <b class="pl-op">${c.pct[k]}%</b><small class="pl-oc">${c.counts[k]}</small></div>`
+      )
+      .join('')}</div>
+      <div class="pl-qfoot"><span>👥 ${c.n} ${c.n > 1 ? 'إجابات' : 'إجابة'}</span>${top ? `<span>🏆 الأكثر اختيارًا: <b>${esc(c.options[c.counts.indexOf(top)])}</b></span>` : ''}</div>`;
+  }
   const top = Math.max(...scale.map((s) => c.counts[s.key]));
   return `<div class="pl-opts ${big ? 'big' : ''}">${scale
     .map(
@@ -154,8 +216,11 @@ async function viewPollLive(el, id) {
   });
   // تصدير النتائج (Excel يفتح CSV) للإحصائيات واتّخاذ القرار
   $('#pl-csv').addEventListener('click', () => {
-    const head = ['السؤال', 'عدد الإجابات', 'المعدّل /5', 'نسبة الرضا %', ...data.scale.flatMap((s) => [`${s.label} (عدد)`, `${s.label} %`])];
-    const rows = data.criteria.map((c) => [c.name, c.n, c.avg ?? '', c.satisfied ?? '', ...data.scale.flatMap((s) => [c.counts[s.key], c.pct[s.key]])]);
+    const choice = data.poll.kind === 'choice';
+    const head = choice ? ['السؤال', 'عدد الإجابات', 'الاختيار', 'العدد', '%'] : ['السؤال', 'عدد الإجابات', 'المعدّل /5', 'نسبة الرضا %', ...data.scale.flatMap((s) => [`${s.label} (عدد)`, `${s.label} %`])];
+    const rows = choice
+      ? data.criteria.flatMap((c) => c.options.map((o, k) => [k ? '' : c.name, k ? '' : c.n, o, c.counts[k], c.pct[k]]))
+      : data.criteria.map((c) => [c.name, c.n, c.avg ?? '', c.satisfied ?? '', ...data.scale.flatMap((s) => [c.counts[s.key], c.pct[s.key]])]);
     const csv = [head, ...rows, [], ['المشاركون', data.votes], ['المعدّل العام', data.overall ?? ''], [], ['الملاحظات'], ...data.comments.map((c) => [c.text])]
       .map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
       .join('\n');
@@ -175,6 +240,17 @@ async function viewPollLive(el, id) {
     await api('DELETE', `/api/polls/${id}`);
     location.hash = '#/polls';
   });
+}
+
+// أزرار الإجابة للوليّ: سلّم التقييم أو اختيارات سبر الآراء
+function voteButtons(poll, scale, i, mine) {
+  if (poll.kind === 'choice')
+    return `<div class="vote-choices">${(poll.options?.[i] || [])
+      .map((o, k) => `<button type="button" data-k="${k}" style="--c:${CHOICE_COLORS[k]}" class="${String(mine) === String(k) ? 'on' : ''}"><i>${CHOICE_MARKS[k]}</i><span>${esc(o)}</span></button>`)
+      .join('')}</div>`;
+  return `<div class="vote-scale">${scale
+    .map((s) => `<button type="button" data-k="${s.key}" style="--c:${POLL_COLORS[s.key]}" class="${mine === s.key ? 'on' : ''}"><b>${s.score}</b><em>${POLL_EMOJI[s.key]}</em><small>${s.label}</small></button>`)
+    .join('')}</div>`;
 }
 
 // ---------- صفحة الولي (دون حساب) ----------
@@ -221,7 +297,7 @@ async function viewVote(el, code) {
   const answers = { ...(saved?.answers || {}) };
   const done = () => {
     el.innerHTML = `<div class="vote-page"><div class="vote-card vote-thanks">
-        <div class="vote-big">🙏</div><h2>شكرًا على تقييمك!</h2>
+        <div class="vote-big">🙏</div><h2>${poll.kind === 'choice' ? 'شكرًا على مشاركتك!' : 'شكرًا على تقييمك!'}</h2>
         <p>رأيك يساعدنا على التحسّن. تقييمك مجهول الهوية تمامًا.</p>
         ${poll.active ? '<button class="vote-btn ghost" id="v-edit">✏️ تعديل تقييمي</button>' : ''}
         <img src="feed-logo.png" alt="فيد" class="vote-logo"></div></div>`;
@@ -235,19 +311,17 @@ async function viewVote(el, code) {
     el.innerHTML = `
       <div class="vote-page">
         <header class="vote-head"><img src="feed-logo-white.png" alt="فيد"><h1>${esc(poll.title)}</h1>
-          <p>قيّم كل محور من 1 إلى 5 · 🔒 مجهول الهوية</p>
+          <p>${poll.kind === 'choice' ? 'اختر إجابتك لكل سؤال' : 'قيّم كل محور من 1 إلى 5'} · 🔒 مجهول الهوية</p>
           <div class="vote-progress"><i id="v-prog"></i></div><small id="v-count"></small></header>
         <div class="vote-list">${poll.criteria
           .map(
             (c, i) => `<section class="vote-card vote-q" data-i="${i}"><h3><span>${i + 1}</span>${esc(c)}</h3>
-              <div class="vote-scale">${scale
-                .map((s) => `<button type="button" data-k="${s.key}" style="--c:${POLL_COLORS[s.key]}" class="${answers[i] === s.key ? 'on' : ''}"><b>${s.score}</b><em>${POLL_EMOJI[s.key]}</em><small>${s.label}</small></button>`)
-                .join('')}</div></section>`
+              ${voteButtons(poll, scale, i, answers[i])}</section>`
           )
           .join('')}
           ${poll.allow_comment ? `<section class="vote-card"><h3>💬 ملاحظة أو اقتراح (اختياري)</h3><textarea id="v-comment" rows="3" maxlength="500" placeholder="اكتب ما تريد…">${esc(saved?.comment || '')}</textarea></section>` : ''}
         </div>
-        <div class="vote-send"><button class="vote-btn" id="v-send">إرسال تقييمي ✓</button></div>
+        <div class="vote-send"><button class="vote-btn" id="v-send">${poll.kind === 'choice' ? 'إرسال إجاباتي ✓' : 'إرسال تقييمي ✓'}</button></div>
       </div>`;
     const progress = () => {
       const n = Object.keys(answers).length;
@@ -328,9 +402,7 @@ async function voteStep(el, code, poll, scale) {
     el.innerHTML = `<div class="vote-page"><header class="vote-head"><img src="feed-logo-white.png" alt="فيد"><h1>${esc(poll.title)}</h1>
         <p>السؤال ${i + 1} من ${poll.criteria.length} · 🔒 مجهول الهوية</p></header>
       <section class="vote-card vote-q vote-one ${mine ? 'answered' : ''}"><h3><span>${i + 1}</span>${esc(poll.criteria[i])}</h3>
-        <div class="vote-scale">${scale
-          .map((s) => `<button type="button" data-k="${s.key}" style="--c:${POLL_COLORS[s.key]}" class="${mine === s.key ? 'on' : ''}"><b>${s.score}</b><em>${POLL_EMOJI[s.key]}</em><small>${s.label}</small></button>`)
-          .join('')}</div>
+        ${voteButtons(poll, scale, i, mine)}
         ${mine ? '<p class="vote-ok">✓ تمّ تسجيل رأيك · يمكنك تغييره ما دام السؤال معروضًا</p>' : ''}</section></div>`;
     el.querySelectorAll('[data-k]').forEach((b) =>
       b.addEventListener('click', async () => {

@@ -68,7 +68,7 @@ async function viewStay(el) {
     data = await api('GET', '/api/stay');
   } catch (err) {
     // الصفحة غير مفعّلة (أو غير موجّهة لهذا الحساب): صفحة فارغة لطيفة
-    el.innerHTML = `<section class="st-hero"><div><small>🏨 حجز الأوتيل · ديسمبر</small><h2>لا توجد حجوزات متاحة حاليًا</h2>
+    el.innerHTML = `<section class="st-hero"><div><small>🏨 الملتقى العائلي - ديسمبر 2026</small><h2>لا توجد حجوزات متاحة حاليًا</h2>
       <p>عندما تفتح الإدارة الحجز، ستجد هنا الغرف بالصور والأسعار وتحجز مباشرة.</p></div></section>
       <div class="card empty-state"><span>🛏️</span><p>لا توجد برامج إقامة إلى حدّ الآن.</p></div>`;
     return;
@@ -90,7 +90,7 @@ function stayParent(el, { settings, rooms, bookings = [] }, guest = false) {
   const free = rooms.filter((r) => r.status === 'free').length;
   el.innerHTML = `
     <section class="st-hero">
-      <div><small>🏨 حجز الغرف</small><h2>${esc(settings.title)}</h2>
+      <div><small>🏨 الملتقى العائلي - ديسمبر 2026</small><h2>${esc(settings.title)}</h2>
         ${settings.info ? `<p>${esc(settings.info).replace(/\n/g, '<br>')}</p>` : ''}
         <span class="st-hero-n">${free} غرفة متاحة من ${rooms.length}</span></div>
     </section>
@@ -183,7 +183,7 @@ function stayAdmin(el, data) {
   const priced = rooms.filter((r) => r.price != null).length;
   el.innerHTML = `
     <section class="st-hero">
-      <div><small>🏨 حجز الغرف · دار أوغوز</small><h2>${esc(settings.title)}</h2>
+      <div><small>🏨 الملتقى العائلي - ديسمبر 2026 · دار أوغوز</small><h2>${esc(settings.title)}</h2>
         <span class="st-hero-n ${settings.enabled ? 'on' : ''}">${settings.enabled ? `🟢 الصفحة ظاهرة: ${esc(settings.audience.map((a) => ({ support: 'أولياء الدعم', program: 'أولياء التربوي', teachers: 'المدرّسون', public: 'الرابط العمومي' })[a]).join('، '))}` : '🔒 الصفحة مخفيّة: لا يراها أحد'}</span></div>
       ${isSuper ? `<button class="btn ${settings.enabled ? 'ghost' : ''}" id="st-toggle">${settings.enabled ? 'إخفاء الصفحة' : '🚀 تفعيل الصفحة'}</button>` : ''}
     </section>
@@ -319,7 +319,7 @@ async function viewPublicStay(el) {
   try {
     data = await api('GET', '/api/public/stay');
   } catch (err) {
-    el.innerHTML = `<div class="st-public"><img class="st-logo" src="feed-logo.png" alt="فيد"><section class="st-hero"><div><small>🏨 حجز الغرف</small><h2>الحجز غير متاح حاليًا</h2><p>${esc(err.message)}</p></div></section></div>`;
+    el.innerHTML = `<div class="st-public"><img class="st-logo" src="feed-logo.png" alt="فيد"><section class="st-hero"><div><small>🏨 الملتقى العائلي - ديسمبر 2026</small><h2>الحجز غير متاح حاليًا</h2><p>${esc(err.message)}</p></div></section></div>`;
     return;
   }
   el.innerHTML = '<div class="st-public"><img class="st-logo" src="feed-logo.png" alt="فيد"><div id="st-pub"></div></div>';

@@ -2529,3 +2529,27 @@ test('live poll, one question at a time: the presenter shows each question, pare
   assert.deepStrictEqual(r.comments.map((c) => c.text), ['شكرًا']);
   assert.strictEqual((await admin('PATCH', `/api/polls/${poll.id}`, { current: 5 })).status, 400);
 });
+
+test('live poll «سبر آراء»: the director sets up to 5 choices per question, parents pick one, results per choice', async () => {
+  const admin = await login('admin', 'admin123');
+  const bad = await admin('POST', '/api/polls', { title: 'x', kind: 'choice', questions: [{ q: 'س', options: ['أ'] }] });
+  assert.strictEqual(bad.status, 400);
+  const tooMany = await admin('POST', '/api/polls', { title: 'x', kind: 'choice', questions: [{ q: 'س', options: ['1', '2', '3', '4', '5', '6'] }] });
+  assert.strictEqual(tooMany.status, 400);
+  const { poll } = (await admin('POST', '/api/polls', {
+    title: 'سبر آراء', kind: 'choice',
+    questions: [{ q: 'أهمّ جانب تربوي بالنسبة إليك؟', options: ['الصلاة', 'الأخلاق', 'المسؤولية'] }, { q: 'أفضل يوم للاجتماع؟', options: ['السبت', 'الأحد'] }],
+  })).body;
+  const pub = (await call('GET', `/api/public/polls/${poll.code}`)).body.poll;
+  assert.deepStrictEqual([pub.kind, pub.options[0]], ['choice', ['الصلاة', 'الأخلاق', 'المسؤولية']]);
+  const vote = (d, answers) => call('POST', `/api/public/polls/${poll.code}/vote`, { device: d.repeat(20), answers });
+  assert.strictEqual((await vote('a', { 0: 'excellent' })).status, 400);
+  assert.strictEqual((await vote('a', { 0: 5 })).status, 400);
+  assert.strictEqual((await vote('a', { 0: 1, 1: 0 })).status, 201);
+  assert.strictEqual((await vote('b', { 0: '1' })).status, 201);
+  assert.strictEqual((await vote('c', { 0: 2 })).status, 201);
+  const r = (await admin('GET', `/api/polls/${poll.id}/results`)).body;
+  assert.deepStrictEqual([r.criteria[0].counts, r.criteria[0].pct, r.criteria[0].n], [[0, 2, 1], [0, 67, 33], 3]);
+  assert.deepStrictEqual([r.criteria[1].counts, r.criteria[1].n, r.criteria[1].skipped], [[1, 0], 1, 2]);
+  assert.strictEqual(r.overall, null);
+});

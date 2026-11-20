@@ -1226,3 +1226,11 @@ ALTER TABLE polls DROP CONSTRAINT IF EXISTS polls_mode_check;
 ALTER TABLE polls ADD CONSTRAINT polls_mode_check CHECK (mode IN ('all', 'step'));
 -- السؤال المعروض حاليًا في وضع «سؤال بسؤال» (NULL = لم يبدأ بعد)
 ALTER TABLE polls ADD COLUMN IF NOT EXISTS current INTEGER;
+
+-- ===== 20261214090000_polls_choice.sql =====
+-- التصويت: نوعان — «تقييم» (سلّم من 1 إلى 5) أو «سبر آراء» (اختيارات يضعها المدير لكل سؤال، حتى 5)
+ALTER TABLE polls ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'rating';
+ALTER TABLE polls DROP CONSTRAINT IF EXISTS polls_kind_check;
+ALTER TABLE polls ADD CONSTRAINT polls_kind_check CHECK (kind IN ('rating', 'choice'));
+-- لكل سؤال قائمة اختياراته (سبر آراء فقط)
+ALTER TABLE polls ADD COLUMN IF NOT EXISTS options JSONB;
