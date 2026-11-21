@@ -6,6 +6,7 @@ const POLL_COLORS = { excellent: '#0f9d58', very_good: '#7cb342', average: '#f4b
 const POLL_EMOJI = { excellent: '🤩', very_good: '🙂', average: '😐', below: '🙁', weak: '😞' };
 const CHOICE_COLORS = ['#7c3aed', '#0ea5e9', '#f59e0b', '#10b981', '#ef4444'];
 const CHOICE_MARKS = ['أ', 'ب', 'ج', 'د', 'هـ'];
+const CLOUD_COLORS = ['#61038d', '#0ea5e9', '#ef207a', '#10b981', '#f59e0b', '#6366f1', '#db4437', '#0f766e'];
 const voteUrl = (code) => `${publicBase()}/vote/${code}`;
 const qrSvg = (textValue, cell = 8) => {
   const q = qrcode(0, 'M');
@@ -32,77 +33,103 @@ async function viewPolls(el) {
             .join('')}</div>`
         : '<div class="card empty-state"><span>🗳️</span><p>لا يوجد تصويت بعد. أنشئ أوّل تصويت لاجتماعك!</p></div>'
     }`;
-  $('#pl-new').addEventListener('click', () => {
-    openModal(
-      '🗳️ تصويت جديد',
-      `<label>العنوان<input name="title" required maxlength="150" value="اجتماع أولياء الإعدادي — تقييم فيد"></label>
-       <p class="pl-mode-title">نوع التصويت</p>
-       <div class="pl-modes">
-         <label class="pl-mode"><input type="radio" name="kind" value="rating" checked><span><b>⭐ تقييم</b><small>كل سؤال يُقيَّم من 1 إلى 5 (ممتاز… ضعيف)</small></span></label>
-         <label class="pl-mode"><input type="radio" name="kind" value="choice"><span><b>🗳️ سبر آراء</b><small>أنت تضع الاختيارات لكل سؤال (حتى 5) والوليّ يختار</small></span></label>
-       </div>
-       <div id="pl-rating"><label>محاور التقييم (محور في كل سطر)<textarea name="criteria" rows="8">${esc(defaults.join('\n'))}</textarea></label>
-         <p class="muted small">سلّم التقييم من 1 إلى 5: 5 ممتاز · 4 جيد · 3 متوسط · 2 دون المتوسط · 1 ضعيف.</p></div>
-       <div id="pl-choice" hidden><div id="pl-qs"></div><button type="button" class="btn small ghost" id="pl-addq">+ سؤال</button></div>
-       <p class="pl-mode-title">طريقة العرض</p>
-       <div class="pl-modes">
-         <label class="pl-mode"><input type="radio" name="mode" value="all" checked><span><b>📋 كل الأسئلة دفعة واحدة</b><small>يجيب الوليّ عن كل الأسئلة ثمّ نرى النتائج</small></span></label>
-         <label class="pl-mode"><input type="radio" name="mode" value="step"><span><b>👆 سؤال بسؤال</b><small>أعرض سؤالًا، يصوّتون، نناقش النتيجة، ثمّ أنتقل إلى الموالي</small></span></label>
-       </div>
-       <p class="muted small">🔒 مجهول الهوية تمامًا، والنتائج تُحفظ عندك للإحصائيات.</p>
-       <label class="check"><input type="checkbox" name="allow_comment" checked> السماح بملاحظة مكتوبة (اختيارية)</label>`,
-      async (d) => {
-        const body = { title: d.title, allow_comment: !!d.allow_comment, mode: d.mode, kind: d.kind };
-        if (d.kind === 'choice') {
-          body.questions = [...document.querySelectorAll('.pl-qb')].map((b) => ({
-            q: b.querySelector('.pl-qq').value.trim(),
-            options: [...b.querySelectorAll('.pl-qo')].map((i) => i.value.trim()).filter(Boolean),
-          }));
-        } else body.criteria = d.criteria;
-        const { poll } = await api('POST', '/api/polls', body);
-        location.hash = `#/polls/${poll.id}`;
+  $('#pl-new').addEventListener('click', () => pollForm(null, defaults));
+}
+
+// ➕ / ✏️ استمارة التصويت: النوع، الأسئلة (اختيارات أو ☁️ كلمات)، طريقة العرض
+function pollForm(poll, defaults = [], onSaved = null) {
+  const editing = !!poll;
+  const kind = poll?.kind || 'rating';
+  const mode = poll?.mode || 'all';
+  const questions = kind === 'choice' && poll
+    ? poll.criteria.map((q, i) => (Array.isArray(poll.options?.[i]) ? { q, type: 'choice', options: poll.options[i] } : { q, type: 'words', options: [] }))
+    : [{ q: 'أهمّ جانب تربوي بالنسبة إليك؟', type: 'choice', options: ['الصلاة', 'الأخلاق', 'المسؤولية'] }, { q: 'ما هو أكثر إشكال تجده مع ابنك؟', type: 'words', options: [] }];
+  openModal(
+    editing ? '✏️ تعديل التصويت' : '🗳️ تصويت جديد',
+    `<label>العنوان<input name="title" required maxlength="150" value="${esc(poll?.title || 'اجتماع أولياء الإعدادي — تقييم فيد')}"></label>
+     ${editing && poll.votes ? '<p class="pl-note">⚠️ بدأ التصويت: يمكنك تعديل النصوص وإضافة أسئلة أو اختيارات، دون حذفها.</p>' : ''}
+     <p class="pl-mode-title">نوع التصويت</p>
+     <div class="pl-modes">
+       <label class="pl-mode"><input type="radio" name="kind" value="rating" ${kind === 'rating' ? 'checked' : ''} ${editing && poll.votes ? 'disabled' : ''}><span><b>⭐ تقييم</b><small>كل سؤال يُقيَّم من 1 إلى 5 (ممتاز… ضعيف)</small></span></label>
+       <label class="pl-mode"><input type="radio" name="kind" value="choice" ${kind === 'choice' ? 'checked' : ''} ${editing && poll.votes ? 'disabled' : ''}><span><b>🗳️ سبر آراء</b><small>اختيارات تضعها أنت (حتى 5)، أو ☁️ سحابة كلمات يكتبها الأولياء</small></span></label>
+     </div>
+     <div id="pl-rating" ${kind === 'choice' ? 'hidden' : ''}><label>محاور التقييم (محور في كل سطر)<textarea name="criteria" rows="8">${esc((kind === 'rating' && poll ? poll.criteria : defaults).join('\n'))}</textarea></label>
+       <p class="muted small">سلّم التقييم من 1 إلى 5: 5 ممتاز · 4 جيد · 3 متوسط · 2 دون المتوسط · 1 ضعيف.</p></div>
+     <div id="pl-choice" ${kind === 'choice' ? '' : 'hidden'}><div id="pl-qs"></div><button type="button" class="btn small ghost" id="pl-addq">+ سؤال</button></div>
+     <p class="pl-mode-title">طريقة العرض</p>
+     <div class="pl-modes">
+       <label class="pl-mode"><input type="radio" name="mode" value="all" ${mode === 'all' ? 'checked' : ''}><span><b>📋 كل الأسئلة دفعة واحدة</b><small>يجيب الوليّ عن كل الأسئلة ثمّ نرى النتائج</small></span></label>
+       <label class="pl-mode"><input type="radio" name="mode" value="step" ${mode === 'step' ? 'checked' : ''}><span><b>👆 سؤال بسؤال</b><small>أعرض سؤالًا، يصوّتون، نناقش النتيجة، ثمّ أنتقل إلى الموالي</small></span></label>
+     </div>
+     <p class="muted small">🔒 مجهول الهوية تمامًا، والنتائج تُحفظ عندك للإحصائيات.</p>
+     <label class="check"><input type="checkbox" name="allow_comment" ${poll?.allow_comment === false ? '' : 'checked'}> السماح بملاحظة مكتوبة (اختيارية)</label>`,
+    async (d) => {
+      const k = document.querySelector('#modal-body input[name=kind]:checked').value;
+      const body = { title: d.title, allow_comment: !!d.allow_comment, mode: d.mode, kind: k };
+      if (k === 'choice') {
+        body.questions = [...document.querySelectorAll('.pl-qb')].map((b) => ({
+          q: b.querySelector('.pl-qq').value.trim(),
+          type: b.dataset.type,
+          options: [...b.querySelectorAll('.pl-qo')].map((i) => i.value.trim()).filter(Boolean),
+        }));
+      } else body.criteria = d.criteria;
+      if (editing) {
+        await api('PUT', `/api/polls/${poll.id}`, body);
+        toast('✓ تمّ تعديل التصويت');
+        onSaved?.();
+      } else {
+        const { poll: created } = await api('POST', '/api/polls', body);
+        location.hash = `#/polls/${created.id}`;
       }
-    );
-    // سبر آراء: سؤال + من 2 إلى 5 اختيارات
-    const qBlock = (q = '', opts = ['', '', '']) => `<div class="pl-qb card"><div class="pl-qb-head"><input class="pl-qq" maxlength="150" placeholder="السؤال (مثال: أهمّ جانب تربوي بالنسبة إليك؟)" value="${esc(q)}">
-        <button type="button" class="btn small ghost pl-qrm" title="حذف السؤال">✕</button></div>
-      <div class="pl-qopts">${opts.map((o, k) => `<div class="pl-qo-row"><span style="--c:${CHOICE_COLORS[k]}">${CHOICE_MARKS[k]}</span><input class="pl-qo" maxlength="80" placeholder="اختيار ${k + 1}" value="${esc(o)}"></div>`).join('')}</div>
-      <button type="button" class="btn small ghost pl-qadd">+ اختيار</button></div>`;
-    const qs = $('#pl-qs');
-    qs.innerHTML = qBlock('أهمّ جانب تربوي بالنسبة إليك؟', ['الصلاة', 'الأخلاق', 'المسؤولية']);
-    const renumber = (b) => b.querySelectorAll('.pl-qo-row').forEach((r, k) => {
-      r.querySelector('span').textContent = CHOICE_MARKS[k];
-      r.querySelector('span').style.setProperty('--c', CHOICE_COLORS[k]);
-    });
-    $('#pl-addq').addEventListener('click', () => qs.insertAdjacentHTML('beforeend', qBlock('', ['', ''])));
-    qs.addEventListener('click', (e) => {
-      const b = e.target.closest('.pl-qb');
-      if (e.target.closest('.pl-qrm')) {
-        if (qs.children.length > 1) b.remove();
-        return;
-      }
-      if (e.target.closest('.pl-qadd')) {
-        const n = b.querySelectorAll('.pl-qo-row').length;
-        if (n >= 5) return toast('5 اختيارات على الأقصى', true);
-        b.querySelector('.pl-qopts').insertAdjacentHTML('beforeend', `<div class="pl-qo-row"><span>${CHOICE_MARKS[n]}</span><input class="pl-qo" maxlength="80" placeholder="اختيار ${n + 1}"></div>`);
-        renumber(b);
-      }
-    });
-    document.querySelectorAll('input[name=kind]').forEach((r) =>
-      r.addEventListener('change', () => {
-        const choice = document.querySelector('input[name=kind]:checked').value === 'choice';
-        $('#pl-choice').hidden = !choice;
-        $('#pl-rating').hidden = choice;
-        const t = document.querySelector('#modal-body input[name=title]');
-        if (choice && /تقييم/.test(t.value)) t.value = 'سبر آراء الأولياء';
-      })
-    );
+    }
+  );
+  if (editing) $('#modal-form button[type=submit]').textContent = 'حفظ التعديلات';
+  const optRow = (o, k) => `<div class="pl-qo-row"><span style="--c:${CHOICE_COLORS[k]}">${CHOICE_MARKS[k]}</span><input class="pl-qo" maxlength="80" placeholder="اختيار ${k + 1}" value="${esc(o)}"></div>`;
+  const qBlock = (x) => `<div class="pl-qb card" data-type="${x.type}"><div class="pl-qb-head"><input class="pl-qq" maxlength="150" placeholder="السؤال" value="${esc(x.q)}">
+      <button type="button" class="btn small ghost pl-qrm" title="حذف السؤال">✕</button></div>
+    <div class="pl-qtype"><button type="button" data-qt="choice" class="${x.type === 'choice' ? 'on' : ''}">🔘 اختيارات</button><button type="button" data-qt="words" class="${x.type === 'words' ? 'on' : ''}">☁️ سحابة كلمات</button></div>
+    <div class="pl-qchoice" ${x.type === 'words' ? 'hidden' : ''}><div class="pl-qopts">${(x.options.length ? x.options : ['', '']).map(optRow).join('')}</div>
+      <button type="button" class="btn small ghost pl-qadd">+ اختيار</button></div>
+    <p class="pl-qwords muted small" ${x.type === 'words' ? '' : 'hidden'}>☁️ الوليّ يكتب كلمة أو عبارة قصيرة، وتظهر كل الكلمات معًا على الشاشة: الأكثر تكرارًا أكبر.</p></div>`;
+  const qs = $('#pl-qs');
+  qs.innerHTML = questions.map(qBlock).join('');
+  $('#pl-addq').addEventListener('click', () => qs.insertAdjacentHTML('beforeend', qBlock({ q: '', type: 'choice', options: ['', ''] })));
+  qs.addEventListener('click', (e) => {
+    const b = e.target.closest('.pl-qb');
+    if (!b) return;
+    if (e.target.closest('.pl-qrm')) {
+      if (qs.children.length > 1) b.remove();
+      return;
+    }
+    const qt = e.target.closest('[data-qt]');
+    if (qt) {
+      b.dataset.type = qt.dataset.qt;
+      b.querySelectorAll('[data-qt]').forEach((x) => x.classList.toggle('on', x === qt));
+      b.querySelector('.pl-qchoice').hidden = qt.dataset.qt === 'words';
+      b.querySelector('.pl-qwords').hidden = qt.dataset.qt !== 'words';
+      return;
+    }
+    if (e.target.closest('.pl-qadd')) {
+      const n = b.querySelectorAll('.pl-qo-row').length;
+      if (n >= 5) return toast('5 اختيارات على الأقصى', true);
+      b.querySelector('.pl-qopts').insertAdjacentHTML('beforeend', optRow('', n));
+    }
   });
+  document.querySelectorAll('#modal-body input[name=kind]').forEach((r) =>
+    r.addEventListener('change', () => {
+      const choice = document.querySelector('#modal-body input[name=kind]:checked').value === 'choice';
+      $('#pl-choice').hidden = !choice;
+      $('#pl-rating').hidden = choice;
+      const t = document.querySelector('#modal-body input[name=title]');
+      if (choice && /تقييم/.test(t.value)) t.value = 'سبر آراء الأولياء';
+    })
+  );
 }
 
 // نتائج سؤال: نسبة كل اختيار بوضوح (من الذين أجابوا فقط)
 function pollOptions(c, scale, big = false) {
-  if (!c.n) return '<p class="pl-wait">⏳ بانتظار الأصوات…</p>';
+  if (!c.n) return `<p class="pl-wait">⏳ ${c.words ? 'بانتظار كلمات الأولياء…' : 'بانتظار الأصوات…'}</p>`;
+  if (c.words) return wordCloud(c, big);
   if (c.options) {
     const top = Math.max(...c.counts);
     return `<div class="pl-opts choice ${big ? 'big' : ''}">${c.options
@@ -128,6 +155,24 @@ function pollOptions(c, scale, big = false) {
       <span class="pl-sat" style="--c:${c.satisfied >= 70 ? '#0f9d58' : c.satisfied >= 50 ? '#f4b400' : '#db4437'}">${c.satisfied}% راضون</span></div>`;
 }
 
+// ☁️ سحابة الكلمات: الأكثر تكرارًا أكبر، والكلمات الكبيرة في الوسط
+function wordCloud(c, big = false) {
+  const max = c.words[0]?.count || 1;
+  const list = c.words.slice(0, big ? 80 : 40);
+  // ترتيب «من الوسط»: الكبيرة في المنتصف والصغيرة على الأطراف
+  const arranged = [];
+  list.forEach((w, k) => (k % 2 ? arranged.push(w) : arranged.unshift(w)));
+  const [lo, hi] = big ? [16, 64] : [13, 40];
+  return `<div class="pl-cloud ${big ? 'big' : ''}">${arranged
+    .map((w) => {
+      const r = max > 1 ? (w.count - 1) / (max - 1) : 1;
+      const k = c.words.indexOf(w);
+      return `<span style="font-size:${Math.round(lo + (hi - lo) * Math.sqrt(r))}px;--c:${CLOUD_COLORS[k % CLOUD_COLORS.length]};font-weight:${r > 0.5 ? 900 : r > 0.2 ? 800 : 600}" title="${w.count}">${esc(w.text)}</span>`;
+    })
+    .join('')}</div>
+    <div class="pl-qfoot"><span>✍️ ${c.n} ${c.n > 1 ? 'مشاركات' : 'مشاركة'}</span><span>☁️ ${c.words.length} كلمة مختلفة</span>${c.words[0] ? `<span>🏆 الأكثر تكرارًا: <b>${esc(c.words[0].text)}</b> (${c.words[0].count})</span>` : ''}</div>`;
+}
+
 // شاشة العرض: QR + النتائج تتحدّث كل ثانيتين
 async function viewPollLive(el, id) {
   let data = await api('GET', `/api/polls/${id}/results`);
@@ -138,6 +183,7 @@ async function viewPollLive(el, id) {
       <div class="pl-top">
         <a href="#/polls" class="muted small">→ كل التصويتات</a>
         <div class="pl-actions">
+          <button class="btn small ghost" id="pl-edit">✏️ تعديل</button>
           <button class="btn small ghost" id="pl-csv">📥 تصدير النتائج</button>
           <button class="btn small ghost" id="pl-full">⛶ ملء الشاشة</button>
           <button class="btn small ghost" id="pl-toggle"></button>
@@ -219,7 +265,10 @@ async function viewPollLive(el, id) {
     const choice = data.poll.kind === 'choice';
     const head = choice ? ['السؤال', 'عدد الإجابات', 'الاختيار', 'العدد', '%'] : ['السؤال', 'عدد الإجابات', 'المعدّل /5', 'نسبة الرضا %', ...data.scale.flatMap((s) => [`${s.label} (عدد)`, `${s.label} %`])];
     const rows = choice
-      ? data.criteria.flatMap((c) => c.options.map((o, k) => [k ? '' : c.name, k ? '' : c.n, o, c.counts[k], c.pct[k]]))
+      ? data.criteria.flatMap((c) =>
+          c.words ? (c.words.length ? c.words.map((w, k) => [k ? '' : c.name, k ? '' : c.n, `☁️ ${w.text}`, w.count, c.n ? Math.round((100 * w.count) / c.n) : 0]) : [[c.name, 0, '☁️ —', 0, 0]])
+            : c.options.map((o, k) => [k ? '' : c.name, k ? '' : c.n, o, c.counts[k], c.pct[k]])
+        )
       : data.criteria.map((c) => [c.name, c.n, c.avg ?? '', c.satisfied ?? '', ...data.scale.flatMap((s) => [c.counts[s.key], c.pct[s.key]])]);
     const csv = [head, ...rows, [], ['المشاركون', data.votes], ['المعدّل العام', data.overall ?? ''], [], ['الملاحظات'], ...data.comments.map((c) => [c.text])]
       .map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
@@ -235,6 +284,13 @@ async function viewPollLive(el, id) {
     draw();
     toast(data.poll.active ? 'التصويت مفتوح' : 'تمّ إغلاق التصويت');
   });
+  $('#pl-edit').addEventListener('click', () =>
+    pollForm({ ...data.poll, votes: data.votes }, [], async () => {
+      data = await api('GET', `/api/polls/${id}/results`);
+      el.querySelector('.pl-title').textContent = data.poll.title;
+      draw();
+    })
+  );
   $('#pl-del').addEventListener('click', async () => {
     if (!confirmAction('حذف هذا التصويت وكل أصواته نهائيًا؟')) return;
     await api('DELETE', `/api/polls/${id}`);
@@ -243,7 +299,10 @@ async function viewPollLive(el, id) {
 }
 
 // أزرار الإجابة للوليّ: سلّم التقييم أو اختيارات سبر الآراء
-function voteButtons(poll, scale, i, mine) {
+function voteButtons(poll, scale, i, mine, step = false) {
+  if (poll.kind === 'choice' && poll.options?.[i] && !Array.isArray(poll.options[i]))
+    return `<div class="vote-words"><input class="vote-word" data-w="${i}" maxlength="40" placeholder="اكتب كلمة أو عبارة قصيرة…" value="${esc(mine || '')}" autocomplete="off" enterkeyhint="send">
+      ${step ? '<button type="button" class="vote-btn vote-wsend">إرسال ✓</button>' : ''}<small class="muted">☁️ كلمتك تظهر مع كلمات الأولياء الآخرين (دون اسم)</small></div>`;
   if (poll.kind === 'choice')
     return `<div class="vote-choices">${(poll.options?.[i] || [])
       .map((o, k) => `<button type="button" data-k="${k}" style="--c:${CHOICE_COLORS[k]}" class="${String(mine) === String(k) ? 'on' : ''}"><i>${CHOICE_MARKS[k]}</i><span>${esc(o)}</span></button>`)
@@ -342,6 +401,16 @@ async function viewVote(el, code) {
         if (next) setTimeout(() => next.scrollIntoView({ behavior: 'smooth', block: 'center' }), 180);
       })
     );
+    // ☁️ سؤال الكلمات: ما يكتبه الوليّ هو إجابته
+    el.querySelectorAll('.vote-word').forEach((inp) =>
+      inp.addEventListener('input', () => {
+        const v = inp.value.trim();
+        if (v) answers[inp.dataset.w] = v;
+        else delete answers[inp.dataset.w];
+        inp.closest('.vote-q').classList.toggle('answered', !!v);
+        progress();
+      })
+    );
     $('#v-send').addEventListener('click', async (e) => {
       const missing = poll.criteria.length - Object.keys(answers).length;
       if (!Object.keys(answers).length) return toast('قيّم محورًا واحدًا على الأقل', true);
@@ -402,8 +471,25 @@ async function voteStep(el, code, poll, scale) {
     el.innerHTML = `<div class="vote-page"><header class="vote-head"><img src="feed-logo-white.png" alt="فيد"><h1>${esc(poll.title)}</h1>
         <p>السؤال ${i + 1} من ${poll.criteria.length} · 🔒 مجهول الهوية</p></header>
       <section class="vote-card vote-q vote-one ${mine ? 'answered' : ''}"><h3><span>${i + 1}</span>${esc(poll.criteria[i])}</h3>
-        ${voteButtons(poll, scale, i, mine)}
+        ${voteButtons(poll, scale, i, mine, true)}
         ${mine ? '<p class="vote-ok">✓ تمّ تسجيل رأيك · يمكنك تغييره ما دام السؤال معروضًا</p>' : ''}</section></div>`;
+    const word = el.querySelector('.vote-word');
+    if (word) {
+      const sendWord = async () => {
+        const v = word.value.trim();
+        if (!v) return toast('اكتب كلمتك', true);
+        try {
+          await api('POST', `/api/public/polls/${code}/vote`, { device: voteDevice(), answers: { [i]: v } });
+          memo.answers[i] = v;
+          voteMemo.set(code, memo);
+          render();
+        } catch (err) {
+          toast(err.message, true);
+        }
+      };
+      el.querySelector('.vote-wsend').addEventListener('click', sendWord);
+      word.addEventListener('keydown', (e) => e.key === 'Enter' && sendWord());
+    }
     el.querySelectorAll('[data-k]').forEach((b) =>
       b.addEventListener('click', async () => {
         try {
@@ -428,7 +514,7 @@ async function voteStep(el, code, poll, scale) {
       const r = await api('GET', `/api/public/polls/${code}`);
       const changed = r.poll.current !== shown || r.poll.active !== poll.active;
       poll = r.poll;
-      if (changed && !(document.activeElement && document.activeElement.id === 'v-comment')) {
+      if (changed && !(document.activeElement && (document.activeElement.id === 'v-comment' || (document.activeElement.classList.contains('vote-word') && r.poll.current === shown)))) {
         shown = poll.current;
         render();
         window.scrollTo(0, 0);

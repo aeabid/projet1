@@ -3091,3 +3091,15 @@ body.st-tour-open { overflow: hidden; }
 .vote-choices button i { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--c); color: #fff; font-style: normal; font-weight: 900; }
 .vote-choices button:active { transform: scale(.98); }
 .vote-choices button.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 10%, white); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 25%, transparent); }
+/* ☁️ سحابة الكلمات + تعديل التصويت */
+.pl-note { background: #fff7ed; color: #9a3412; border-radius: 10px; padding: 8px 12px; font-size: .88rem; }
+.pl-qtype { display: inline-flex; gap: 4px; background: var(--soft); border-radius: 12px; padding: 3px; align-self: flex-start; }
+.pl-qtype button { border: 0; background: none; font: inherit; font-weight: 700; font-size: .85rem; padding: 6px 12px; border-radius: 9px; cursor: pointer; color: var(--muted); }
+.pl-qtype button.on { background: #fff; color: var(--feed-purple); box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+.pl-qwords { margin: 0; }
+.pl-cloud { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 14px; padding: 14px 6px; min-height: 120px; line-height: 1.15; }
+.pl-cloud.big { min-height: 240px; gap: 8px 22px; padding: 22px 10px; }
+.pl-cloud span { color: var(--c); animation: g-popin .45s both; cursor: default; }
+.vote-words { display: grid; gap: 8px; }
+.vote-word { font: inherit; font-size: 1.2rem; font-weight: 700; text-align: center; padding: 14px; border-radius: 14px; border: 2px solid var(--border); }
+.vote-word:focus { border-color: var(--feed-purple); outline: none; }

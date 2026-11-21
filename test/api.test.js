@@ -2553,3 +2553,30 @@ test('live poll «سبر آراء»: the director sets up to 5 choices per quest
   assert.deepStrictEqual([r.criteria[1].counts, r.criteria[1].n, r.criteria[1].skipped], [[1, 0], 1, 2]);
   assert.strictEqual(r.overall, null);
 });
+
+test('poll word cloud: parents type a word, words are grouped and counted; the director can edit a poll (texts and additions only once votes exist)', async () => {
+  const admin = await login('admin', 'admin123');
+  const { poll } = (await admin('POST', '/api/polls', {
+    title: 'سحابة', kind: 'choice',
+    questions: [{ q: 'ما هو أكثر إشكال تجده مع ابنك؟', type: 'words' }, { q: 'يوم الاجتماع؟', options: ['السبت', 'الأحد'] }],
+  })).body;
+  const vote = (d, answers) => call('POST', `/api/public/polls/${poll.code}/vote`, { device: d.repeat(20), answers });
+  assert.strictEqual((await vote('a', { 0: 'الهاتف' })).status, 201);
+  assert.strictEqual((await vote('b', { 0: '  الهاتف ' })).status, 201);
+  assert.strictEqual((await vote('c', { 0: 'التركيز', 1: 0 })).status, 201);
+  assert.strictEqual((await vote('d', { 0: 'x'.repeat(41) })).status, 400);
+  let r = (await admin('GET', `/api/polls/${poll.id}/results`)).body;
+  assert.deepStrictEqual(r.criteria[0].words, [{ text: 'الهاتف', count: 2 }, { text: 'التركيز', count: 1 }]);
+  assert.strictEqual(r.criteria[0].n, 3);
+  // التعديل بعد بدء التصويت: النصوص والإضافة مسموحة، الحذف لا
+  const edit = (questions) => admin('PUT', `/api/polls/${poll.id}`, { title: 'سحابة الأولياء', kind: 'choice', mode: 'step', questions });
+  assert.strictEqual((await edit([{ q: 'أكبر تحدٍّ؟', type: 'words' }])).status, 409);
+  assert.strictEqual((await edit([{ q: 'أكبر تحدٍّ؟', type: 'words' }, { q: 'يوم الاجتماع؟', options: ['السبت'] }])).status, 400);
+  assert.strictEqual((await edit([{ q: 'أكبر تحدٍّ؟', type: 'words' }, { q: 'يوم الاجتماع القادم؟', options: ['السبت', 'الأحد', 'الجمعة'] }, { q: 'ملاحظة؟', type: 'words' }])).status, 200);
+  r = (await admin('GET', `/api/polls/${poll.id}/results`)).body;
+  assert.deepStrictEqual([r.poll.title, r.poll.mode, r.poll.criteria.length, r.criteria[1].options.length, r.criteria[0].words.length], ['سحابة الأولياء', 'step', 3, 3, 2]);
+  // تقييم دون أصوات: كل شيء قابل للتعديل
+  const { poll: p2 } = (await admin('POST', '/api/polls', { title: 'تقييم', criteria: 'أ\nب' })).body;
+  assert.strictEqual((await admin('PUT', `/api/polls/${p2.id}`, { title: 'تقييم جديد', kind: 'rating', criteria: 'ج' })).status, 200);
+  assert.deepStrictEqual((await admin('GET', `/api/polls/${p2.id}/results`)).body.poll.criteria, ['ج']);
+});
