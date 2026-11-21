@@ -2528,6 +2528,12 @@ test('live poll, one question at a time: the presenter shows each question, pare
   assert.deepStrictEqual([r.criteria[1].n, r.criteria[1].skipped, r.criteria[1].pct.average], [1, 1, 100]);
   assert.deepStrictEqual(r.comments.map((c) => c.text), ['شكرًا']);
   assert.strictEqual((await admin('PATCH', `/api/polls/${poll.id}`, { current: 5 })).status, 400);
+  // 🔄 إعادة من البداية: لا أصوات، لا سؤال معروض، جولة جديدة (الهواتف تنسى تصويتها)
+  await admin('PATCH', `/api/polls/${poll.id}`, { current: 1, active: false });
+  assert.strictEqual((await admin('POST', `/api/polls/${poll.id}/reset`)).body.removed, 2);
+  const after = (await admin('GET', `/api/polls/${poll.id}/results`)).body;
+  assert.deepStrictEqual([after.votes, after.poll.current, after.poll.active, after.comments.length], [0, null, true, 0]);
+  assert.strictEqual((await call('GET', `/api/public/polls/${poll.code}`)).body.poll.round, 1);
 });
 
 test('live poll «سبر آراء»: the director sets up to 5 choices per question, parents pick one, results per choice', async () => {

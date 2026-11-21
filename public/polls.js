@@ -184,6 +184,7 @@ async function viewPollLive(el, id) {
         <a href="#/polls" class="muted small">→ كل التصويتات</a>
         <div class="pl-actions">
           <button class="btn small ghost" id="pl-edit">✏️ تعديل</button>
+          <button class="btn small ghost" id="pl-reset">🔄 إعادة من البداية</button>
           <button class="btn small ghost" id="pl-csv">📥 تصدير النتائج</button>
           <button class="btn small ghost" id="pl-full">⛶ ملء الشاشة</button>
           <button class="btn small ghost" id="pl-toggle"></button>
@@ -284,6 +285,17 @@ async function viewPollLive(el, id) {
     draw();
     toast(data.poll.active ? 'التصويت مفتوح' : 'تمّ إغلاق التصويت');
   });
+  $('#pl-reset').addEventListener('click', async () => {
+    if (!confirmAction(`إعادة التصويت من البداية؟ تُحذف كل الأصوات والملاحظات (${data.votes} مشارك) وترجع الأسئلة إلى البداية، وتُفتح من جديد على هواتف الأولياء.`)) return;
+    try {
+      await api('POST', `/api/polls/${id}/reset`);
+      data = await api('GET', `/api/polls/${id}/results`);
+      draw();
+      toast('🔄 التصويت من البداية: جاهز');
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
   $('#pl-edit').addEventListener('click', () =>
     pollForm({ ...data.poll, votes: data.votes }, [], async () => {
       data = await api('GET', `/api/polls/${id}/results`);
@@ -352,7 +364,9 @@ async function viewVote(el, code) {
     el.innerHTML = `<div class="vote-page"><div class="vote-card"><h2>🗳️</h2><p>${esc(err.message)}</p></div></div>`;
     return;
   }
-  const saved = voteMemo.get(code);
+  // رقم الجولة: بعد «إعادة من البداية» ينسى الهاتف تصويته السابق
+  const mkey = `${code}:${poll.round || 0}`;
+  const saved = voteMemo.get(mkey);
   const answers = { ...(saved?.answers || {}) };
   const done = () => {
     el.innerHTML = `<div class="vote-page"><div class="vote-card vote-thanks">
@@ -419,7 +433,7 @@ async function viewVote(el, code) {
       try {
         const comment = $('#v-comment')?.value || '';
         await api('POST', `/api/public/polls/${code}/vote`, { device: voteDevice(), answers, comment });
-        voteMemo.set(code, { answers, comment });
+        voteMemo.set(mkey, { answers, comment });
         done();
         window.scrollTo(0, 0);
       } catch (err) {
@@ -434,7 +448,8 @@ async function viewVote(el, code) {
 
 // سؤال بسؤال: يظهر للوليّ السؤال الذي يعرضه المدير الآن، ويتجدّد وحده
 async function voteStep(el, code, poll, scale) {
-  const memo = voteMemo.get(code) || { answers: {} };
+  const mkey = () => `${code}:${poll.round || 0}`;
+  let memo = voteMemo.get(mkey()) || { answers: {} };
   memo.answers ||= {};
   let shown = undefined;
   let commentSent = !!memo.comment;
@@ -458,7 +473,7 @@ async function voteStep(el, code, poll, scale) {
           await api('POST', `/api/public/polls/${code}/vote`, { device: voteDevice(), answers: {}, comment });
           memo.comment = comment;
           commentSent = true;
-          voteMemo.set(code, memo);
+          voteMemo.set(mkey(), memo);
           toast('✓ شكرًا، أُرسلت ملاحظتك');
           render();
         } catch (err) {
@@ -481,7 +496,7 @@ async function voteStep(el, code, poll, scale) {
         try {
           await api('POST', `/api/public/polls/${code}/vote`, { device: voteDevice(), answers: { [i]: v } });
           memo.answers[i] = v;
-          voteMemo.set(code, memo);
+          voteMemo.set(mkey(), memo);
           render();
         } catch (err) {
           toast(err.message, true);
@@ -495,7 +510,7 @@ async function voteStep(el, code, poll, scale) {
         try {
           await api('POST', `/api/public/polls/${code}/vote`, { device: voteDevice(), answers: { [i]: b.dataset.k } });
           memo.answers[i] = b.dataset.k;
-          voteMemo.set(code, memo);
+          voteMemo.set(mkey(), memo);
           try {
             navigator.vibrate?.(20);
           } catch {}
@@ -512,8 +527,14 @@ async function voteStep(el, code, poll, scale) {
     if (!document.body.contains(el) || !location.pathname.includes(code) && !location.hash.includes(code)) return clearInterval(timer);
     try {
       const r = await api('GET', `/api/public/polls/${code}`);
-      const changed = r.poll.current !== shown || r.poll.active !== poll.active;
+      const restarted = (r.poll.round || 0) !== (poll.round || 0);
+      const changed = restarted || r.poll.current !== shown || r.poll.active !== poll.active;
       poll = r.poll;
+      if (restarted) {
+        memo = voteMemo.get(mkey()) || { answers: {} };
+        memo.answers ||= {};
+        commentSent = !!memo.comment;
+      }
       if (changed && !(document.activeElement && (document.activeElement.id === 'v-comment' || (document.activeElement.classList.contains('vote-word') && r.poll.current === shown)))) {
         shown = poll.current;
         render();

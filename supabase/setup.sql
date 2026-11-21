@@ -1234,3 +1234,7 @@ ALTER TABLE polls DROP CONSTRAINT IF EXISTS polls_kind_check;
 ALTER TABLE polls ADD CONSTRAINT polls_kind_check CHECK (kind IN ('rating', 'choice'));
 -- لكل سؤال قائمة اختياراته (سبر آراء فقط)
 ALTER TABLE polls ADD COLUMN IF NOT EXISTS options JSONB;
+
+-- ===== 20261215090000_polls_round.sql =====
+-- «إعادة من البداية»: تُحذف الأصوات ويزيد رقم الجولة حتى تنسى هواتف الأولياء تصويتها السابق
+ALTER TABLE polls ADD COLUMN IF NOT EXISTS round INTEGER NOT NULL DEFAULT 0;
