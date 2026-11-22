@@ -2586,3 +2586,12 @@ test('poll word cloud: parents type a word, words are grouped and counted; the d
   assert.strictEqual((await admin('PUT', `/api/polls/${p2.id}`, { title: 'تقييم جديد', kind: 'rating', criteria: 'ج' })).status, 200);
   assert.deepStrictEqual((await admin('GET', `/api/polls/${p2.id}/results`)).body.poll.criteria, ['ج']);
 });
+
+test('admin can set a parent username to their WhatsApp number (unique)', async () => {
+  const admin = await login('admin', 'admin123');
+  const a = (await admin('POST', '/api/users', { role: 'parent', username: 'old-name', full_name: 'ولي', phone: '98111222', password: 'secret1' })).body.user;
+  await admin('POST', '/api/users', { role: 'parent', username: '98333444', full_name: 'ولي آخر', password: 'secret1' });
+  assert.strictEqual((await admin('PUT', `/api/users/${a.id}/username`, { username: '98333444' })).status, 409);
+  assert.strictEqual((await admin('PUT', `/api/users/${a.id}/username`, { username: ' 98111222 ' })).body.username, '98111222');
+  assert.strictEqual((await call('POST', '/api/login', { username: '98111222', password: 'secret1' })).status, 200);
+});

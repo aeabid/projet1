@@ -68,6 +68,16 @@ function phoneFields(phone) {
   return `<div class="row"><label>الهاتف الأول (واتساب)<input name="tel1" value="${esc(t1 || '')}" dir="ltr" inputmode="tel" placeholder="98123456"></label>
     <label>هاتف ثانٍ (اختياري)<input name="tel2" value="${esc(t2 || '')}" dir="ltr" inputmode="tel"></label></div>`;
 }
+// رقم الواتساب المحلّي (الهاتف الأوّل، دون 216): يُقترح كاسم مستخدم للوليّ
+const waLocal = (phone) => cleanTel(String(phone || '').split(/\s*[\/,;]\s*/)[0]).replace(/\D/g, '');
+const usernameNotWa = (u) => !['teacher', 'admin'].includes(u?.role) && !!waLocal(u?.phone) && String(u.username) !== waLocal(u.phone);
+async function setUsernameToWa(u) {
+  const tel = waLocal(u.phone);
+  const r = await api('PUT', `/api/users/${u.id}/username`, { username: tel });
+  u.username = r.username;
+  toast(`✓ اسم المستخدم أصبح ${r.username}`);
+  return r.username;
+}
 function joinPhones(data) {
   data.phone = [cleanTel(data.tel1), cleanTel(data.tel2)].filter(Boolean).join(' / ');
   delete data.tel1;
@@ -2939,6 +2949,14 @@ const ROLE_WORD = { parent: 'الولي', teacher: 'المدرّس', admin: 'ا�
 async function issuePassword(u, onDone) {
   const phone = u.phone;
   const canWa = !!waNumber(phone);
+  // اسم المستخدم يختلف عن رقم الواتساب: نقترح توحيده قبل الإرسال (حتى يدخل الوليّ برقمه)
+  if ((u.role || 'parent') === 'parent' && usernameNotWa(u) && confirmAction(`اسم المستخدم الحالي «${u.username}» ليس رقم الواتساب «${waLocal(phone)}».\nنجعل اسم المستخدم = رقم الواتساب قبل الإرسال؟`)) {
+    try {
+      await setUsernameToWa(u);
+    } catch (err) {
+      return toast(err.message, true);
+    }
+  }
   if (!confirmAction(`إرسال الدخول لـ ${u.full_name}${canWa ? ' عبر واتساب' : ''}؟\nتتعمل كلمة سر جديدة، والقديمة تتبطّل.`)) return;
   // نفتح نافذة واتساب فورًا (داخل نفس الضغطة) حتى لا يحجبها المتصفح، ثم نملأ الرابط
   const win = canWa ? window.open('', '_blank') : null;
@@ -3185,6 +3203,9 @@ function parentProgOptions(users) {
     ${opt(['none', 'بلا أبناء', n((u) => !u.children.length && !(u.program_children || []).length)])}`;
 }
 
+// تنبيه: اسم المستخدم ليس رقم الواتساب (الوليّ يدخل برقمه)
+const unWarn = (u) => `<span class="un-warn" title="اسم المستخدم ليس رقم الواتساب">⚠️ ليس رقم الواتساب <button type="button" class="btn small ghost" data-fixu="${u.id}">📱 اجعله ${esc(waLocal(u.phone))}</button></span>`;
+
 // قائمة الأولياء: بطاقات أو جدول
 function viewParentsList(el, users, reload, edit) {
   // الأبناء: سطر لكل ابن (الاسم + القسم)، مرتّبة حتى لو كانوا 3 أو أكثر، و«+» لإضافة ابن آخر
@@ -3249,6 +3270,7 @@ function viewParentsList(el, users, reload, edit) {
               <div class="pc-phones">${phones(u).length ? phones(u).map((p) => `<span class="pc-phone"><span dir="ltr">${esc(p)}</span><a class="pc-call" href="tel:${esc(p)}" aria-label="اتصال">📞</a>${waButton(p)}</span>`).join('') : '<span class="muted small">لا هاتف</span>'}</div>
               ${activeSwitch(u)}${sentBadge(u)}${loginBtn(u)}
               ${kidsBox(u)}
+              ${usernameNotWa(u) ? unWarn(u) : ''}
               <div class="pc-foot"><span class="muted small" dir="ltr">${esc(u.username)}${u.cin ? ` · ${esc(u.cin)}` : ''}</span>
                 <span><a class="btn ghost small" href="#/parents/${u.id}">الملف</a><button class="btn ghost small" data-edit="${u.id}">تعديل</button></span></div>
             </article>`
@@ -3262,13 +3284,24 @@ function viewParentsList(el, users, reload, edit) {
                 <td><a class="who-cell" href="#/parents/${u.id}">${avatar({ full_name: u.full_name }, 'sm')}<b>${esc(u.full_name)}</b>${googleMark(u)}</a></td>
                 <td>${phones(u).map((p) => `<span class="phone-line"><span dir="ltr">${esc(p)}</span>${waButton(p)}</span>`).join('') || '<span class="muted">—</span>'}</td>
                 <td class="kids-cell">${kidsBox(u)}</td>
-                <td class="nowrap" dir="ltr">${esc(u.username)}</td>
+                <td class="nowrap"><span dir="ltr">${esc(u.username)}</span>${usernameNotWa(u) ? unWarn(u) : ''}</td>
                 <td class="nowrap">${activeSwitch(u)}${sentBadge(u)}${lastSeen(u)}</td>
                 <td class="row-actions">${loginBtn(u, true)}<button class="btn ghost small" data-edit="${u.id}">تعديل</button>${u.id !== state.user.id ? `<button class="btn danger small" data-del="${u.id}">حذف</button>` : ''}</td>
               </tr>`
             )
             .join('')}</tbody></table></div>`;
     $('#p-list').querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => edit(users.find((u) => u.id === Number(b.dataset.edit)))));
+    $('#p-list').querySelectorAll('[data-fixu]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const u = users.find((x) => x.id === Number(b.dataset.fixu));
+        try {
+          await setUsernameToWa(u);
+          render();
+        } catch (err) {
+          toast(err.message, true);
+        }
+      })
+    );
     $('#p-list').querySelectorAll('[data-pw]').forEach((b) =>
       b.addEventListener('click', () => {
         const u = users.find((x) => x.id === Number(b.dataset.pw));
@@ -3353,7 +3386,7 @@ async function viewUsers(el, role, scope = null) {
     openModal(
       user ? 'تعديل الحساب' : addLabels[role].slice(2),
       `<label>الاسم واللقب<input name="full_name" value="${esc(u.full_name)}" required></label>
-       <label>اسم المستخدم<input name="username" value="${esc(u.username)}" dir="ltr" required></label>
+       <label>اسم المستخدم<span class="un-row"><input name="username" id="f-username" value="${esc(u.username)}" dir="ltr" required>${role === 'parent' ? '<button type="button" class="btn small ghost" id="un-wa" title="اسم المستخدم = رقم الواتساب">📱 = رقم الواتساب</button>' : ''}</span></label>
        ${phoneFields(u.phone)}
        ${role === 'teacher' && !prog ? `<label>معلوم الساعة (د.ت)<input name="hourly_rate" inputmode="decimal" value="${esc(u.hourly_rate ?? '')}" placeholder="مثال: 20"></label>` : ''}
        ${prog ? `${programPayFields(u)}
@@ -3398,6 +3431,22 @@ async function viewUsers(el, role, scope = null) {
       }
     );
     bindProgramPay();
+    // الوليّ: اسم المستخدم يتبع رقم الواتساب (زرّ، أو تلقائيًا إن كان مطابقًا للرقم القديم)
+    const unInput = $('#f-username');
+    const tel1 = $('#modal-body input[name=tel1]');
+    if (role === 'parent' && unInput && tel1) {
+      let prev = waLocal(tel1.value);
+      $('#un-wa')?.addEventListener('click', () => {
+        const t = waLocal(tel1.value);
+        if (!t) return toast('اكتب رقم الواتساب أوّلًا', true);
+        unInput.value = t;
+      });
+      tel1.addEventListener('input', () => {
+        const t = waLocal(tel1.value);
+        if (!unInput.value || unInput.value === prev) unInput.value = t;
+        prev = t;
+      });
+    }
     // المادة غير مفعّلة: أقسامها معطّلة؛ والتلميح يقول «كل الأقسام» أو عددها
     const sync = () =>
       $('#modal').querySelectorAll('.sl-row').forEach((row) => {

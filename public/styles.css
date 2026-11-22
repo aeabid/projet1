@@ -3103,3 +3103,7 @@ body.st-tour-open { overflow: hidden; }
 .vote-words { display: grid; gap: 8px; }
 .vote-word { font: inherit; font-size: 1.2rem; font-weight: 700; text-align: center; padding: 14px; border-radius: 14px; border: 2px solid var(--border); }
 .vote-word:focus { border-color: var(--feed-purple); outline: none; }
+
+.un-row { display: flex; gap: 6px; align-items: center; }
+.un-row input { flex: 1; }
+.un-warn { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .8rem; color: #9a3412; background: #fff7ed; border-radius: 10px; padding: 4px 8px; margin: 4px 0; }
