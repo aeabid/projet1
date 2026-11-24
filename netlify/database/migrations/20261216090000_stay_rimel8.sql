@@ -1,2 +1,2 @@
--- Rimel 8: كبيران + طفلان (canapé)
-UPDATE stay_rooms SET children = 2 WHERE slug = 'rimel-8';
+-- Rimel 8: كبيران + طفل (canapé واحد)
+UPDATE stay_rooms SET children = 1 WHERE slug = 'rimel-8';

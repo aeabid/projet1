@@ -1240,5 +1240,9 @@ ALTER TABLE polls ADD COLUMN IF NOT EXISTS options JSONB;
 ALTER TABLE polls ADD COLUMN IF NOT EXISTS round INTEGER NOT NULL DEFAULT 0;
 
 -- ===== 20261216090000_stay_rimel8.sql =====
--- Rimel 8: كبيران + طفلان (canapé)
-UPDATE stay_rooms SET children = 2 WHERE slug = 'rimel-8';
+-- Rimel 8: كبيران + طفل (canapé واحد)
+UPDATE stay_rooms SET children = 1 WHERE slug = 'rimel-8';
+
+-- ===== 20261217090000_stay_rimel8_one.sql =====
+-- Rimel 8: canapé واحد فقط (كبيران + طفل)
+UPDATE stay_rooms SET children = 1 WHERE slug = 'rimel-8';

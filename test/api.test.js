@@ -2374,7 +2374,7 @@ test('room booking at Dar Oguz: hidden until the director enables it, prices per
   assert.strictEqual((await p('POST', '/api/stay/bookings', { room_id: rimel7.id, adults: 2 })).status, 409);
   await admin('PUT', `/api/stay/rooms/${rimel7.id}/hold`, { held: false });
   assert.strictEqual((await p('GET', '/api/stay')).body.rooms.find((r) => r.id === rimel7.id).status, 'free');
-  assert.strictEqual(a0.rooms.find((r) => r.slug === 'rimel-8').children, 2);
+  assert.strictEqual(a0.rooms.find((r) => r.slug === 'rimel-8').children, 1);
   // غرفة مخفيّة لا تظهر للولي
   await admin('PUT', `/api/stay/rooms/${a0.rooms[0].id}`, { active: false });
   assert.strictEqual((await p('GET', '/api/stay')).body.rooms.length, 16);
