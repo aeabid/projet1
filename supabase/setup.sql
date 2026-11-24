@@ -1238,3 +1238,7 @@ ALTER TABLE polls ADD COLUMN IF NOT EXISTS options JSONB;
 -- ===== 20261215090000_polls_round.sql =====
 -- «إعادة من البداية»: تُحذف الأصوات ويزيد رقم الجولة حتى تنسى هواتف الأولياء تصويتها السابق
 ALTER TABLE polls ADD COLUMN IF NOT EXISTS round INTEGER NOT NULL DEFAULT 0;
+
+-- ===== 20261216090000_stay_rimel8.sql =====
+-- Rimel 8: كبيران + طفلان (canapé)
+UPDATE stay_rooms SET children = 2 WHERE slug = 'rimel-8';

@@ -2364,6 +2364,17 @@ test('room booking at Dar Oguz: hidden until the director enables it, prices per
   const oguz6 = a0.rooms.find((r) => r.slug === 'oguz-6');
   await admin('PUT', `/api/stay/rooms/${oguz6.id}`, { price: 280 });
   assert.strictEqual((await t('POST', '/api/stay/bookings', { room_id: oguz6.id, adults: 1 })).status, 201);
+  // 🔒 الإدارة تجعل غرفة محجوزة ثمّ 🟢 متاحة
+  const rimel7 = a0.rooms.find((r) => r.slug === 'rimel-7');
+  await admin('PUT', `/api/stay/rooms/${rimel7.id}`, { price: 300 });
+  assert.strictEqual((await p('PUT', `/api/stay/rooms/${rimel7.id}/hold`, { held: true })).status, 403);
+  assert.strictEqual((await admin('PUT', `/api/stay/rooms/${rimel7.id}/hold`, { held: true })).status, 200);
+  assert.strictEqual((await admin('PUT', `/api/stay/rooms/${rimel7.id}/hold`, { held: true })).status, 409);
+  assert.strictEqual((await p('GET', '/api/stay')).body.rooms.find((r) => r.id === rimel7.id).status, 'taken');
+  assert.strictEqual((await p('POST', '/api/stay/bookings', { room_id: rimel7.id, adults: 2 })).status, 409);
+  await admin('PUT', `/api/stay/rooms/${rimel7.id}/hold`, { held: false });
+  assert.strictEqual((await p('GET', '/api/stay')).body.rooms.find((r) => r.id === rimel7.id).status, 'free');
+  assert.strictEqual(a0.rooms.find((r) => r.slug === 'rimel-8').children, 2);
   // غرفة مخفيّة لا تظهر للولي
   await admin('PUT', `/api/stay/rooms/${a0.rooms[0].id}`, { active: false });
   assert.strictEqual((await p('GET', '/api/stay')).body.rooms.length, 16);

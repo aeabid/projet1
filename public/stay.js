@@ -234,7 +234,11 @@ function stayAdmin(el, data) {
               </div>
               <div class="st-arow">
                 <span class="st-albl">📌 الحالة</span>
-                ${b ? `<span class="st-pill ${b.status === 'confirmed' ? 'ok' : 'warn'}">${b.status === 'confirmed' ? '● محجوزة' : '● في انتظار التأكيد'}</span>` : '<span class="st-pill free">● متاحة</span>'}
+                ${
+                  b?.status === 'pending'
+                    ? '<span class="st-pill warn">● في انتظار التأكيد</span>'
+                    : `<div class="st-seg2" role="group" aria-label="حالة الغرفة"><button type="button" class="${b ? '' : 'on free'}" data-hold="0" data-room="${r.id}">🟢 متاحة</button><button type="button" class="${b ? 'on held' : ''}" data-hold="1" data-room="${r.id}">🔒 محجوزة</button></div>`
+                }
               </div>
             </div>
             ${
@@ -304,6 +308,16 @@ function stayAdmin(el, data) {
     })
   );
   el.querySelectorAll('[data-price]').forEach((i) => i.addEventListener('keydown', (e) => e.key === 'Enter' && el.querySelector(`[data-save-price="${i.dataset.price}"]`).click()));
+  // 🔒/🟢 الإدارة تجعل الغرفة محجوزة أو متاحة بضغطة
+  el.querySelectorAll('[data-hold]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      if (btn.classList.contains('on')) return;
+      const held = btn.dataset.hold === '1';
+      const b = liveOf(Number(btn.dataset.room));
+      if (!held && b && !confirm(`جعل الغرفة متاحة؟ يُلغى حجز «${b.parent_name}» وتصبح الغرفة قابلة للحجز.`)) return;
+      act(() => api('PUT', `/api/stay/rooms/${btn.dataset.room}/hold`, { held }), held ? '🔒 الغرفة محجوزة' : '🟢 الغرفة متاحة');
+    })
+  );
   el.querySelectorAll('[data-active]').forEach((c) => c.addEventListener('change', () => act(() => api('PUT', `/api/stay/rooms/${c.dataset.active}`, { active: c.checked }))));
   el.querySelectorAll('[data-b]').forEach((b) =>
     b.addEventListener('click', () => {

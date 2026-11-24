@@ -3107,3 +3107,9 @@ body.st-tour-open { overflow: hidden; }
 .un-row { display: flex; gap: 6px; align-items: center; }
 .un-row input { flex: 1; }
 .un-warn { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .8rem; color: #9a3412; background: #fff7ed; border-radius: 10px; padding: 4px 8px; margin: 4px 0; }
+
+.st-seg2 { display: inline-flex; background: var(--soft); border-radius: 12px; padding: 3px; gap: 3px; }
+.st-seg2 button { border: 0; background: none; font: inherit; font-weight: 700; font-size: .85rem; padding: 6px 12px; border-radius: 9px; cursor: pointer; color: var(--muted); transition: background .15s, color .15s; }
+.st-seg2 button.on.free { background: #ecfdf5; color: #047857; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.st-seg2 button.on.held { background: #e0f2fe; color: #075985; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.st-seg2 button:not(.on):hover { color: var(--text); }
